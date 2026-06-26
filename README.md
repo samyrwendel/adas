@@ -27,6 +27,12 @@ DECISIONS.md  (LOG append-only DA-NNN, com cadeia de supersede)
 Cada camada **cita e é gerada da de cima**. Por isso "auto-aprimorar" é mecânico: decisão entra como
 `DA-NNN`, dobra na faixa que afeta, regenera o portátil — **no mesmo commit**; nunca apaga, só *supersede*.
 
+### Faixas executáveis + gate (opcional — padrão nascido no GroupPay)
+O hook injeta a regra no **momento da edição**. Pra fechar a outra ponta, um NÃO-FAÇA crítico vira um
+**check rodável** (`scripts/check-<nome>.sh`, ver `skeleton/scripts/check-_template.sh`) + um **gate de
+deploy/CI**: **money-path/segurança bloqueiam** (`SEVERITY=block`), **limpeza só avisa** (`SEVERITY=warn`).
+Assim a faixa pega no **commit/deploy**, não só na edição. É o PASSO 7 do prompt.
+
 ## Conteúdo do repo
 | Arquivo | Pra quê |
 |---|---|

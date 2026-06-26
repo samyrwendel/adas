@@ -120,8 +120,19 @@ para cada faixa, no `Edit|Write` de arquivos que casem com os globs dela, injete
 destilada como additionalContext (enforcement JIT no momento da edição). Duplique o item
 do array por faixa.
 
+PASSO 7 (opcional, mas FORTEMENTE recomendado p/ caminho crítico) — FAIXAS EXECUTÁVEIS
++ GATE: transforme cada NÃO-FAÇA crítico (sobretudo do caminho do dinheiro/segurança)
+num check RODÁVEL em scripts/check-<nome>.sh (duplique scripts/check-_template.sh; sai
+!= 0 quando VIOLA, com mensagem ACIONÁVEL). Wire um gate de pré-deploy/CI:
+  - MONEY-PATH e SEGURANÇA bloqueiam (SEVERITY=block, build falha): ex. callback de
+    pagamento sem handler, vazamento de RLS, mistura de unidade/moeda.
+  - Limpeza/estilo só AVISAM (SEVERITY=warn): ex. botões/handlers órfãos, TODO.
+  - Gate no package.json: "deploy": "SEVERITY=block bash scripts/check-*.sh && build && <restart>".
+  Registre o gate como DA-NNN e cite o check na faixa ("enforcement: scripts/check-<nome>.sh").
+  O hook pega no momento da EDIÇÃO; o check pega no COMMIT/DEPLOY — as duas pontas.
+
 SAÍDA: PREENCHA os arquivos COPIADOS (.specs/, .claude/skills/<faixa>/SKILL.md,
-DECISIONS.md, ADAS.md, o hook), remova `_template/` e me mostre o índice. Antes de
+DECISIONS.md, ADAS.md, o hook, scripts/check-*), remova `_template/` e me mostre o índice. Antes de
 finalizar, me peça pra confirmar os invariantes que você reverse-engineerou.
 ```
 
