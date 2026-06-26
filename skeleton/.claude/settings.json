@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "_comment": "Hook ADAS: injeta a spec destilada de uma faixa no INSTANTE da edição (enforcement JIT). Duplique o item do array por faixa, ajustando o glob no 'case' e a additionalContext. Só Claude Code — em outra LLM, cole o ADAS.md.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // empty' | { read -r f; case \"$f\" in *\"/<glob-da-faixa>/\"*) printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"ADAS <faixa>: <spec destilada em 1 paragrafo, SEM aspas duplas internas, com os PROIBIDOS>. Spec: .claude/skills/<faixa>/SKILL.md\"}}' ;; esac; } 2>/dev/null || true",
+            "timeout": 10,
+            "statusMessage": "ADAS <faixa>"
+          }
+        ]
+      }
+    ]
+  }
+}

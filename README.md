@@ -1,0 +1,61 @@
+# ADAS — Anti-Drift Adherence System
+
+> Faixas de governança que mantêm **qualquer LLM dentro da spec do projeto** — em vez de inventar
+> cor, estrutura, escopo, nomenclatura ou texto novos. Como o ADAS de carro te mantém na **faixa**.
+> Princípio-mestre: **ADESÃO > INVENÇÃO** — consolidar > reescrever · padronizar > inventar ·
+> medir antes de substituir · nunca regredir o que funciona.
+
+Nasceu no projeto **Holdge** (suíte DeFi self-custodial) e foi extraído como método reutilizável.
+
+## Por que existe
+LLMs reinventam: recriam um componente que já existe, mudam uma cor canônica, fogem do escopo,
+repetem um bug já decidido. O ADAS troca "confiar que a LLM lembra" por uma **hierarquia de
+derivação + enforcement no momento da ação**.
+
+## Arquitetura (4 camadas + 1 loop)
+```
+.specs/  (CONSTITUIÇÃO: invariantes mais estáveis + valores crus; compartilhada entre repos)
+   │  extraída/adaptada →
+.claude/skills/*/SKILL.md  (FAIXAS: escopo do projeto, AUTO-DISPARADAS via frontmatter)
+   │  destiladas →
+ADAS.md  (PORTÁTIL: cola em qualquer LLM, sem hook/sem repo)
+   │  injetada JIT →
+.claude/settings.json hook  (REFORÇO no instante da edição — só Claude Code)
+   +
+DECISIONS.md  (LOG append-only DA-NNN, com cadeia de supersede)
+```
+Cada camada **cita e é gerada da de cima**. Por isso "auto-aprimorar" é mecânico: decisão entra como
+`DA-NNN`, dobra na faixa que afeta, regenera o portátil — **no mesmo commit**; nunca apaga, só *supersede*.
+
+## Conteúdo do repo
+| Arquivo | Pra quê |
+|---|---|
+| [`adas-bootstrap-prompt.md`](adas-bootstrap-prompt.md) | O **prompt** que cria um ADAS num projeto novo ou em andamento (engenharia reversa do código real). |
+| [`skeleton/`](skeleton/) | **Esqueleto vazio** copiável (`.specs/` + `skills/_template/` + `DECISIONS.md` + `ADAS.md` + hook). |
+
+## Como chamar o ADAS em qualquer projeto
+
+**1) Via prompt (qualquer LLM)** — aponte a LLM pro seu projeto e cole o conteúdo de
+[`adas-bootstrap-prompt.md`](adas-bootstrap-prompt.md). Ele audita o repo e gera as camadas.
+
+**2) Via esqueleto (mãos na massa)** — copie a estrutura e preencha os `<PLACEHOLDER>`:
+```bash
+# dentro do projeto destino:
+git clone https://github.com/samyrwendel/adas /tmp/adas && cp -r /tmp/adas/skeleton/. .
+# ou, se você mantém este repo clonado localmente:
+cp -r ~/projects/adas-template/skeleton/. /caminho/do/projeto/
+```
+
+**3) Via raw (rápido)** — puxe só o prompt:
+```bash
+curl -fsSL https://raw.githubusercontent.com/samyrwendel/adas/main/adas-bootstrap-prompt.md
+```
+
+## As 2 regras que fazem ele "colar"
+1. **`frontmatter.description` é o roteador.** A faixa só dispara se casar com o que o usuário falou —
+   liste todo sinônimo E sintoma ("tá feio", "quebrado", "desalinhado"). Gatilho magro = faixa que nunca acorda.
+2. **`.specs/` separado das faixas é nível de estabilidade**, não redundância: constituição rara e
+   compartilhada ≠ faixa que evolui com o projeto.
+
+## Licença
+MIT — ver [LICENSE](LICENSE).
