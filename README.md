@@ -35,8 +35,10 @@ Cada camada **cita e é gerada da de cima**. Por isso "auto-aprimorar" é mecân
 
 ## Como chamar o ADAS em qualquer projeto
 
-**1) Via prompt (qualquer LLM)** — aponte a LLM pro seu projeto e cole o conteúdo de
-[`adas-bootstrap-prompt.md`](adas-bootstrap-prompt.md). Ele audita o repo e gera as camadas.
+**1) Via prompt (qualquer LLM) — recomendado** — aponte a LLM pro seu projeto e cole o conteúdo de
+[`adas-bootstrap-prompt.md`](adas-bootstrap-prompt.md). O próprio prompt manda **copiar o esqueleto**
+(`git clone … && cp`) pra dentro do projeto, audita o repo e **preenche** as camadas (`.specs/` →
+faixas → `ADAS.md` → hook).
 
 **2) Via esqueleto (mãos na massa)** — copie a estrutura e preencha os `<PLACEHOLDER>`:
 ```bash

@@ -54,13 +54,23 @@ MODO DE CONTEXTO:
   e suas regras? idiomas?). Derive das respostas + defaults sensatos; marque toda
   suposição.
 
+SETUP — COPIE O ESQUELETO CANÔNICO (NÃO recrie a estrutura do zero). Rode na RAIZ do
+projeto destino:
+  git clone --depth 1 https://github.com/samyrwendel/adas /tmp/adas \
+    && cp -r /tmp/adas/skeleton/. . && rm -rf /tmp/adas
+Isso traz a estrutura PRONTA (com <PLACEHOLDER>): .specs/SKILL.md + .specs/tokens.css,
+.claude/skills/_template/SKILL.md, .claude/settings.json (hook), DECISIONS.md, ADAS.md.
+Os PASSOS abaixo PREENCHEM esses arquivos — não recriam a estrutura. Confirme que os
+arquivos foram copiados antes de seguir (se o projeto já tiver .claude/, faça merge,
+não sobrescreva).
+
 PASSO 0 — CAMADA .specs/ (CONSTITUIÇÃO): identifique os 1–3 invariantes MAIS estáveis
 e compartilhados entre repos/superfícies (tipicamente: identidade visual + tokens
-crus; talvez contratos/endereços; talvez vocabulário de marca). Materialize-os como
-arquivos-fonte LITERAIS (ex.: .specs/tokens.css, .specs/SKILL.md) num lugar
-COMPARTILHADO, fora das skills de um repo só. As faixas (PASSO 2) são GERADAS daqui
-e DEVEM citar a procedência ("extraído de .specs/…"). Liste os ESPELHOS (onde cada
-valor canônico é copiado) pra a propagação ser explícita.
+crus; talvez contratos/endereços; talvez vocabulário de marca). PREENCHA os arquivos
+JÁ COPIADOS `.specs/SKILL.md` e `.specs/tokens.css` (deixe-os num lugar COMPARTILHADO,
+fora das skills de um repo só). As faixas (PASSO 2) são GERADAS daqui e DEVEM citar a
+procedência ("extraído de .specs/…"). Liste os ESPELHOS (onde cada valor canônico é
+copiado) pra a propagação ser explícita.
 
 PASSO 1 — IDENTIFIQUE AS FAIXAS (só as que se aplicam; faixa = domínio onde o drift
 causa retrabalho). Candidatas: Visual/Design · Arquitetura/Padrões de código
@@ -68,7 +78,8 @@ causa retrabalho). Candidatas: Visual/Design · Arquitetura/Padrões de código
 Nomenclatura/Termos · Caminho crítico (dinheiro/segurança — regras + testes) ·
 Idioma/Copy/i18n · <faixa específica do projeto>.
 
-PASSO 2 — Para CADA faixa, crie uma pasta .claude/skills/<nome>/SKILL.md com:
+PASSO 2 — Para CADA faixa, DUPLIQUE a pasta-modelo `.claude/skills/_template/` →
+`.claude/skills/<nome>/` e preencha o `SKILL.md` (apague `_template/` no fim):
   FRONTMATTER yaml { name, description, when_to_use }:
     - description = lista EXAUSTIVA de gatilhos E SINTOMAS (como o usuário fala
       torto). É o que dispara a faixa — gatilho magro = faixa que nunca acorda.
@@ -81,14 +92,14 @@ PASSO 2 — Para CADA faixa, crie uma pasta .claude/skills/<nome>/SKILL.md com:
     - FAÇA / NÃO FAÇA (numerado, incluindo a lista de LEGADOS PROIBIDOS)
     - INVENTÁRIO REUSE-FIRST (o que JÁ existe e DEVE ser reusado antes de criar novo)
 
-PASSO 3 — Crie o LOG DE DECISÕES DECISIONS.md (estilo ADR). Cada entrada:
+PASSO 3 — PREENCHA o LOG DE DECISÕES `DECISIONS.md` (já no esqueleto, estilo ADR). Cada entrada:
   "## DA-NNN — Título" + "Status ✅ Aceita | 🔄 Supersedida por DA-MMM · Data" +
   Contexto / Decisão / Consequências (números reais quando der) / Implementação
   (arquivos:linha). Numerar sequencial, NUNCA reusar. Mudar decisão = marcar a
   antiga como Supersedida (nunca apagar). Índice rápido no topo.
 
-PASSO 4 — Consolide num doc PORTÁTIL ADAS.md: autocontido (funciona colado em
-QUALQUER LLM, sem acesso ao repo). Cabeçalho: procedência + data + quais decisões
+PASSO 4 — PREENCHA o doc PORTÁTIL `ADAS.md` (já no esqueleto): autocontido (funciona
+colado em QUALQUER LLM, sem acesso ao repo). Cabeçalho: procedência + data + quais decisões
 reflete + "fonte da verdade = .specs/ e as faixas; se divergirem, regenere".
 Preâmbulo "Como usar": ler ANTES de produzir qualquer coisa; adesão > invenção.
 Tabela de roteamento "tarefa → faixa".
@@ -104,13 +115,14 @@ faixa de Decisões:
     (callers, schemas, docs, testes, espelhos) e atualizar no mesmo commit; flagar
     explicitamente o que ficou de fora de propósito.
 
-PASSO 6 (só Claude Code) — fie um hook PreToolUse em .claude/settings.json que, ao
-Edit|Write de arquivos que casem com os globs de uma faixa, injete a spec destilada
-daquela faixa como additionalContext (enforcement JIT no momento da edição).
+PASSO 6 (só Claude Code) — AJUSTE o hook PreToolUse (stub já em `.claude/settings.json`):
+para cada faixa, no `Edit|Write` de arquivos que casem com os globs dela, injete a spec
+destilada como additionalContext (enforcement JIT no momento da edição). Duplique o item
+do array por faixa.
 
-SAÍDA: crie os arquivos (.specs/, .claude/skills/*/SKILL.md, DECISIONS.md, ADAS.md,
-o hook) e me mostre o índice. Antes de finalizar, me peça pra confirmar os
-invariantes que você reverse-engineerou.
+SAÍDA: PREENCHA os arquivos COPIADOS (.specs/, .claude/skills/<faixa>/SKILL.md,
+DECISIONS.md, ADAS.md, o hook), remova `_template/` e me mostre o índice. Antes de
+finalizar, me peça pra confirmar os invariantes que você reverse-engineerou.
 ```
 
 ---
@@ -136,6 +148,10 @@ invariantes que você reverse-engineerou.
 Em LLM **sem** hook (ChatGPT/Gemini/etc.), o substituto é colar o **`ADAS.md` portátil** como
 system/primeiro turno — por isso ele existe separado das faixas.
 
-## Esqueleto vazio
-Há um esqueleto copiável em `~/projects/adas-template/skeleton/` (.specs/ + skills/_template/SKILL.md +
-DECISIONS.md + ADAS.md + .claude/settings.json). Copie pra um projeto novo e preencha os `<PLACEHOLDER>`.
+## Esqueleto canônico (o prompt já manda copiar — ver SETUP)
+O esqueleto vive em **github.com/samyrwendel/adas** (`skeleton/`): `.specs/` + `skills/_template/SKILL.md`
++ `DECISIONS.md` + `ADAS.md` + `.claude/settings.json`. O SETUP do prompt já faz o `git clone … && cp`
+pra dentro do projeto; os PASSOS preenchem os `<PLACEHOLDER>`. Manual:
+```bash
+git clone --depth 1 https://github.com/samyrwendel/adas /tmp/adas && cp -r /tmp/adas/skeleton/. . && rm -rf /tmp/adas
+```
