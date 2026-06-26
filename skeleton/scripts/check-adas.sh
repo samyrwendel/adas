@@ -46,6 +46,15 @@ for da in $(grep -rhoE "DA-[0-9]{3}" "$SKILLS_DIR" "$ADAS" 2>/dev/null | sort -u
   grep -q "$da" "$DECISIONS" 2>/dev/null || { note "$da citada mas ausente do $DECISIONS"; warn=1; }
 done
 
+# 6) ÂNCORA de onboarding existe e aponta pro ADAS.md → WARN
+anchor=""
+for a in AGENTS.md CLAUDE.md .cursorrules; do [ -f "$a" ] && anchor="$a" && break; done
+if [ -z "$anchor" ]; then
+  note "sem arquivo-âncora (AGENTS.md/CLAUDE.md) — a ferramenta não descobre o ADAS sozinha"; warn=1
+elif ! grep -q "ADAS.md" "$anchor" 2>/dev/null; then
+  note "âncora '$anchor' não aponta pro $ADAS — adicione 'leia ADAS.md'"; warn=1
+fi
+
 # veredito
 if [ "$block" -ne 0 ]; then echo "✗ check-adas: faixa quebrada (frontmatter) — corrija antes de seguir"; exit 1; fi
 if [ "$warn" -ne 0 ]; then echo "⚠ check-adas: avisos de higiene do ADAS (acima) — não bloqueia"; exit 0; fi

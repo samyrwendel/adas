@@ -139,8 +139,14 @@ dispara); faixa sem PROCEDÊNCIA (invariante sem origem = chute); DRIFT (faixa/.
 commitada DEPOIS do ADAS.md → regenere); DA-NNN citada mas ausente do DECISIONS.md.
 WARN por padrão, exceto frontmatter quebrado.
 
+PASSO 9 (opcional) — ONBOARDING / ÂNCORA: preencha `AGENTS.md` (já copiado) — o arquivo
+que qualquer LLM/ferramenta lê no PRIMEIRO contato e que aponta pro `ADAS.md` ("leia o
+ADAS antes de produzir qualquer coisa"). Espelhe (cp) ou symlink pro nome que cada
+ferramenta lê no boot: `CLAUDE.md` (Claude Code), `.cursorrules` (Cursor), etc. Sem
+âncora, a governança existe mas a ferramenta não a descobre sozinha.
+
 SAÍDA: PREENCHA os arquivos COPIADOS (.specs/, .claude/skills/<faixa>/SKILL.md,
-DECISIONS.md, ADAS.md, o hook, scripts/check-*), remova `_template/` e me mostre o índice. Antes de
+DECISIONS.md, ADAS.md, AGENTS.md, o hook, scripts/check-*), remova `_template/` e me mostre o índice. Antes de
 finalizar, me peça pra confirmar os invariantes que você reverse-engineerou.
 ```
 

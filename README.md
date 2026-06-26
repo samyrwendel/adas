@@ -39,6 +39,12 @@ a derivação `.specs → faixas → ADAS.md` **rotar em silêncio**. Detecta **
 commitada depois do `ADAS.md` → regenere), `<PLACEHOLDER>` não preenchido, **faixa sem frontmatter**
 (não dispara) e **sem procedência** (invariante = chute), e `DA-NNN` órfã. Roda no CI/pre-commit.
 
+### Âncora de onboarding (PASSO 9)
+`AGENTS.md` é o arquivo que **qualquer LLM/ferramenta lê no primeiro contato** e aponta pro `ADAS.md`
+("leia o ADAS antes de produzir qualquer coisa"). Espelhe/symlink pro nome que cada ferramenta lê no
+boot — `CLAUDE.md` (Claude Code), `.cursorrules` (Cursor) — todos apontando pro mesmo `ADAS.md`. Sem
+âncora, a governança existe mas a ferramenta não a descobre sozinha. (O `check-adas` valida que ela existe.)
+
 ## Conteúdo do repo
 | Arquivo | Pra quê |
 |---|---|
