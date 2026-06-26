@@ -33,6 +33,12 @@ O hook injeta a regra no **momento da edição**. Pra fechar a outra ponta, um N
 deploy/CI**: **money-path/segurança bloqueiam** (`SEVERITY=block`), **limpeza só avisa** (`SEVERITY=warn`).
 Assim a faixa pega no **commit/deploy**, não só na edição. É o PASSO 7 do prompt.
 
+### Auto-auditoria — o ADAS governa o ADAS (PASSO 8)
+`scripts/check-adas.sh` (genérico, pronto) audita o **próprio ADAS** e pega o modo de falha nº1:
+a derivação `.specs → faixas → ADAS.md` **rotar em silêncio**. Detecta **DRIFT** (faixa/`.specs`
+commitada depois do `ADAS.md` → regenere), `<PLACEHOLDER>` não preenchido, **faixa sem frontmatter**
+(não dispara) e **sem procedência** (invariante = chute), e `DA-NNN` órfã. Roda no CI/pre-commit.
+
 ## Conteúdo do repo
 | Arquivo | Pra quê |
 |---|---|

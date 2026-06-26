@@ -131,6 +131,14 @@ num check RODÁVEL em scripts/check-<nome>.sh (duplique scripts/check-_template.
   Registre o gate como DA-NNN e cite o check na faixa ("enforcement: scripts/check-<nome>.sh").
   O hook pega no momento da EDIÇÃO; o check pega no COMMIT/DEPLOY — as duas pontas.
 
+PASSO 8 (opcional) — AUTO-AUDITORIA DO ADAS (o ADAS governa o ADAS): use o
+scripts/check-adas.sh (já vem pronto e genérico) no gate. Pega o modo de falha nº1
+desses sistemas — a derivação .specs → faixas → ADAS.md rotar em SILÊNCIO. Checa:
+PLACEHOLDER não preenchido; faixa sem frontmatter name/description = BLOCK (não
+dispara); faixa sem PROCEDÊNCIA (invariante sem origem = chute); DRIFT (faixa/.specs
+commitada DEPOIS do ADAS.md → regenere); DA-NNN citada mas ausente do DECISIONS.md.
+WARN por padrão, exceto frontmatter quebrado.
+
 SAÍDA: PREENCHA os arquivos COPIADOS (.specs/, .claude/skills/<faixa>/SKILL.md,
 DECISIONS.md, ADAS.md, o hook, scripts/check-*), remova `_template/` e me mostre o índice. Antes de
 finalizar, me peça pra confirmar os invariantes que você reverse-engineerou.
