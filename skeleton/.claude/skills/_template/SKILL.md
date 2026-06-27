@@ -1,19 +1,23 @@
 ---
 name: <faixa-em-kebab-case>
-# description = O ROTEADOR. A faixa só dispara se isto casar com o que o usuário falou.
-# Liste EXAUSTIVAMENTE: todo sinônimo do domínio + SINTOMAS (como o usuário fala torto:
-# "tá feio", "quebrado", "desalinhado", "não aparece", "melhora isso"). Gatilho magro = faixa que nunca acorda.
-description: "<O que esta faixa governa> — usar SEMPRE que a tarefa tocar <lista exaustiva de
-  gatilhos, palavras-chave, sinônimos e SINTOMAS>. Também ao <consultar histórico / antes de
-  refatorar algo decidido conscientemente>."
-# when_to_use = cenários concretos + globs de arquivo onde a faixa vale.
-when_to_use: "Qualquer tarefa que <…>; vale para arquivos em <glob/da/faixa/**>."
+# FORMATO = Anthropic Skill oficial (name + description). NÃO reinvente o formato — siga anthropics/skills
+# (spec/ + template/) + skill-creator; o ADAS só soma a governança no CORPO. O triggering vai TODO no description.
+# description = O ROTEADOR, e "PUSHY" (guidance oficial p/ combater UNDERtriggering): liste EXAUSTIVAMENTE
+# todo sinônimo do domínio + SINTOMAS ("tá feio", "quebrado", "não aparece") e diga "use SEMPRE que ...,
+# MESMO que o usuário não peça com essas palavras". Gatilho magro = faixa que nunca acorda. Otimize com o
+# skill-creator (description-improver). when_to_use abaixo é OPCIONAL/extra (o oficial põe tudo no description).
+description: "<O que esta faixa governa> — use SEMPRE que a tarefa tocar <lista exaustiva de gatilhos,
+  palavras-chave, sinônimos e SINTOMAS>, MESMO que o usuário não diga explicitamente; e ao <consultar
+  histórico / antes de refatorar algo decidido conscientemente>."
+when_to_use: "<opcional, não-canônico> cenários + globs (glob/da/faixa/**)."
 ---
 
 # <Nome da Faixa>
 
 > Procedência: extraído de `.specs/<arquivo>` + DA-<NNN>. Fonte da verdade = `.specs/` + esta faixa.
-> Se este doc divergir da fonte, regenere.
+> **Formato** segue o padrão oficial Anthropic Skills ([spec](https://github.com/anthropics/skills/tree/main/spec)
+> · [template](https://github.com/anthropics/skills/tree/main/template) · `skill-creator`); o ADAS só soma a
+> semântica de governança (procedência, trava, DA-NNN). Se divergir da fonte, regenere.
 
 ## Quando se aplica
 <resumo dos gatilhos do frontmatter, em 1–2 linhas.>

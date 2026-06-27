@@ -61,6 +61,18 @@ O esqueleto traz a faixa [`seguranca-acesso`](skeleton/.claude/skills/seguranca-
 
 `check-secrets.sh` **bloqueia** (BLOCK) token/chave/`.env` no staged/deploy — o hook avisa na edição, o gate trava no commit.
 
+### Faixa = Anthropic Skill (formato oficial, não reinventado)
+Uma faixa do ADAS **é** uma [Anthropic Skill](https://github.com/anthropics/skills) (mesmo `SKILL.md` + frontmatter).
+Então o **formato** segue o padrão oficial — [`spec/`](https://github.com/anthropics/skills/tree/main/spec),
+[`template/`](https://github.com/anthropics/skills/tree/main/template) e o `skill-creator` — e o ADAS **só soma a
+semântica de governança** (procedência, trava, DA-NNN). Divisão: **`skill-creator`/`anthropics/skills` = como AUTORAR
+uma skill** (formato, packaging, eval, otimizar trigger) · **ADAS = como GOVERNAR com skills** (faixas + constituição +
+decisões + drift + gates).
+- **`description` é o roteador e deve ser "PUSHY"** — a guidance oficial pede combater o *undertriggering* ("use SEMPRE
+  que … mesmo sem pedir explícito"); é a fonte de autoridade da regra "gatilho gordo + sintomas". Todo o triggering vai
+  no `description` (o `when_to_use` é extra/não-canônico).
+- **Otimize o trigger de cada faixa com o `skill-creator`** (tem um *description-improver* dedicado — é literalmente o roteador do ADAS).
+
 ## Os 3 modos & relação com o spec-skills
 O ADAS opera em 3 modos (frame nascido no [spec-skills](https://github.com/samyrwendel/spec-skills)):
 - **install** — projeto novo **nasce na pista** via scaffolding generativo. É **específico de stack** → fica num consumidor (ex.: `spec-skills` p/ Turbo+Next+Nest+Prisma); o `adas` não traz scaffolding de stack.

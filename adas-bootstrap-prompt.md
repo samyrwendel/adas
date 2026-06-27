@@ -83,10 +83,12 @@ op de repo irreversível) + o gate `scripts/check-secrets.sh` — MANTENHA, não
 
 PASSO 2 — Para CADA faixa, DUPLIQUE a pasta-modelo `.claude/skills/_template/` →
 `.claude/skills/<nome>/` e preencha o `SKILL.md` (apague `_template/` no fim):
-  FRONTMATTER yaml { name, description, when_to_use }:
-    - description = lista EXAUSTIVA de gatilhos E SINTOMAS (como o usuário fala
-      torto). É o que dispara a faixa — gatilho magro = faixa que nunca acorda.
-    - when_to_use = cenários + globs de arquivo onde a faixa vale.
+  FRONTMATTER no PADRÃO OFICIAL Anthropic Skills (name + description; when_to_use é OPCIONAL/extra):
+    - NÃO reinvente o formato da skill — siga `anthropics/skills` (`spec/` + `template/`) + `skill-creator`;
+      o ADAS só soma a governança no corpo. (Faixa do ADAS = Anthropic Skill.)
+    - description = TODO o triggering e "PUSHY" (guidance oficial p/ combater UNDERtriggering): lista
+      exaustiva de gatilhos + SINTOMAS + "use SEMPRE que …, MESMO sem pedir explícito". É o roteador.
+    - Otimize o trigger com o `skill-creator` (description-improver). when_to_use = extra (oficial = tudo no description).
   CORPO com:
     - QUANDO SE APLICA (resumo dos gatilhos)
     - FONTE DA VERDADE (onde vivem os valores/componentes/configs canônicos —
