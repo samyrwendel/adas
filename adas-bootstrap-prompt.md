@@ -76,7 +76,10 @@ PASSO 1 — IDENTIFIQUE AS FAIXAS (só as que se aplicam; faixa = domínio onde 
 causa retrabalho). Candidatas: Visual/Design · Arquitetura/Padrões de código
 (módulos canônicos + lista "reusar-não-recriar" + anti-padrões) · Produto/Escopo ·
 Nomenclatura/Termos · Caminho crítico (dinheiro/segurança — regras + testes) ·
-Idioma/Copy/i18n · <faixa específica do projeto>.
+Idioma/Copy/i18n · **Segredos & Acesso** (token/.env/chave/repo) · <faixa específica do projeto>.
+A faixa **Segredos & Acesso** (`.claude/skills/seguranca-acesso/`) já vem PREENCHIDA no esqueleto
+(regras universais: nunca commitar segredo, token least-privilege, não caçar credencial, confirmar
+op de repo irreversível) + o gate `scripts/check-secrets.sh` — MANTENHA, não recrie; só ajuste o específico do projeto.
 
 PASSO 2 — Para CADA faixa, DUPLIQUE a pasta-modelo `.claude/skills/_template/` →
 `.claude/skills/<nome>/` e preencha o `SKILL.md` (apague `_template/` no fim):

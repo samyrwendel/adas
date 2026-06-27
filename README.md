@@ -51,6 +51,16 @@ Cada faixa traz `references/mandatory-readings.md` (os arquivos REAIS a ler ANTE
 ambiguidade; leia o código real antes de agir). Reuso-por-construção: você só reinventa o que não leu.
 Padrão importado do [spec-skills](https://github.com/samyrwendel/spec-skills).
 
+### Segredos & Acesso — faixa pré-preenchida (universal) + gate
+O esqueleto traz a faixa [`seguranca-acesso`](skeleton/.claude/skills/seguranca-acesso/SKILL.md) **já preenchida**
+(as regras são iguais em todo projeto) + o gate `scripts/check-secrets.sh`:
+- **nunca commitar segredo** — `.env`/token/chave fora do repo; só `.env.example` SEM valores;
+- **token least-privilege** — fine-grained por repo, não admin-PAT amplo (`admin:org`/`delete_repo`);
+- **não caçar credencial** fora do local apontado; nunca imprimir valor (só mascarado);
+- **op de repo irreversível** (apagar/force-push/visibilidade/merge/criar) só com confirmação explícita.
+
+`check-secrets.sh` **bloqueia** (BLOCK) token/chave/`.env` no staged/deploy — o hook avisa na edição, o gate trava no commit.
+
 ## Os 3 modos & relação com o spec-skills
 O ADAS opera em 3 modos (frame nascido no [spec-skills](https://github.com/samyrwendel/spec-skills)):
 - **install** — projeto novo **nasce na pista** via scaffolding generativo. É **específico de stack** → fica num consumidor (ex.: `spec-skills` p/ Turbo+Next+Nest+Prisma); o `adas` não traz scaffolding de stack.
