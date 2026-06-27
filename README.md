@@ -61,6 +61,21 @@ O esqueleto traz a faixa [`seguranca-acesso`](skeleton/.claude/skills/seguranca-
 
 `check-secrets.sh` **bloqueia** (BLOCK) token/chave/`.env` no staged/deploy — o hook avisa na edição, o gate trava no commit.
 
+### Escada de decisão + débito localizado + relatório honesto (PASSO 10 — do ponytail)
+Três ideias absorvidas do [ponytail](https://github.com/DietrichGebert/ponytail) (MIT; "o melhor código é o que
+você não escreve") — encaixadas no frame existente, **sem braço novo** (o próprio "adesão > invenção" do ADAS):
+- **Escada de decisão** (`ADAS.md`/`AGENTS.md`): antes de escrever código novo — precisa existir? → já existe? →
+  stdlib? → nativo? → dep instalada? → uma linha? → só então o mínimo. **Pare no 1º degrau.** Operacionaliza o
+  anti-invenção. Os **não-negociáveis** (validação/erro/segurança/**money-path testado**) ficam SEMPRE — "fazer
+  menos" não erode a rede (lição do braço `caveman` do ponytail, que regrediu correção e precisou de gate).
+- **Marcador `adas:` + coletor** (`skeleton/.claude/skills/adas-check/scripts/adas-debt.js`): atalho consciente vira
+  migalha **na linha exata** (`// adas: <teto>. <upgrade>.`); o coletor junta tudo em `arquivo:linha`. Débito
+  **localizado e REAL** (o que você deferiu) — complementa o `DECISIONS.md` (pesado) e o ratchet por contagem.
+  `--max N` ratcheia. *(Pega o padrão "consertei num card, reabriu noutro": a migalha marca a tela irmã não-varrida.)*
+- **Relatório com guarda de honestidade** (`skeleton/scripts/adas-report.sh`): conta faixas/DAs/débito/saúde e
+  **se RECUSA a inventar "% de aderência"** — não há baseline do que a LLM teria inventado, então % seria chute.
+  Espelha o `/ponytail-gain` (que nunca imprime número por-repo) e a regra "medir antes de substituir".
+
 ### Faixa = Anthropic Skill (formato oficial, não reinventado)
 Uma faixa do ADAS **é** uma [Anthropic Skill](https://github.com/anthropics/skills) (mesmo `SKILL.md` + frontmatter).
 Então o **formato** segue o padrão oficial — [`spec/`](https://github.com/anthropics/skills/tree/main/spec),

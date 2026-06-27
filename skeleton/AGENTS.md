@@ -8,9 +8,15 @@
 1. Leia **[`ADAS.md`](ADAS.md)** — o pacote portátil de governança (faixas + índice de decisões).
 2. A faixa detalhada vive em **`.claude/skills/<faixa>/SKILL.md`**. A constituição (invariantes mais
    estáveis + valores crus) em **`.specs/`**. O histórico de decisões em **[`DECISIONS.md`](DECISIONS.md)**.
-3. Tomou/mudou uma decisão? Registre `DA-NNN` no `DECISIONS.md`, dobre na faixa afetada e **regenere o
+3. **Escada de decisão (antes de escrever código novo):** precisa existir? → já existe no projeto? →
+   stdlib? → nativo da plataforma? → dependência já instalada? → uma linha? → só então o mínimo. Pare no
+   1º degrau que resolve ("o melhor código é o que você não escreve" — padrão do ponytail). Os
+   não-negociáveis (validação, erro, segurança, caminho do dinheiro testado) ficam SEMPRE.
+4. Tomou/mudou uma decisão? Registre `DA-NNN` no `DECISIONS.md`, dobre na faixa afetada e **regenere o
    `ADAS.md` — no mesmo commit**. Supersede, nunca apaga.
-4. Caminho crítico (dinheiro/segurança/irreversível): nunca executa sem confirmação explícita; rode
+5. **Atalho consciente?** Marque na linha — `// adas: <teto>. <upgrade>.` — vira débito rastreável
+   (`node .claude/skills/adas-check/scripts/adas-debt.js .`). Estado geral: `scripts/adas-report.sh`.
+6. Caminho crítico (dinheiro/segurança/irreversível): nunca executa sem confirmação explícita; rode
    `scripts/check-*.sh` antes do deploy.
 
 ## Multi-ferramenta (este é o arquivo-âncora padrão)

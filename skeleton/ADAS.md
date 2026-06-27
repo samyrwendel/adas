@@ -16,6 +16,30 @@
 3. **Consolidar > reescrever · padronizar > inventar · medir antes de substituir · nunca regredir o que funciona.**
 4. Lógica pode vir de referências; **a identidade visual/de marca NUNCA**. Nada mockado/hardcoded — fonte real.
 
+### Escada de decisão — pare no 1º degrau que resolve *(padrão do [ponytail](https://github.com/DietrichGebert/ponytail), MIT)*
+ANTES de escrever código novo, desça a escada e **pare no primeiro degrau que já resolve** — "o melhor
+código é o que você não escreve". É o operacional do "adesão > invenção":
+1. **Precisa existir?** (YAGNI — o pedido pede isso mesmo, agora?)
+2. **Já existe no projeto?** Reusa o helper/componente/padrão que está lá.
+3. **A stdlib resolve?** Usa a biblioteca-padrão.
+4. **A plataforma faz nativo?** Prefere o recurso nativo.
+5. **Uma dependência já instalada resolve?** Usa o que já tem.
+6. **Dá uma linha?** Faz em uma.
+7. **Só então:** o mínimo que funciona — menor diff, menos arquivos, deletar > adicionar.
+> **Os não-negociáveis NÃO são "preguiça":** comprehensão do problema, validação no limite de confiança,
+> erro que evita perda de dado, segurança/acessibilidade e o **caminho do dinheiro testado** ficam SEMPRE
+> (faixa `seguranca-acesso` + os `check-*.sh`). "Fazer menos" nunca erode a rede.
+
+### Atalho consciente = marcador `adas:` no lugar exato *(débito honesto)*
+Tomou um atalho de propósito? Deixe uma migalha **na linha** nomeando o teto + o caminho de upgrade:
+```
+// adas: gateado só neste card; varrer telas irmãs — ver DA-NNN
+```
+`node .claude/skills/adas-check/scripts/adas-debt.js .` junta todos num relatório `arquivo:linha`. É o
+débito **localizado e real** (o que VOCÊ deferiu) — diferente do `DECISIONS.md` (pesado/deliberado) e do
+ratchet por contagem. Quite antes de fechar a faixa. **Estado geral:** `scripts/adas-report.sh` conta
+faixas/DAs/débito/saúde e **se recusa a inventar "% de aderência"** (só mostra o medível — anti-chute).
+
 ### Mapa rápido — qual faixa para qual tarefa
 | Sua tarefa toca… | Faixa |
 |---|---|
