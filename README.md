@@ -53,15 +53,15 @@ Padrão importado do [spec-skills](https://github.com/samyrwendel/spec-skills).
 
 ## Os 3 modos & relação com o spec-skills
 O ADAS opera em 3 modos (frame nascido no [spec-skills](https://github.com/samyrwendel/spec-skills)):
-- **install** — projeto novo **nasce na pista** (skills generativas de scaffolding). É o forte do `spec-skills` (Turbo+Next+Nest+Prisma).
-- **compare** — detecta **saída de faixa** (drift) em qualquer projeto. Determinístico onde dá, LLM pro nuance.
-- **align** — **traz o projeto pra pista** (auto-fix do mecânico, flag do que é julgamento; dry-run por padrão).
+- **install** — projeto novo **nasce na pista** via scaffolding generativo. É **específico de stack** → fica num consumidor (ex.: `spec-skills` p/ Turbo+Next+Nest+Prisma); o `adas` não traz scaffolding de stack.
+- **compare** — detecta **saída de faixa** (drift). **Engine pronto neste repo** (`skeleton/.claude/skills/adas-check/`): `adas-check.js` (runner), `check-design.js`, `check-i18n.js`. Determinístico; LLM pro nuance.
+- **align** — **traz pra pista** (`align-design.js`: auto-fix de cor, dry-run, **retém o ambíguo** Δ>max p/ decisão humana).
 
 Dois sabores de checagem, **não confundir** (nomes quase iguais, direções opostas):
-- **`check-adas` (adas-self)** — audita a **governança** (o trilho apodreceu? drift/placeholder/procedência). É deste repo.
-- **`adas-check` (adas-compare/align)** — audita o **código** contra as faixas (design/i18n…). Engine Node do `spec-skills`.
+- **`check-adas.sh`** (bash, universal) — audita a **governança** (o trilho apodreceu? drift/placeholder/procedência/DA órfã).
+- **`adas-check.js` / `check-design.js` / `align-design.js`** (Node) — auditam/alinham o **código** contra as faixas (design/i18n…). Engine importado do [`spec-skills`](https://github.com/samyrwendel/spec-skills).
 
-Contrato compartilhado: `.specs/` (humano/LLM) ↔ `.adas/profile.json` (máquina, p/ os checadores) — **gerados da mesma fonte de tokens**. Divisão de responsabilidade: **`adas` = método + governança (universal)**; **`spec-skills` = skill-pack TS-fullstack que consome o `adas`** (scaffolding `install` + engine `compare/align`).
+Contrato compartilhado: `.specs/` (humano/LLM) ↔ `.adas/profile.json` (máquina, p/ os checadores) — **gerados da mesma fonte de tokens** (`check-design.js --detect-tokens` bootstrapa o profile das CSS vars). Divisão: **`adas` = método + governança + engine compare/align (universal)**; **`spec-skills` = skill-pack TS-fullstack que adiciona o `install` (scaffolding) e consome a governança do `adas`**.
 
 ## Conteúdo do repo
 | Arquivo | Pra quê |

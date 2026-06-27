@@ -134,6 +134,11 @@ num check RODÁVEL em scripts/check-<nome>.sh (duplique scripts/check-_template.
   - Gate no package.json: "deploy": "SEVERITY=block bash scripts/check-*.sh && build && <restart>".
   Registre o gate como DA-NNN e cite o check na faixa ("enforcement: scripts/check-<nome>.sh").
   O hook pega no momento da EDIÇÃO; o check pega no COMMIT/DEPLOY — as duas pontas.
+  ENGINE PRONTO p/ faixas de UI (design/i18n): o esqueleto já traz checadores Node
+  profile-driven em `.claude/skills/adas-check/scripts/` — `adas-check.js` (runner/compare),
+  `check-design.js` (cor fora do token), `check-i18n.js` (paridade de locale + hardcoded),
+  `align-design.js` (auto-fix de cor, dry-run). Defina a "pista" em `.adas/profile.json`
+  (ou `check-design.js <dir> --detect-tokens` gera das CSS vars). É o espelho de máquina da `.specs/`.
 
 PASSO 8 (opcional) — AUTO-AUDITORIA DO ADAS (o ADAS governa o ADAS): use o
 scripts/check-adas.sh (já vem pronto e genérico) no gate. Pega o modo de falha nº1
