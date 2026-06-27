@@ -91,6 +91,10 @@ PASSO 2 — Para CADA faixa, DUPLIQUE a pasta-modelo `.claude/skills/_template/`
       ("extraído de .specs/…")
     - FAÇA / NÃO FAÇA (numerado, incluindo a lista de LEGADOS PROIBIDOS)
     - INVENTÁRIO REUSE-FIRST (o que JÁ existe e DEVE ser reusado antes de criar novo)
+    - LEITURAS OBRIGATÓRIAS + TRAVA (padrão do spec-skills, cura da reinvenção):
+      preencha `references/mandatory-readings.md` (os arquivos REAIS a ler antes de
+      editar nesta faixa) + `references/few-shots/` (exemplos canônicos preenchidos) +
+      a seção "Trava obrigatória" (pare na ambiguidade; leia o código real antes de agir).
 
 PASSO 3 — PREENCHA o LOG DE DECISÕES `DECISIONS.md` (já no esqueleto, estilo ADR). Cada entrada:
   "## DA-NNN — Título" + "Status ✅ Aceita | 🔄 Supersedida por DA-MMM · Data" +

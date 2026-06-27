@@ -45,6 +45,24 @@ commitada depois do `ADAS.md` → regenere), `<PLACEHOLDER>` não preenchido, **
 boot — `CLAUDE.md` (Claude Code), `.cursorrules` (Cursor) — todos apontando pro mesmo `ADAS.md`. Sem
 âncora, a governança existe mas a ferramenta não a descobre sozinha. (O `check-adas` valida que ela existe.)
 
+### Leituras obrigatórias + few-shots + trava (cura da reinvenção — do spec-skills)
+Cada faixa traz `references/mandatory-readings.md` (os arquivos REAIS a ler ANTES de editar) +
+`references/few-shots/` (exemplos canônicos preenchidos) + uma **Trava obrigatória** (pare na
+ambiguidade; leia o código real antes de agir). Reuso-por-construção: você só reinventa o que não leu.
+Padrão importado do [spec-skills](https://github.com/samyrwendel/spec-skills).
+
+## Os 3 modos & relação com o spec-skills
+O ADAS opera em 3 modos (frame nascido no [spec-skills](https://github.com/samyrwendel/spec-skills)):
+- **install** — projeto novo **nasce na pista** (skills generativas de scaffolding). É o forte do `spec-skills` (Turbo+Next+Nest+Prisma).
+- **compare** — detecta **saída de faixa** (drift) em qualquer projeto. Determinístico onde dá, LLM pro nuance.
+- **align** — **traz o projeto pra pista** (auto-fix do mecânico, flag do que é julgamento; dry-run por padrão).
+
+Dois sabores de checagem, **não confundir** (nomes quase iguais, direções opostas):
+- **`check-adas` (adas-self)** — audita a **governança** (o trilho apodreceu? drift/placeholder/procedência). É deste repo.
+- **`adas-check` (adas-compare/align)** — audita o **código** contra as faixas (design/i18n…). Engine Node do `spec-skills`.
+
+Contrato compartilhado: `.specs/` (humano/LLM) ↔ `.adas/profile.json` (máquina, p/ os checadores) — **gerados da mesma fonte de tokens**. Divisão de responsabilidade: **`adas` = método + governança (universal)**; **`spec-skills` = skill-pack TS-fullstack que consome o `adas`** (scaffolding `install` + engine `compare/align`).
+
 ## Conteúdo do repo
 | Arquivo | Pra quê |
 |---|---|

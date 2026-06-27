@@ -26,6 +26,18 @@ when_to_use: "Qualquer tarefa que <…>; vale para arquivos em <glob/da/faixa/**
 - `<Componente/Módulo>` — <pra quê serve>. Usar isto em vez de inventar.
 - `<…>`
 
+## Leituras obrigatórias (ANTES de editar — cura da reinvenção; padrão do spec-skills)
+Antes de produzir, LER os arquivos reais listados em `references/mandatory-readings.md` (o componente
+canônico, o token/spec, o exemplo que já existe). Reuso-por-construção: você só reinventa o que não leu.
+Exemplos canônicos preenchidos ficam em `references/few-shots/` (a LLM imita o estilo da casa em vez de inventar).
+
+## Trava obrigatória (pare em vez de chutar)
+- NÃO prossiga se o alvo não estiver inequivocamente identificado; havendo ambiguidade (>1 arquivo/módulo/
+  componente que casa), **pare e pergunte** — não adivinhe.
+- Antes de qualquer edição, **localize e leia o código/spec real** do alvo. "Morto/ausente" exige verificação
+  (handler dinâmico? registrado em outro lugar?) — confirmar antes de deletar/recriar.
+- Esta faixa faz <X>; ela NÃO inventa estrutura/contrato fora do escopo nem cria valor canônico novo (isso é DA-NNN).
+
 ## Regras — FAÇA
 1. <regra positiva concreta>
 2. <…>
