@@ -14,7 +14,10 @@ warn=0; block=0
 note(){ echo "• $*"; }
 
 # 1) PLACEHOLDER não preenchido → bootstrap incompleto (WARN)
-if grep -rqlE "<PLACEHOLDER>|<faixa>|<NNN>|<PROJETO>|<nome>" "$SPECS_DIR" "$SKILLS_DIR" "$ADAS" "$DECISIONS" 2>/dev/null; then
+# Conta só docs preenchíveis (.md das faixas/ADAS/DECISIONS + .css dos tokens da .specs): --include exclui o
+# engine adas-check/*.js (que tem "check-<faixa>.js" no help, não é placeholder a preencher); --exclude-dir=_template
+# exclui o template (placeholder POR DESIGN, clonado p/ faixas novas). Coerente com a varredura 4 (md+css, -not _template).
+if grep -rqlE --include="*.md" --include="*.css" --exclude-dir=_template "<PLACEHOLDER>|<faixa>|<NNN>|<PROJETO>|<nome>" "$SPECS_DIR" "$SKILLS_DIR" "$ADAS" "$DECISIONS" 2>/dev/null; then
   note "PLACEHOLDER ainda presente — bootstrap incompleto (preencha)"; warn=1
 fi
 
