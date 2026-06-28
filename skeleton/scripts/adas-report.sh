@@ -23,7 +23,7 @@ count_or_zero(){ local n; n=$(eval "$1" 2>/dev/null); echo "${n:-0}"; }
 # --- MEDÍVEL (contável de verdade) ---
 faixas=$(count_or_zero "find '$SKILLS_DIR' -name SKILL.md -not -path '*/_template/*' 2>/dev/null | wc -l | tr -d ' '")
 das=$(count_or_zero "grep -rhoE 'DA-[0-9]{3}' '$DECISIONS' 2>/dev/null | sort -u | wc -l | tr -d ' '")
-placeholders=$(count_or_zero "grep -rlE '<PLACEHOLDER>|<faixa>|<NNN>|<PROJETO>|<nome>' '$SPECS_DIR' '$SKILLS_DIR' '$ADAS' '$DECISIONS' 2>/dev/null | wc -l | tr -d ' '")
+placeholders=$(count_or_zero "grep -rlE --include='*.md' --include='*.css' --exclude-dir=_template '<PLACEHOLDER>|<faixa>|<NNN>|<PROJETO>|<nome>' '$SPECS_DIR' '$SKILLS_DIR' '$ADAS' '$DECISIONS' 2>/dev/null | wc -l | tr -d ' '")
 
 debt="—"
 if command -v node >/dev/null 2>&1 && [ -f "$DEBT_JS" ]; then
