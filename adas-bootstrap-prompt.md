@@ -57,7 +57,10 @@ MODO DE CONTEXTO:
 SETUP — COPIE O ESQUELETO CANÔNICO (NÃO recrie a estrutura do zero). Rode na RAIZ do
 projeto destino:
   git clone --depth 1 https://github.com/samyrwendel/adas /tmp/adas \
+    && rm /tmp/adas/skeleton/README.md \
     && cp -r /tmp/adas/skeleton/. . && rm -rf /tmp/adas
+(o `rm` protege o README do SEU projeto: o README.md do skeleton é documentação do
+esqueleto, não do destino — sem ele o cp SOBRESCREVE o README existente em silêncio.)
 Isso traz a estrutura PRONTA (com <PLACEHOLDER>): .specs/SKILL.md + .specs/tokens.css,
 .claude/skills/_template/SKILL.md, .claude/settings.json (hook), DECISIONS.md, ADAS.md.
 Os PASSOS abaixo PREENCHEM esses arquivos — não recriam a estrutura. Confirme que os
@@ -118,6 +121,12 @@ faixa de Decisões:
   - TODA decisão / novo entendimento (escolha entre alternativas, trade-off aceito,
     config com efeito permanente, reversão) → uma entrada DA-NNN, E dobrar de volta
     na(s) faixa(s) afetada(s), NO MESMO COMMIT.
+  - TODO fix aprovado que representa uma CLASSE (padrão/erro genérico, possível em
+    superfícies irmãs — ex.: mesmo bug em duas telas/fluxos) → além da DA, dobrar a
+    regra na faixa SENSÍVEL que dispara no momento certo (description/hook e, se
+    crítica, um check executável). Aprendizado que fica só em chat/resumo/doc morto
+    NÃO conta como registrado — doc morto não dispara. Fix pontual sem irmãos
+    possíveis dispensa.
   - Mudou .specs/ → propaga pros espelhos → atualiza a faixa → REGENERA o ADAS.md.
   - Supersede, não delete. O log é append-only + trilha de auditoria.
   - Análise de impacto antes de "feito": ao tocar uma função, mapear o raio
@@ -136,7 +145,9 @@ num check RODÁVEL em scripts/check-<nome>.sh (duplique scripts/check-_template.
   - MONEY-PATH e SEGURANÇA bloqueiam (SEVERITY=block, build falha): ex. callback de
     pagamento sem handler, vazamento de RLS, mistura de unidade/moeda.
   - Limpeza/estilo só AVISAM (SEVERITY=warn): ex. botões/handlers órfãos, TODO.
-  - Gate no package.json: "deploy": "SEVERITY=block bash scripts/check-*.sh && build && <restart>".
+  - Gate no package.json — em LOOP, porque `bash scripts/check-*.sh` rodaria SÓ o
+    1º script (os demais viram argumentos $1 $2 dele):
+    "deploy": "for f in scripts/check-*.sh; do SEVERITY=block bash $f || exit 1; done && build && <restart>".
   Registre o gate como DA-NNN e cite o check na faixa ("enforcement: scripts/check-<nome>.sh").
   O hook pega no momento da EDIÇÃO; o check pega no COMMIT/DEPLOY — as duas pontas.
   ENGINE PRONTO p/ faixas de UI (design/i18n): o esqueleto já traz checadores Node
@@ -192,5 +203,6 @@ O esqueleto vive em **github.com/samyrwendel/adas** (`skeleton/`): `.specs/` + `
 + `DECISIONS.md` + `ADAS.md` + `.claude/settings.json`. O SETUP do prompt já faz o `git clone … && cp`
 pra dentro do projeto; os PASSOS preenchem os `<PLACEHOLDER>`. Manual:
 ```bash
-git clone --depth 1 https://github.com/samyrwendel/adas /tmp/adas && cp -r /tmp/adas/skeleton/. . && rm -rf /tmp/adas
+git clone --depth 1 https://github.com/samyrwendel/adas /tmp/adas && rm /tmp/adas/skeleton/README.md \
+  && cp -r /tmp/adas/skeleton/. . && rm -rf /tmp/adas   # o rm protege o README do projeto destino
 ```

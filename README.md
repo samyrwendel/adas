@@ -26,6 +26,9 @@ DECISIONS.md  (LOG append-only DA-NNN, com cadeia de supersede)
 ```
 Cada camada **cita e é gerada da de cima**. Por isso "auto-aprimorar" é mecânico: decisão entra como
 `DA-NNN`, dobra na faixa que afeta, regenera o portátil — **no mesmo commit**; nunca apaga, só *supersede*.
+O mesmo vale pro **aprendizado de fix**: fix aprovado que representa uma **classe** de erro (mesmo padrão
+possível em superfície irmã — ex.: errou igual no spot E no colateral) dobra na **faixa sensível** que
+dispara no momento certo (description/hook/check), **não em doc morto** — doc morto não dispara.
 
 ### Faixas executáveis + gate (opcional — padrão nascido no GroupPay)
 O hook injeta a regra no **momento da edição**. Pra fechar a outra ponta, um NÃO-FAÇA crítico vira um
@@ -115,10 +118,10 @@ faixas → `ADAS.md` → hook).
 
 **2) Via esqueleto (mãos na massa)** — copie a estrutura e preencha os `<PLACEHOLDER>`:
 ```bash
-# dentro do projeto destino:
-git clone https://github.com/samyrwendel/adas /tmp/adas && cp -r /tmp/adas/skeleton/. .
-# ou, se você mantém este repo clonado localmente:
-cp -r ~/projects/adas-template/skeleton/. /caminho/do/projeto/
+# dentro do projeto destino (o rm protege o README do SEU projeto — o do skeleton é doc do esqueleto):
+git clone https://github.com/samyrwendel/adas /tmp/adas && rm /tmp/adas/skeleton/README.md && cp -r /tmp/adas/skeleton/. .
+# ou, de um clone local (excluindo o README do skeleton na ORIGEM — depois do cp já é tarde):
+(cd ~/projects/adas-template/skeleton && tar cf - --exclude=./README.md .) | tar xf - -C /caminho/do/projeto/
 ```
 
 **3) Via raw (rápido)** — puxe só o prompt:

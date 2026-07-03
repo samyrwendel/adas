@@ -1,0 +1,4 @@
+{
+  "type": "commonjs",
+  "_comment": "O engine adas-check é CommonJS (require). Sem este arquivo, qualquer projeto consumidor com \"type\": \"module\" no package.json (todo projeto ESM moderno — Vite, Node 18+) quebra os scripts com 'require is not defined in ES module scope'. Este package.json aninhado isola o diretório como CommonJS sem renomear os scripts canônicos pra .cjs."
+}

@@ -4,9 +4,10 @@ Estrutura mínima de um **ADAS** (Anti-Drift Adherence System) pra colar num pro
 Conceito completo + o prompt de bootstrap: `../../adas-bootstrap-prompt.md`.
 
 ## Como usar
-1. Copie esta pasta pra raiz do projeto novo:
+1. Copie esta pasta pra raiz do projeto novo — **SEM este README.md** (ele documenta o esqueleto;
+   copiado junto, ele SOBRESCREVE o README do seu projeto em silêncio):
    ```bash
-   cp -r ~/projects/adas-template/skeleton/. /caminho/do/projeto/
+   (cd ~/projects/adas-template/skeleton && tar cf - --exclude=./README.md .) | tar xf - -C /caminho/do/projeto/
    ```
 2. Preencha os `<PLACEHOLDER>` em cada arquivo (de cima pra baixo na cadeia):
    - `.specs/` — a **constituição** (invariantes mais estáveis + valores crus). Comece por aqui.

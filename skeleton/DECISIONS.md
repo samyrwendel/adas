@@ -11,12 +11,17 @@
 ---
 
 ## Protocolo operacional (o loop de auto-aprimoramento)
-1. **Quando registrar:** escolha técnica/produto, fee/config permanente, trade-off consciente, reversão.
-2. **No mesmo commit:** entrada DA-NNN aqui + índice + a(s) faixa(s) `.claude/skills/*/SKILL.md` afetada(s) + regenerar `ADAS.md`.
-3. **Supersede, não delete.** Número nunca reusado; a antiga vira `🔄 Supersedida por DA-MMM`.
-4. **Análise de impacto antes de "feito":** ao tocar uma função, mapear o raio (callers, schemas, docs,
+1. **Quando registrar:** escolha técnica/produto, fee/config permanente, trade-off consciente, reversão —
+   **e todo fix aprovado que representa uma CLASSE de erro** (mesmo padrão possível em superfície irmã).
+2. **Fix de CLASSE → regra em faixa sensível:** além da entrada DA, a regra é dobrada na faixa que
+   dispara no momento certo — FAÇA/NÃO FAÇA + gatilho no `description`/hook e, se crítica, um check
+   executável (`scripts/check-*.sh`). Aprendizado só em chat/doc morto NÃO conta como registrado —
+   doc morto não dispara. Fix pontual sem irmãos possíveis dispensa.
+3. **No mesmo commit:** entrada DA-NNN aqui + índice + a(s) faixa(s) `.claude/skills/*/SKILL.md` afetada(s) + regenerar `ADAS.md`.
+4. **Supersede, não delete.** Número nunca reusado; a antiga vira `🔄 Supersedida por DA-MMM`.
+5. **Análise de impacto antes de "feito":** ao tocar uma função, mapear o raio (callers, schemas, docs,
    testes, espelhos de token/i18n) e atualizar no mesmo commit; **flagar** o que ficou de fora de propósito.
-5. **Mudou `.specs/`** → propagar pros espelhos → atualizar a faixa → regenerar `ADAS.md`.
+6. **Mudou `.specs/`** → propagar pros espelhos → atualizar a faixa → regenerar `ADAS.md`.
 
 ---
 

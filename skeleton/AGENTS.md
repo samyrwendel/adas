@@ -13,7 +13,9 @@
    1º degrau que resolve ("o melhor código é o que você não escreve" — padrão do ponytail). Os
    não-negociáveis (validação, erro, segurança, caminho do dinheiro testado) ficam SEMPRE.
 4. Tomou/mudou uma decisão? Registre `DA-NNN` no `DECISIONS.md`, dobre na faixa afetada e **regenere o
-   `ADAS.md` — no mesmo commit**. Supersede, nunca apaga.
+   `ADAS.md` — no mesmo commit**. Supersede, nunca apaga. **Fix aprovado que representa uma CLASSE de
+   erro** (mesmo padrão possível em superfície irmã) → a regra dobra na **faixa sensível** que dispara
+   no momento certo (description/hook/check), não em doc morto.
 5. **Atalho consciente?** Marque na linha — `// adas: <teto>. <upgrade>.` — vira débito rastreável
    (`node .claude/skills/adas-check/scripts/adas-debt.js .`). Estado geral: `scripts/adas-report.sh`.
 6. Caminho crítico (dinheiro/segurança/irreversível): nunca executa sem confirmação explícita; rode

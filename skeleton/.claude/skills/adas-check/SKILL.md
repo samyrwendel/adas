@@ -41,6 +41,9 @@ node .claude/skills/adas-check/scripts/adas-debt.js [dir] [--json] [--count-only
 bash scripts/adas-report.sh
 ```
 
+> **ESM:** o engine é CommonJS; o `scripts/package.json` (`"type": "commonjs"`) que acompanha esta pasta
+> é OBRIGATÓRIO em projeto consumidor com `"type": "module"` — sem ele, `require` quebra. Não remova.
+
 ## A pista (profile de tokens) — config-driven
 Resolução: (1) `--config <profile.json>`; (2) `.adas/profile.json` (subindo do dir alvo); (3) builtin `example` (fallback).
 - **Bootstrap:** `node scripts/check-design.js <dir> --detect-tokens` varre as CSS vars do projeto e emite um `profile.json` pronto.

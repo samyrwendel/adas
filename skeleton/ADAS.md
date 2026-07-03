@@ -69,9 +69,12 @@ que casa com o glob da faixa. **Não funciona em outra LLM** — por isso este d
 <superfícies, componentes/módulos canônicos a REUSAR, débito técnico a não piorar, caminho crítico + testes.>
 
 ## 5. FAIXA: Decisões — DA-NNN no `DECISIONS.md`
-**Quando aplicar:** SEMPRE que uma decisão for tomada/mudada/questionada.
+**Quando aplicar:** SEMPRE que uma decisão for tomada/mudada/questionada — **e em todo fix aprovado**.
 Loop: decisão → DA-NNN + atualiza a faixa + regenera este doc, **no mesmo commit**; **supersede, não delete**;
 análise de impacto (callers/schemas/docs/testes/espelhos) antes de "feito".
+**Meta-regra:** fix aprovado que representa uma **CLASSE** de erro (mesmo padrão possível em superfície
+irmã) → a regra dobra na **faixa sensível** que dispara no momento certo (`description`/hook/check) —
+aprendizado em chat/doc morto NÃO conta como registrado. Fix pontual sem irmãos possíveis dispensa.
 
 ### Índice de decisões (texto completo em `DECISIONS.md`)
 - **DA-001** — <título>
