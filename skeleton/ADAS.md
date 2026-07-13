@@ -10,6 +10,10 @@
 
 ---
 
+<!-- adas-core-start -->
+<!-- NÚCLEO: o que os hooks de runtime (host/ do repo adas) reinjetam em SessionStart
+     (startup|resume|clear|compact) e em todo SubagentStart. Mantenha ~30-45 linhas:
+     como usar + escada + mapa de faixas. O que ficar fora dos marcadores NÃO é reinjetado. -->
 ## Como usar (qualquer LLM)
 1. **Leia ANTES de produzir qualquer coisa** — código, UI, texto, decisão, feature.
 2. **Adesão > invenção.** Se já existe token/componente/padrão/decisão, **use o que existe**.
@@ -48,12 +52,21 @@ faixas/DAs/débito/saúde e **se recusa a inventar "% de aderência"** (só most
 | <escopo, prioridade, monetização> | **3. <Produto>** |
 | <padrões de código / arquitetura / módulos canônicos> | **4. <App/Arquitetura>** |
 | <tomar/mudar/questionar uma decisão> | **5. <Decisões>** |
+<!-- adas-core-end -->
 
 ---
 
-## 0. Reforço automático (hook ADAS — só Claude Code)
-Um hook `PreToolUse` (`.claude/settings.json`) injeta a faixa relevante a cada `Edit|Write` de arquivo
-que casa com o glob da faixa. **Não funciona em outra LLM** — por isso este documento existe.
+## 0. Reforço automático (hooks ADAS — só Claude Code)
+Duas camadas (**complementares — a JIT é a mais forte; o runtime fecha as fronteiras**):
+1. **JIT por faixa** — `PreToolUse` (`.claude/settings.json` → `.claude/hooks/adas-inject.sh`, fonte
+   única versionada) injeta a faixa relevante a cada `Edit|Write|MultiEdit` de arquivo que casa com o
+   glob da faixa.
+2. **Runtime anti-decaimento** (host, opcional — PASSO 11): `SessionStart
+   (startup|resume|clear|compact)` reinjeta o NÚCLEO acima após cada compactação/resume;
+   `SubagentStart` injeta em todo subagent (que nasce SEM o contexto do pai); um roteador user-level
+   cobre sessões abertas FORA do repo (hub multi-repo), onde este `.claude/settings.json` nem carrega.
+
+**Não funciona em outra LLM** — por isso este documento existe.
 
 ## 1. FAIXA: <Design> — DA-<NNN>
 **Quando aplicar:** <gatilhos>. **Fonte da verdade:** `.specs/tokens.css` + `<espelhos>`.

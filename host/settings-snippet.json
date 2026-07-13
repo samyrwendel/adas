@@ -1,0 +1,43 @@
+{
+  "_comment": "Merge este bloco 'hooks' no SEU ~/.claude/settings.json (user settings — vale para TODAS as sessões da máquina). Ajuste ADAS_HOOKS para onde você instalou os scripts (ex.: ~/.claude/hooks). Preserve hooks que você já tenha.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/adas-activate.sh\"",
+            "timeout": 10,
+            "statusMessage": "ADAS ativar"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/adas-subagent.sh\"",
+            "timeout": 10,
+            "statusMessage": "ADAS subagent"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/adas-route.sh\"",
+            "timeout": 10,
+            "statusMessage": "ADAS faixa"
+          }
+        ]
+      }
+    ]
+  }
+}

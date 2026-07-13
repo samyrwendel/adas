@@ -79,6 +79,19 @@ você não escreve") — encaixadas no frame existente, **sem braço novo** (o p
   **se RECUSA a inventar "% de aderência"** — não há baseline do que a LLM teria inventado, então % seria chute.
   Espelha o `/ponytail-gain` (que nunca imprime número por-repo) e a regra "medir antes de substituir".
 
+### Runtime anti-decaimento (PASSO 11 — do ponytail, só Claude Code)
+O JIT (PASSO 6) injeta a regra no instante da edição — mas a aderência ainda decai por **4 buracos**:
+sessão que nasce **fora do repo** (num hub multi-repo o `.claude/settings.json` do repo **nem carrega**
+— o ADAS fica inerte sem ninguém perceber), **compactação/resume** (o "leia o ADAS.md" do turno 1
+evapora), **subagents órfãos** (nascem sem o contexto do pai — e é onde a invenção nasce) e **injeção
+dupla** (user+project settings se mesclam). A camada [`host/`](host/) fecha os quatro: `SessionStart
+(startup|resume|clear|compact)` reinjeta o **núcleo** do `ADAS.md` (seção `<!-- adas-core-start/end -->`)
+nas fronteiras de contexto; `SubagentStart` injeta em todo subagent (envelope obrigatório);
+`adas-route.sh` (PreToolUse user-level) roteia pelo path e delega ao `adas-inject.sh` **do repo**
+(texto versionado com o código), com guard anti-dupla. Estado por repo, tudo fail-open — e o que
+**não** absorver do ponytail está documentado em [`host/README.md`](host/README.md). Instalação: 3
+passos (scripts → `repos.conf` → merge do `settings-snippet.json`).
+
 ### Faixa = Anthropic Skill (formato oficial, não reinventado)
 Uma faixa do ADAS **é** uma [Anthropic Skill](https://github.com/anthropics/skills) (mesmo `SKILL.md` + frontmatter).
 Então o **formato** segue o padrão oficial — [`spec/`](https://github.com/anthropics/skills/tree/main/spec),
@@ -107,7 +120,8 @@ Contrato compartilhado: `.specs/` (humano/LLM) ↔ `.adas/profile.json` (máquin
 | Arquivo | Pra quê |
 |---|---|
 | [`adas-bootstrap-prompt.md`](adas-bootstrap-prompt.md) | O **prompt** que cria um ADAS num projeto novo ou em andamento (engenharia reversa do código real). |
-| [`skeleton/`](skeleton/) | **Esqueleto vazio** copiável (`.specs/` + `skills/_template/` + `DECISIONS.md` + `ADAS.md` + hook). |
+| [`skeleton/`](skeleton/) | **Esqueleto vazio** copiável (`.specs/` + `skills/_template/` + `DECISIONS.md` + `ADAS.md` + hook fonte-única). |
+| [`host/`](host/) | **Runtime anti-decaimento** (PASSO 11, opcional): hooks user-level de reinjeção (SessionStart/SubagentStart) + roteador multi-repo. |
 
 ## Como chamar o ADAS em qualquer projeto
 

@@ -133,10 +133,11 @@ faixa de Decisões:
     (callers, schemas, docs, testes, espelhos) e atualizar no mesmo commit; flagar
     explicitamente o que ficou de fora de propósito.
 
-PASSO 6 (só Claude Code) — AJUSTE o hook PreToolUse (stub já em `.claude/settings.json`):
-para cada faixa, no `Edit|Write` de arquivos que casem com os globs dela, injete a spec
-destilada como additionalContext (enforcement JIT no momento da edição). Duplique o item
-do array por faixa.
+PASSO 6 (só Claude Code) — PREENCHA `.claude/hooks/adas-inject.sh` (FONTE ÚNICA, já
+registrada no `.claude/settings.json` com matcher `Edit|Write|MultiEdit`): um `case` por
+faixa — arquivo que casa com o glob → injeta a spec destilada como additionalContext
+(enforcement JIT no momento da edição). O texto fica versionado com o código; NÃO
+duplique a regra em string inline no settings (é a triplicação que gera drift).
 
 PASSO 7 (opcional, mas FORTEMENTE recomendado p/ caminho crítico) — FAIXAS EXECUTÁVEIS
 + GATE: transforme cada NÃO-FAÇA crítico (sobretudo do caminho do dinheiro/segurança)
@@ -170,6 +171,17 @@ ADAS antes de produzir qualquer coisa"). Espelhe (cp) ou symlink pro nome que ca
 ferramenta lê no boot: `CLAUDE.md` (Claude Code), `.cursorrules` (Cursor), etc. Sem
 âncora, a governança existe mas a ferramenta não a descobre sozinha.
 
+PASSO 11 (opcional, só Claude Code — RUNTIME ANTI-DECAIMENTO): o JIT do PASSO 6 injeta
+na edição, mas a aderência decai por 4 buracos (sessão que nasce FORA do repo — num hub
+multi-repo o settings do repo nem carrega; compactação/resume que evapora o "leia o
+ADAS.md"; subagents que nascem sem o contexto do pai; injeção dupla user+project).
+Instale a camada host/ do repo adas (host/README.md tem os 3 passos): reinjeção do
+NÚCLEO do ADAS.md (delimite-o com <!-- adas-core-start/end -->, ~30-45 linhas) em
+SessionStart (startup|resume|clear|compact) + SubagentStart, e roteador PreToolUse
+user-level que delega ao .claude/hooks/adas-inject.sh do repo (com guard anti-dupla).
+(O PASSO 10 — escada de decisão + marcador `adas:` — já está embutido no ADAS.md do
+esqueleto; ver README.)
+
 SAÍDA: PREENCHA os arquivos COPIADOS (.specs/, .claude/skills/<faixa>/SKILL.md,
 DECISIONS.md, ADAS.md, AGENTS.md, o hook, scripts/check-*), remova `_template/` e me mostre o índice. Antes de
 finalizar, me peça pra confirmar os invariantes que você reverse-engineerou.
@@ -179,20 +191,34 @@ finalizar, me peça pra confirmar os invariantes que você reverse-engineerou.
 
 ## O hook (Claude Code — o que faz "colar")
 
+O `settings.json` do esqueleto registra o hook; o texto das faixas vive em
+**`.claude/hooks/adas-inject.sh`** (FONTE ÚNICA, versionada com o código — um `case` por faixa; o
+mesmo script é chamado pelo roteador user-level do PASSO 11 quando a sessão nasce fora do repo):
+
 ```json
 {
   "hooks": {
     "PreToolUse": [{
-      "matcher": "Edit|Write",
+      "matcher": "Edit|Write|MultiEdit",
       "hooks": [{
         "type": "command",
-        "command": "jq -r '.tool_input.file_path // empty' | { read -r f; case \"$f\" in *\"/src/\"*) printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"ADAS <faixa>: <spec destilada em 1 parágrafo, com proibidos>. Spec: <caminho/da/faixa>\"}}' ;; esac; } 2>/dev/null || true",
+        "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/adas-inject.sh\"",
         "timeout": 10,
-        "statusMessage": "ADAS <faixa>"
+        "statusMessage": "ADAS"
       }]
     }]
   }
 }
+```
+
+```bash
+# .claude/hooks/adas-inject.sh (esqueleto já traz; um case por faixa)
+f="$(jq -r '.tool_input.file_path // empty' 2>/dev/null)"; [ -z "$f" ] && exit 0
+case "$f" in
+  *"/<glob-da-faixa>/"*) ctx="ADAS <faixa>: <spec destilada, com os PROIBIDOS>. Spec: .claude/skills/<faixa>/SKILL.md" ;;
+  *) exit 0 ;;
+esac
+printf '%s' "$ctx" | jq -Rs '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:.}}' 2>/dev/null || true
 ```
 
 Em LLM **sem** hook (ChatGPT/Gemini/etc.), o substituto é colar o **`ADAS.md` portátil** como

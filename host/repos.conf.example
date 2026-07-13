@@ -1,0 +1,5 @@
+# ~/.claude/adas/repos.conf — repos governados pelo ADAS nesta máquina.
+# Um caminho ABSOLUTO por linha ('#' comenta). Cada repo deve ter ADAS.md na raiz
+# e (idealmente) .claude/hooks/adas-inject.sh (PASSO 6 do bootstrap).
+#/home/voce/projetos/meu-app
+#/home/voce/projetos/outro-app
