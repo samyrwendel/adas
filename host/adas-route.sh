@@ -8,7 +8,10 @@
 DIR="$(dirname "$0")"
 . "$DIR/adas-lib.sh" 2>/dev/null || exit 0
 
-payload="$(timeout 1 cat 2>/dev/null || true)"
+# stdin do PreToolUse é confiável (payload fechado pelo host) — cat direto; um timeout
+# curto podia TRUNCAR payload grande e falhar aberto sem injetar (o receio de stall é
+# só do SubagentStart, que por isso nem lê stdin).
+payload="$(cat 2>/dev/null || true)"
 f="$(printf '%s' "$payload" | jq -r '.tool_input.file_path // empty' 2>/dev/null || true)"
 [ -n "$f" ] || exit 0
 

@@ -70,9 +70,13 @@ projeto destino, NESTA ORDEM (a checagem de colisão vem ANTES da cópia — de 
   # 2) CÓPIA NO-CLOBBER (cp -Rn NUNCA sobrescreve — GNU e BSD; o rm protege o README
   #    do SEU projeto: o do skeleton é doc do esqueleto). mktemp evita resíduo de
   #    execução anterior; a limpeza fica FORA da cadeia && (roda mesmo em falha parcial).
+  #    Grava .adas/skeleton-version (commit do esqueleto) — é como o check-adas sabe se
+  #    este install ficou atrasado em relação ao canônico.
   #    (coreutils 9.2: cp -n pode sair !=0 ao PULAR arquivo — ignore; o juiz é o passo 3):
   d=$(mktemp -d) && git clone --depth 1 https://github.com/samyrwendel/adas "$d" \
-    && rm "$d/skeleton/README.md" && cp -Rn "$d/skeleton/." . ; rm -rf "$d"
+    && rm "$d/skeleton/README.md" && { cp -Rn "$d/skeleton/." . || true; } \
+    && mkdir -p .adas && git -C "$d" rev-parse HEAD | cut -c1-7 > .adas/skeleton-version ; rm -rf "$d"
+  #  (o `|| true` no cp: o exit!=0 do skip NÃO pode engolir a gravação da versão; o mkdir cobre cópia parcial)
 
   # 3) CONFIRME a cópia (enumeração completa e mecânica — diz QUAL arquivo falta).
   #    Se falhar o clone ou faltar arquivo: PARE e reporte — NUNCA recrie o esqueleto de memória:
@@ -80,7 +84,7 @@ projeto destino, NESTA ORDEM (a checagem de colisão vem ANTES da cópia — de 
     .claude/hooks/adas-inject.sh .claude/skills/_template/SKILL.md \
     .claude/skills/seguranca-acesso/SKILL.md .claude/skills/adas-check/SKILL.md \
     scripts/check-adas.sh scripts/check-secrets.sh scripts/adas-report.sh \
-    DECISIONS.md ADAS.md AGENTS.md .adas/profile.json; do
+    DECISIONS.md ADAS.md AGENTS.md .adas/profile.json .adas/skeleton-version; do
     [ -f "$f" ] || { echo "FALTA: $f"; ok=0; }
   done; [ "$ok" = 1 ] && echo "esqueleto OK" || echo "FALTA ARQUIVO — pare e reporte"
 
@@ -209,9 +213,10 @@ na edição, mas a aderência decai por 4 buracos (sessão que nasce FORA do rep
 multi-repo o settings do repo nem carrega; compactação/resume que evapora o "leia o
 ADAS.md"; subagents que nascem sem o contexto do pai; injeção dupla user+project).
 Instale a camada host/ do repo adas — ATENÇÃO: host/ NÃO vem no esqueleto e o clone do
-SETUP já foi apagado; re-clone pra ler as instruções:
+SETUP já foi apagado; re-clone e rode o INSTALADOR (idempotente: hooks + repos.conf +
+merge no ~/.claude/settings.json preservando o que existe):
   d=$(mktemp -d) && git clone --depth 1 https://github.com/samyrwendel/adas "$d" \
-    && cat "$d/host/README.md"   # instale (3 passos) e depois: rm -rf "$d"
+    && bash "$d/host/install.sh" /caminho/deste/projeto ; rm -rf "$d"
 A camada faz: reinjeção do NÚCLEO do ADAS.md (delimite-o com <!-- adas-core-start/end -->,
 ~30-45 linhas) em SessionStart (startup|resume|clear|compact) + SubagentStart, e roteador
 PreToolUse user-level que delega ao .claude/hooks/adas-inject.sh do repo (guard anti-dupla).
@@ -270,7 +275,8 @@ passo 3 do SETUP. O SETUP do prompt já faz o `git clone … && cp` pra dentro d
 preenchem os `<PLACEHOLDER>`. Manual:
 ```bash
 # cp -Rn NUNCA sobrescreve (colisão = merge manual); o rm protege o README do projeto destino;
-# mktemp evita resíduo (limpeza fora da cadeia &&):
+# mktemp evita resíduo (limpeza fora da cadeia &&); grava .adas/skeleton-version (check 8):
 d=$(mktemp -d) && git clone --depth 1 https://github.com/samyrwendel/adas "$d" \
-  && rm "$d/skeleton/README.md" && cp -Rn "$d/skeleton/." . ; rm -rf "$d"
+  && rm "$d/skeleton/README.md" && { cp -Rn "$d/skeleton/." . || true; } \
+  && mkdir -p .adas && git -C "$d" rev-parse HEAD | cut -c1-7 > .adas/skeleton-version ; rm -rf "$d"
 ```

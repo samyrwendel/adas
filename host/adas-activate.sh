@@ -14,7 +14,7 @@ repo="$(adas_resolve "$cwd")"
 if [ -n "$repo" ]; then
   bash "$DIR/adas-core.sh" "$repo" 2>/dev/null || true
   mkdir -p "$HOME/.claude/adas" 2>/dev/null || true
-  printf '{"mode":"full","session_id":"%s","ts":"%s"}\n' "$sid" "$(date -Is 2>/dev/null)" \
+  printf '{"mode":"full","session_id":"%s","ts":"%s","repo":"%s"}\n' "$sid" "$(date -Is 2>/dev/null)" "$repo" \
     > "$HOME/.claude/adas/$(basename "$repo").active" 2>/dev/null || true
 elif adas_is_hub "$cwd"; then
   adas_hub_header

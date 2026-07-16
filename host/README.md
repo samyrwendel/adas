@@ -21,6 +21,16 @@ não injeta (a direção segura para injeção de contexto; gates de dinheiro s�
 ## Instalação
 
 ```bash
+# TUDO EM UM (idempotente — rodar de novo atualiza; preserva hooks alheios no settings):
+bash host/install.sh /caminho/repo1 /caminho/repo2   # repos governados como argumentos
+# Sem argumentos: só instala/atualiza hooks e mantém o repos.conf existente.
+```
+
+O instalador faz os 3 passos (scripts → `repos.conf` → merge jq do `settings-snippet.json` no
+`~/.claude/settings.json`, com backup `.bak-adas`) e ABORTA em erro (instalação é fail-closed;
+os hooks instalados continuam fail-open em runtime). Manual, se preferir:
+
+```bash
 # 1. Scripts no user-level
 mkdir -p ~/.claude/hooks ~/.claude/adas
 cp host/adas-lib.sh host/adas-core.sh host/adas-activate.sh host/adas-subagent.sh host/adas-route.sh ~/.claude/hooks/
@@ -45,6 +55,15 @@ CLAUDE_PROJECT_DIR=/caminho/do/hub bash ~/.claude/hooks/adas-subagent.sh | jq . 
 echo '{"tool_input":{"file_path":"/caminho/do/repo/arquivo-de-faixa"}}' | bash ~/.claude/hooks/adas-route.sh | jq .  # faixa
 CLAUDE_PROJECT_DIR=/caminho/do/repo bash -c 'echo "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/x\"}}" | bash ~/.claude/hooks/adas-route.sh'  # guard: vazio
 ```
+
+## O que o runtime NÃO cobre (limitações conhecidas)
+- **Escrita via shell**: o matcher `Edit|Write|MultiEdit` NÃO pega `sed -i`, `tee`, redirects
+  (`>`/`>>`) nem `NotebookEdit` — uma edição por Bash passa sem a faixa injetada. Cobrir isso com
+  parsing de comando seria frágil; a outra ponta (gates `check-*.sh` no commit/deploy, PASSO 7) é
+  quem pega o que escapou aqui.
+- **Subagent em hub**: o `adas-subagent.sh` resolve o repo pelo `CLAUDE_PROJECT_DIR`/cwd — subagent
+  nascido no HUB recebe o header multi-repo genérico, não o núcleo do repo que ele vai tocar
+  (o roteador PreToolUse compensa no instante da edição).
 
 ## O que NÃO absorver do ponytail (decidido por verificação adversarial)
 - **Reinjeção do ruleset completo por turno** (~1,3k tokens/turno acelera a própria compactação que se

@@ -1,0 +1,25 @@
+# CI do ADAS — o ADAS governa o ADAS (PASSO 8 aplicado ao próprio repo canônico).
+# Gate real: sintaxe + shellcheck (só erros) + engines Node + o smoke (spec executável).
+name: ci
+permissions:
+  contents: read
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: shellcheck (nível error bloqueia; warnings são visíveis no log)
+        run: |
+          shellcheck -S error host/*.sh skeleton/scripts/*.sh skeleton/.claude/hooks/*.sh tests/*.sh
+          shellcheck host/*.sh skeleton/scripts/*.sh skeleton/.claude/hooks/*.sh tests/*.sh || true
+      - name: node --check nos engines do adas-check
+        run: |
+          for f in skeleton/.claude/skills/adas-check/scripts/*.js; do node --check "$f"; done
+      - name: smoke — spec executável (comportamento, não só sintaxe)
+        run: bash tests/smoke.sh

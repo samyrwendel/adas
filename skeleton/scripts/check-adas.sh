@@ -23,8 +23,10 @@ if grep -rqlE --include="*.md" --include="*.css" --exclude-dir=_template "<PLACE
 fi
 
 # 2) toda faixa tem frontmatter name+description (senão NÃO dispara) → BLOCK
+# (extrai o bloco entre os dois primeiros '---' — head fixo dava falso BLOCK em description longa)
 while IFS= read -r f; do
-  { head -10 "$f" | grep -q "^name:" && head -14 "$f" | grep -q "^description:"; } \
+  fm="$(awk '/^---[[:space:]]*$/{c++; next} c==1{print} c>=2{exit}' "$f" 2>/dev/null)"
+  { printf '%s\n' "$fm" | grep -q "^name:" && printf '%s\n' "$fm" | grep -q "^description:"; } \
     || { note "FAIXA SEM frontmatter name/description: $f (não vai disparar)"; block=1; }
 done < <(find "$SKILLS_DIR" -name SKILL.md -not -path "*/_template/*" 2>/dev/null)
 
@@ -43,6 +45,11 @@ if [ -d .git ] && command -v git >/dev/null 2>&1; then
       note "DRIFT: '$f' mudou depois do $ADAS — REGENERE o $ADAS"; warn=1; break
     fi
   done < <(find "$SKILLS_DIR" "$SPECS_DIR" \( -name "*.md" -o -name "*.css" \) -not -path "*/_template/*" 2>/dev/null)
+  # 4b) working tree SUJO nas faixas/.specs — a janela onde o drift mais importa (antes do
+  # commit) é invisível pro check por timestamp acima; acusa explicitamente (WARN)
+  if git status --porcelain -- "$SKILLS_DIR" "$SPECS_DIR" 2>/dev/null | grep -q .; then
+    note "faixa/.specs com mudança NÃO COMMITADA — commite junto com o $ADAS regenerado (mesmo commit)"; warn=1
+  fi
 fi
 
 # 5) DA-NNN citada nas faixas/ADAS mas ausente do DECISIONS.md → WARN
@@ -57,6 +64,34 @@ if [ -z "$anchor" ]; then
   note "sem arquivo-âncora (AGENTS.md/CLAUDE.md) — a ferramenta não descobre o ADAS sozinha"; warn=1
 elif ! grep -q "ADAS.md" "$anchor" 2>/dev/null; then
   note "âncora '$anchor' não aponta pro $ADAS — adicione 'leia ADAS.md'"; warn=1
+fi
+
+# 7) NÚCLEO do runtime (PASSO 11): marcadores adas-core no ADAS.md → WARN
+# Sem marcadores o adas-core.sh cai num fallback silencioso (topo do arquivo); núcleo gordo
+# encarece cada reinjeção (SessionStart/SubagentStart).
+if [ -f "$ADAS" ]; then
+  if ! grep -q "adas-core-start" "$ADAS" 2>/dev/null; then
+    note "sem marcadores <!-- adas-core-start/end --> no $ADAS — runtime host/ cai no fallback (topo do arquivo)"; warn=1
+  elif ! grep -q "adas-core-end" "$ADAS" 2>/dev/null; then
+    note "marcador adas-core-start SEM adas-core-end no $ADAS — núcleo vira o arquivo inteiro"; warn=1
+  else
+    core_n=$(sed -n '/<!-- adas-core-start -->/,/<!-- adas-core-end -->/p' "$ADAS" 2>/dev/null | wc -l | tr -d ' ')
+    core_n=$((core_n>2 ? core_n-2 : 0))   # sem contar as 2 linhas de marcador
+    [ "${core_n:-0}" -gt 60 ] && { note "núcleo adas-core com ${core_n} linhas (>60) — enxugue: é reinjetado a cada fronteira de contexto"; warn=1; }
+  fi
+fi
+
+# 8) VERSÃO do esqueleto instalado → WARN (a cadeia canônico→installs também apodrece)
+# O SETUP do bootstrap grava .adas/skeleton-version (commit curto do clone). Sem ele, não dá
+# pra saber se este install está atrasado. Com ADAS_CHECK_REMOTE=1 compara com o GitHub.
+if [ ! -f .adas/skeleton-version ]; then
+  note "sem .adas/skeleton-version — backfill seguro (NÃO re-copie o esqueleto): sincronize os scripts com o canônico e rode: mkdir -p .adas && git ls-remote https://github.com/samyrwendel/adas HEAD | cut -c1-7 > .adas/skeleton-version"; warn=1
+elif [ "${ADAS_CHECK_REMOTE:-0}" = "1" ] && command -v git >/dev/null 2>&1; then
+  local_v="$(cut -c1-7 .adas/skeleton-version 2>/dev/null | head -1 | tr -d '[:space:]')"
+  remote_v="$(timeout 5 git ls-remote https://github.com/samyrwendel/adas HEAD 2>/dev/null | cut -c1-7)"
+  if [ -n "$remote_v" ] && [ -n "$local_v" ] && [ "$local_v" != "$remote_v" ]; then
+    note "esqueleto instalado ($local_v) ≠ canônico remoto ($remote_v) — veja o que mudou no repo adas"; warn=1
+  fi
 fi
 
 # veredito

@@ -89,8 +89,9 @@ dupla** (user+project settings se mesclam). A camada [`host/`](host/) fecha os q
 nas fronteiras de contexto; `SubagentStart` injeta em todo subagent (envelope obrigatório);
 `adas-route.sh` (PreToolUse user-level) roteia pelo path e delega ao `adas-inject.sh` **do repo**
 (texto versionado com o código), com guard anti-dupla. Estado por repo, tudo fail-open — e o que
-**não** absorver do ponytail está documentado em [`host/README.md`](host/README.md). Instalação: 3
-passos (scripts → `repos.conf` → merge do `settings-snippet.json`).
+**não** absorver do ponytail está documentado em [`host/README.md`](host/README.md). Instalação:
+`bash host/install.sh /caminho/repo1 …` (idempotente; faz scripts → `repos.conf` → merge do
+`settings-snippet.json` preservando o que existe).
 
 ### Faixa = Anthropic Skill (formato oficial, não reinventado)
 Uma faixa do ADAS **é** uma [Anthropic Skill](https://github.com/anthropics/skills) (mesmo `SKILL.md` + frontmatter).

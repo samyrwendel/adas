@@ -36,6 +36,17 @@ if [ -f scripts/check-adas.sh ]; then
   if out=$(bash scripts/check-adas.sh 2>/dev/null); then health="$(echo "$out" | tail -1)"; else health="$(echo "$out" | tail -1)"; fi
 fi
 
+# runtime host (PASSO 11) — consome o flag que o adas-activate.sh grava por repo
+runtime="sem registro nesta máquina (host/ não instalado ou sessão nunca nasceu aqui)"
+active_f="${HOME:-}/.claude/adas/$(basename "$PWD").active"
+if [ -n "${HOME:-}" ] && [ -f "$active_f" ]; then
+  flag_repo=$(jq -r '.repo // empty' "$active_f" 2>/dev/null)
+  if [ -z "$flag_repo" ] || [ "$flag_repo" = "$PWD" ]; then   # flags antigos não têm .repo
+    ts=$(jq -r '.ts // empty' "$active_f" 2>/dev/null)
+    runtime="ATIVO — última reinjeção de sessão: ${ts:-registrada}"
+  fi
+fi
+
 echo "┌─ ADAS · relatório ────────────────────────────────"
 echo "│ MEDÍVEL (contado, não estimado):"
 printf "│   faixas ativas .......... %s\n" "$faixas"
@@ -43,6 +54,7 @@ printf "│   decisões (DA-NNN) ...... %s\n" "$das"
 printf "│   débito marcado (adas:) . %s\n" "$debt"
 printf "│   placeholders pendentes . %s%s\n" "$placeholders" "$([ "$placeholders" != 0 ] && echo '  ⚠ bootstrap incompleto')"
 echo "│   saúde (check-adas) ..... $health"
+echo "│   runtime host (P11) ..... $runtime"
 echo "│"
 echo "│ NÃO MEDÍVEL aqui (e o ADAS NÃO inventa número):"
 echo "│   • \"% de aderência\" / \"% de drift evitado\" — não há baseline do que a LLM"
