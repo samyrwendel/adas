@@ -132,10 +132,13 @@ faixas → `ADAS.md` → hook).
 
 **2) Via esqueleto (mãos na massa)** — copie a estrutura e preencha os `<PLACEHOLDER>`:
 ```bash
-# dentro do projeto destino (o rm protege o README do SEU projeto — o do skeleton é doc do esqueleto):
-git clone https://github.com/samyrwendel/adas /tmp/adas && rm /tmp/adas/skeleton/README.md && cp -r /tmp/adas/skeleton/. .
-# ou, de um clone local (excluindo o README do skeleton na ORIGEM — depois do cp já é tarde):
-(cd ~/projects/adas-template/skeleton && tar cf - --exclude=./README.md .) | tar xf - -C /caminho/do/projeto/
+# dentro do projeto destino — cp -Rn NUNCA sobrescreve arquivo existente (colisão = merge
+# manual); o rm protege o README do SEU projeto (o do skeleton é doc do esqueleto);
+# mktemp evita resíduo de execução anterior (a limpeza fica fora da cadeia &&):
+d=$(mktemp -d) && git clone --depth 1 https://github.com/samyrwendel/adas "$d" && rm "$d/skeleton/README.md" && cp -Rn "$d/skeleton/." . ; rm -rf "$d"
+# ou, de um clone local (tar xkf = keep-old-files, NÃO sobrescreve; exclui o README na ORIGEM;
+# na colisão o tar erra e sai !=0 — é o sinal de merge manual, o resto já foi extraído):
+(cd /caminho/do/clone/adas/skeleton && tar cf - --exclude=./README.md .) | tar xkf - -C /caminho/do/projeto/
 ```
 
 **3) Via raw (rápido)** — puxe só o prompt:

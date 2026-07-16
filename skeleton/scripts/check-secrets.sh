@@ -15,6 +15,15 @@ while [ $# -gt 0 ]; do
   esac; shift
 done
 
+# Deploy/pós-commit: nada staged → o modo staged seria um no-op VERDE (falsa garantia
+# na última barreira). Cai pra varredura completa em vez de aprovar sem examinar nada.
+# (Efeito aceito BY DESIGN: amend-só-mensagem/commit vazio com segredo histórico na
+#  árvore passam a bloquear — "se já vazou, ROTACIONE"; use --dir pra escopo menor.)
+if [ "$mode" = "staged" ] && [ -z "$(git diff --cached --name-only 2>/dev/null)" ]; then
+  echo "• staged vazio — nada a examinar aí; caindo para varredura completa (--all)"
+  mode="all"
+fi
+
 # alta confiança → BLOCK (token GitHub, chave privada, AWS, Slack, Google API)
 HI='ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,}|gh[osu]_[A-Za-z0-9]{36}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|xox[baprs]-[0-9A-Za-z-]{10,}|AIza[0-9A-Za-z_-]{35}'
 # heurística key=value → WARN (pode ser falso-positivo)

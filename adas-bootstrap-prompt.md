@@ -55,17 +55,36 @@ MODO DE CONTEXTO:
   suposição.
 
 SETUP — COPIE O ESQUELETO CANÔNICO (NÃO recrie a estrutura do zero). Rode na RAIZ do
-projeto destino:
-  git clone --depth 1 https://github.com/samyrwendel/adas /tmp/adas \
-    && rm /tmp/adas/skeleton/README.md \
-    && cp -r /tmp/adas/skeleton/. . && rm -rf /tmp/adas
-(o `rm` protege o README do SEU projeto: o README.md do skeleton é documentação do
-esqueleto, não do destino — sem ele o cp SOBRESCREVE o README existente em silêncio.)
-Isso traz a estrutura PRONTA (com <PLACEHOLDER>): .specs/SKILL.md + .specs/tokens.css,
-.claude/skills/_template/SKILL.md, .claude/settings.json (hook), DECISIONS.md, ADAS.md.
-Os PASSOS abaixo PREENCHEM esses arquivos — não recriam a estrutura. Confirme que os
-arquivos foram copiados antes de seguir (se o projeto já tiver .claude/, faça merge,
-não sobrescreva).
+projeto destino, NESTA ORDEM (a checagem de colisão vem ANTES da cópia — de propósito):
+
+  # 1) COLISÕES: liste os arquivos vivos que o esqueleto traria por cima. Se listar
+  #    QUALQUER um, PARE e resolva por merge manual ANTES de copiar — projeto JÁ
+  #    governado (ADAS.md/DECISIONS.md preenchidos) NUNCA re-copia o esqueleto
+  #    (re-execução destruiria o log de decisões). README.md fica FORA da lista:
+  #    o esqueleto nunca o traz (o rm do passo 2 o remove na ORIGEM + cp -Rn não sobrescreve).
+  for t in AGENTS.md DECISIONS.md ADAS.md .claude/settings.json \
+           .claude/hooks/adas-inject.sh .adas/profile.json; do
+    [ -e "$t" ] && echo "COLISÃO: $t — merge manual antes de prosseguir"
+  done
+
+  # 2) CÓPIA NO-CLOBBER (cp -Rn NUNCA sobrescreve — GNU e BSD; o rm protege o README
+  #    do SEU projeto: o do skeleton é doc do esqueleto). mktemp evita resíduo de
+  #    execução anterior; a limpeza fica FORA da cadeia && (roda mesmo em falha parcial).
+  #    (coreutils 9.2: cp -n pode sair !=0 ao PULAR arquivo — ignore; o juiz é o passo 3):
+  d=$(mktemp -d) && git clone --depth 1 https://github.com/samyrwendel/adas "$d" \
+    && rm "$d/skeleton/README.md" && cp -Rn "$d/skeleton/." . ; rm -rf "$d"
+
+  # 3) CONFIRME a cópia (enumeração completa e mecânica — diz QUAL arquivo falta).
+  #    Se falhar o clone ou faltar arquivo: PARE e reporte — NUNCA recrie o esqueleto de memória:
+  ok=1; for f in .specs/SKILL.md .specs/tokens.css .claude/settings.json \
+    .claude/hooks/adas-inject.sh .claude/skills/_template/SKILL.md \
+    .claude/skills/seguranca-acesso/SKILL.md .claude/skills/adas-check/SKILL.md \
+    scripts/check-adas.sh scripts/check-secrets.sh scripts/adas-report.sh \
+    DECISIONS.md ADAS.md AGENTS.md .adas/profile.json; do
+    [ -f "$f" ] || { echo "FALTA: $f"; ok=0; }
+  done; [ "$ok" = 1 ] && echo "esqueleto OK" || echo "FALTA ARQUIVO — pare e reporte"
+
+Os PASSOS abaixo PREENCHEM esses arquivos — não recriam a estrutura.
 
 PASSO 0 — CAMADA .specs/ (CONSTITUIÇÃO): identifique os 1–3 invariantes MAIS estáveis
 e compartilhados entre repos/superfícies (tipicamente: identidade visual + tokens
@@ -79,7 +98,8 @@ PASSO 1 — IDENTIFIQUE AS FAIXAS (só as que se aplicam; faixa = domínio onde 
 causa retrabalho). Candidatas: Visual/Design · Arquitetura/Padrões de código
 (módulos canônicos + lista "reusar-não-recriar" + anti-padrões) · Produto/Escopo ·
 Nomenclatura/Termos · Caminho crítico (dinheiro/segurança — regras + testes) ·
-Idioma/Copy/i18n · **Segredos & Acesso** (token/.env/chave/repo) · <faixa específica do projeto>.
+Idioma/Copy/i18n · **Segredos & Acesso** (token/.env/chave/repo) · Decisões/Governança
+(o protocolo já vem pronto no DECISIONS.md — ver PASSO 5) · <faixa específica do projeto>.
 A faixa **Segredos & Acesso** (`.claude/skills/seguranca-acesso/`) já vem PREENCHIDA no esqueleto
 (regras universais: nunca commitar segredo, token least-privilege, não caçar credencial, confirmar
 op de repo irreversível) + o gate `scripts/check-secrets.sh` — MANTENHA, não recrie; só ajuste o específico do projeto.
@@ -116,22 +136,20 @@ reflete + "fonte da verdade = .specs/ e as faixas; se divergirem, regenere".
 Preâmbulo "Como usar": ler ANTES de produzir qualquer coisa; adesão > invenção.
 Tabela de roteamento "tarefa → faixa".
 
-PASSO 5 — Escreva o PROTOCOLO OPERACIONAL (loop de auto-aprimoramento) dentro da
-faixa de Decisões:
-  - TODA decisão / novo entendimento (escolha entre alternativas, trade-off aceito,
-    config com efeito permanente, reversão) → uma entrada DA-NNN, E dobrar de volta
-    na(s) faixa(s) afetada(s), NO MESMO COMMIT.
-  - TODO fix aprovado que representa uma CLASSE (padrão/erro genérico, possível em
-    superfícies irmãs — ex.: mesmo bug em duas telas/fluxos) → além da DA, dobrar a
-    regra na faixa SENSÍVEL que dispara no momento certo (description/hook e, se
-    crítica, um check executável). Aprendizado que fica só em chat/resumo/doc morto
-    NÃO conta como registrado — doc morto não dispara. Fix pontual sem irmãos
-    possíveis dispensa.
-  - Mudou .specs/ → propaga pros espelhos → atualiza a faixa → REGENERA o ADAS.md.
-  - Supersede, não delete. O log é append-only + trilha de auditoria.
-  - Análise de impacto antes de "feito": ao tocar uma função, mapear o raio
-    (callers, schemas, docs, testes, espelhos) e atualizar no mesmo commit; flagar
-    explicitamente o que ficou de fora de propósito.
+PASSO 5 — PROTOCOLO OPERACIONAL (loop de auto-aprimoramento): o texto-base JÁ VEM
+preenchido no DECISIONS.md copiado (seção "Protocolo operacional") e destilado na
+faixa 5 do ADAS.md — NÃO reescreva; só ajuste exemplos ao projeto. Pra ele DISPARAR
+sozinho (recomendado), crie a faixa `.claude/skills/decisoes/` duplicando `_template/`
+(é a candidata Decisões/Governança do PASSO 1): description = "toda decisão
+tomada/mudada/questionada + todo fix aprovado", corpo CITANDO o DECISIONS.md — não
+duplique o texto. O que o protocolo cobre (referência, já está lá):
+  - TODA decisão → entrada DA-NNN + dobrar na(s) faixa(s) afetada(s), NO MESMO COMMIT.
+  - Fix aprovado de CLASSE (padrão possível em superfície irmã) → regra na faixa
+    SENSÍVEL que dispara no momento certo (description/hook/check); doc morto não conta.
+  - Mudou .specs/ → propaga espelhos → atualiza faixa → REGENERA o ADAS.md.
+  - Supersede, não delete (log append-only = trilha de auditoria).
+  - Análise de impacto antes de "feito" (callers/schemas/docs/testes/espelhos no mesmo
+    commit; flagar o que ficou de fora de propósito).
 
 PASSO 6 (só Claude Code) — PREENCHA `.claude/hooks/adas-inject.sh` (FONTE ÚNICA, já
 registrada no `.claude/settings.json` com matcher `Edit|Write|MultiEdit`): um `case` por
@@ -147,8 +165,16 @@ num check RODÁVEL em scripts/check-<nome>.sh (duplique scripts/check-_template.
     pagamento sem handler, vazamento de RLS, mistura de unidade/moeda.
   - Limpeza/estilo só AVISAM (SEVERITY=warn): ex. botões/handlers órfãos, TODO.
   - Gate no package.json — em LOOP, porque `bash scripts/check-*.sh` rodaria SÓ o
-    1º script (os demais viram argumentos $1 $2 dele):
-    "deploy": "for f in scripts/check-*.sh; do SEVERITY=block bash $f || exit 1; done && build && <restart>".
+    1º script (os demais viram argumentos $1 $2 dele) — e SEM forçar SEVERITY no loop
+    (cada check FIXA a sua internamente: block é o default do template p/ dinheiro/
+    segurança; nos de limpeza/estilo hardcode SEVERITY=warn no próprio script — forçar
+    block em tudo anularia o tier warn definido acima):
+    "deploy": "for f in scripts/check-*.sh; do bash $f || exit 1; done && build && <restart>".
+  - SEGREDOS no gate: o check-secrets.sh é staged por default (pré-commit); no deploy
+    não há nada staged — o script cai sozinho pra varredura completa nesse caso, mas
+    rodando manual prefira `bash scripts/check-secrets.sh --all`.
+  - Duplicou o template? REMOVA scripts/check-_template.sh no fim (como o `_template/`
+    das skills) — ele casa com o glob `check-*.sh` e entraria no gate.
   Registre o gate como DA-NNN e cite o check na faixa ("enforcement: scripts/check-<nome>.sh").
   O hook pega no momento da EDIÇÃO; o check pega no COMMIT/DEPLOY — as duas pontas.
   ENGINE PRONTO p/ faixas de UI (design/i18n): o esqueleto já traz checadores Node
@@ -171,20 +197,32 @@ ADAS antes de produzir qualquer coisa"). Espelhe (cp) ou symlink pro nome que ca
 ferramenta lê no boot: `CLAUDE.md` (Claude Code), `.cursorrules` (Cursor), etc. Sem
 âncora, a governança existe mas a ferramenta não a descobre sozinha.
 
+PASSO 10 — NADA A PREENCHER: a escada de decisão, o marcador `adas:` (débito localizado)
+e o relatório honesto JÁ vêm embutidos no ADAS.md/AGENTS.md copiados. Ferramentas que
+os acompanham (já copiadas): `.claude/skills/adas-check/scripts/adas-debt.js` coleta os
+atalhos marcados `adas:` em arquivo:linha; `scripts/adas-report.sh` mostra o estado sem
+inventar "% de aderência". Detalhe do padrão: github.com/samyrwendel/adas → README,
+seção PASSO 10.
+
 PASSO 11 (opcional, só Claude Code — RUNTIME ANTI-DECAIMENTO): o JIT do PASSO 6 injeta
 na edição, mas a aderência decai por 4 buracos (sessão que nasce FORA do repo — num hub
 multi-repo o settings do repo nem carrega; compactação/resume que evapora o "leia o
 ADAS.md"; subagents que nascem sem o contexto do pai; injeção dupla user+project).
-Instale a camada host/ do repo adas (host/README.md tem os 3 passos): reinjeção do
-NÚCLEO do ADAS.md (delimite-o com <!-- adas-core-start/end -->, ~30-45 linhas) em
-SessionStart (startup|resume|clear|compact) + SubagentStart, e roteador PreToolUse
-user-level que delega ao .claude/hooks/adas-inject.sh do repo (com guard anti-dupla).
-(O PASSO 10 — escada de decisão + marcador `adas:` — já está embutido no ADAS.md do
-esqueleto; ver README.)
+Instale a camada host/ do repo adas — ATENÇÃO: host/ NÃO vem no esqueleto e o clone do
+SETUP já foi apagado; re-clone pra ler as instruções:
+  d=$(mktemp -d) && git clone --depth 1 https://github.com/samyrwendel/adas "$d" \
+    && cat "$d/host/README.md"   # instale (3 passos) e depois: rm -rf "$d"
+A camada faz: reinjeção do NÚCLEO do ADAS.md (delimite-o com <!-- adas-core-start/end -->,
+~30-45 linhas) em SessionStart (startup|resume|clear|compact) + SubagentStart, e roteador
+PreToolUse user-level que delega ao .claude/hooks/adas-inject.sh do repo (guard anti-dupla).
 
 SAÍDA: PREENCHA os arquivos COPIADOS (.specs/, .claude/skills/<faixa>/SKILL.md,
-DECISIONS.md, ADAS.md, AGENTS.md, o hook, scripts/check-*), remova `_template/` e me mostre o índice. Antes de
-finalizar, me peça pra confirmar os invariantes que você reverse-engineerou.
+DECISIONS.md, ADAS.md, AGENTS.md, o hook, scripts/check-*), remova `_template/` E
+`scripts/check-_template.sh` (o AGENTS.md copiado já registra de onde duplicar faixa
+nova depois disso). CRITÉRIO DE ACEITE obrigatório antes de me mostrar qualquer coisa:
+rode `bash scripts/check-adas.sh` e só finalize com saída limpa (zero PLACEHOLDER,
+frontmatter ok, âncora apontando pro ADAS.md) — cole a saída no resultado. Então me
+mostre o índice e me peça pra confirmar os invariantes que você reverse-engineerou.
 ```
 
 ---
@@ -225,10 +263,14 @@ Em LLM **sem** hook (ChatGPT/Gemini/etc.), o substituto é colar o **`ADAS.md` p
 system/primeiro turno — por isso ele existe separado das faixas.
 
 ## Esqueleto canônico (o prompt já manda copiar — ver SETUP)
-O esqueleto vive em **github.com/samyrwendel/adas** (`skeleton/`): `.specs/` + `skills/_template/SKILL.md`
-+ `DECISIONS.md` + `ADAS.md` + `.claude/settings.json`. O SETUP do prompt já faz o `git clone … && cp`
-pra dentro do projeto; os PASSOS preenchem os `<PLACEHOLDER>`. Manual:
+O esqueleto vive em **github.com/samyrwendel/adas** (`skeleton/`, ~26 arquivos): `.specs/` + 3 skills
+(`_template/`, `seguranca-acesso/`, `adas-check/` com o engine) + `scripts/check-*` + `adas-report.sh` +
+hook + `DECISIONS.md` + `ADAS.md` + `AGENTS.md` + `.adas/profile.json` — a enumeração operacional é a do
+passo 3 do SETUP. O SETUP do prompt já faz o `git clone … && cp` pra dentro do projeto; os PASSOS
+preenchem os `<PLACEHOLDER>`. Manual:
 ```bash
-git clone --depth 1 https://github.com/samyrwendel/adas /tmp/adas && rm /tmp/adas/skeleton/README.md \
-  && cp -r /tmp/adas/skeleton/. . && rm -rf /tmp/adas   # o rm protege o README do projeto destino
+# cp -Rn NUNCA sobrescreve (colisão = merge manual); o rm protege o README do projeto destino;
+# mktemp evita resíduo (limpeza fora da cadeia &&):
+d=$(mktemp -d) && git clone --depth 1 https://github.com/samyrwendel/adas "$d" \
+  && rm "$d/skeleton/README.md" && cp -Rn "$d/skeleton/." . ; rm -rf "$d"
 ```

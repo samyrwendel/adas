@@ -20,6 +20,11 @@
    (`node .claude/skills/adas-check/scripts/adas-debt.js .`). Estado geral: `scripts/adas-report.sh`.
 6. Caminho crítico (dinheiro/segurança/irreversível): nunca executa sem confirmação explícita; rode
    `scripts/check-*.sh` antes do deploy.
+7. **Faixa NOVA** (domínio ainda sem guard-rail): duplique o modelo canônico —
+   github.com/samyrwendel/adas → `skeleton/.claude/skills/_template/` (o `_template/` local é
+   removido no fim do bootstrap) — ou copie a estrutura de uma faixa existente deste projeto.
+   Check executável novo: mesmo repo → `skeleton/scripts/check-_template.sh` (o local também
+   é removido no fim do bootstrap).
 
 ## Multi-ferramenta (este é o arquivo-âncora padrão)
 Pra cada ferramenta achar o ADAS sozinha no boot, **espelhe** (cp) ou **symlink** este arquivo:

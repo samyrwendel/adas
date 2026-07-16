@@ -1,14 +1,16 @@
 # ADAS skeleton — esqueleto copiável
 
 Estrutura mínima de um **ADAS** (Anti-Drift Adherence System) pra colar num projeto novo.
-Conceito completo + o prompt de bootstrap: `../../adas-bootstrap-prompt.md`.
+Conceito completo + o prompt de bootstrap: `../adas-bootstrap-prompt.md`.
 
 ## Como usar
 1. Copie esta pasta pra raiz do projeto novo — **SEM este README.md** (ele documenta o esqueleto;
    copiado junto, ele SOBRESCREVE o README do seu projeto em silêncio):
    ```bash
-   (cd ~/projects/adas-template/skeleton && tar cf - --exclude=./README.md .) | tar xf - -C /caminho/do/projeto/
+   (cd /caminho/do/clone/adas/skeleton && tar cf - --exclude=./README.md .) | tar xkf - -C /caminho/do/projeto/
    ```
+   (`tar xkf` = keep-old-files: NUNCA sobrescreve arquivo existente — colisão = merge manual.
+   Na colisão o tar reporta erro e sai != 0: é o SINAL do merge; o resto já foi extraído.)
 2. Preencha os `<PLACEHOLDER>` em cada arquivo (de cima pra baixo na cadeia):
    - `.specs/` — a **constituição** (invariantes mais estáveis + valores crus). Comece por aqui.
    - `.claude/skills/<faixa>/SKILL.md` — duplique `_template/` por faixa; engorde o `description`.
