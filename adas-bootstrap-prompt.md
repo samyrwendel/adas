@@ -115,6 +115,12 @@ PASSO 2 — Para CADA faixa, DUPLIQUE a pasta-modelo `.claude/skills/_template/`
       o ADAS só soma a governança no corpo. (Faixa do ADAS = Anthropic Skill.)
     - description = TODO o triggering e "PUSHY" (guidance oficial p/ combater UNDERtriggering): lista
       exaustiva de gatilhos + SINTOMAS + "use SEMPRE que …, MESMO sem pedir explícito". É o roteador.
+    - PISO MECÂNICO obrigatório (o check-adas COBRA — LLMs sistematicamente entregam trigger magro
+      mesmo com esta instrução): ≥400 chars; ≥12 gatilhos separados por ,/; (verbos + sinônimos +
+      variantes coloquiais); a cláusula "use SEMPRE que"; a negação "MESMO que o usuário não peça";
+      ≥2 SINTOMAS entre aspas simples — frases como o usuário REALMENTE fala ('tá quebrado',
+      'esse ainda funciona?'), não categorias abstratas. Se o projeto tem histórico de conversa,
+      minere os gatilhos das mensagens REAIS do usuário — é o melhor corpus de trigger que existe.
     - Otimize o trigger com o `skill-creator` (description-improver). when_to_use = extra (oficial = tudo no description).
   CORPO com:
     - QUANDO SE APLICA (resumo dos gatilhos)

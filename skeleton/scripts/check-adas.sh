@@ -30,6 +30,27 @@ while IFS= read -r f; do
     || { note "FAIXA SEM frontmatter name/description: $f (não vai disparar)"; block=1; }
 done < <(find "$SKILLS_DIR" -name SKILL.md -not -path "*/_template/*" 2>/dev/null)
 
+# 2b) TRIGGER MAGRO → WARN. O description é o ROTEADOR: magro = faixa que nunca
+# acorda (modo de falha nº2, depois do drift silencioso). Exortação no prompt não
+# basta — piso MECÂNICO: ≥400 chars, ≥12 gatilhos (separados por ,/;), a cláusula
+# pushy "SEMPRE" + a negação "MESMO", e ≥2 sintomas citados ('...' — como o
+# usuário REALMENTE fala). Heurística, não censo: passar no piso ≠ trigger bom,
+# mas reprovar = certeza de magro.
+while IFS= read -r f; do
+  fm="$(awk '/^---[[:space:]]*$/{c++; next} c==1{print} c>=2{exit}' "$f" 2>/dev/null)"
+  desc="$(printf '%s\n' "$fm" | awk '/^description:/{flag=1} flag && /^[a-z_]+:/ && !/^description:/{flag=0} flag{print}' | tr -d '\n')"
+  [ -z "$desc" ] && continue  # ausência total já é BLOCK no check 2
+  thin=""
+  [ "${#desc}" -lt 400 ] && thin="${thin}<400 chars; "
+  n_trig=$(printf '%s' "$desc" | tr ',;' '\n' | grep -c .)
+  [ "$n_trig" -lt 12 ] && thin="${thin}só ${n_trig} gatilhos (<12); "
+  printf '%s' "$desc" | grep -qi "SEMPRE" || thin="${thin}sem cláusula 'use SEMPRE que'; "
+  printf '%s' "$desc" | grep -qi "MESMO" || thin="${thin}sem negação 'MESMO que não peça'; "
+  n_symp=$(printf '%s' "$desc" | grep -o "'" | wc -l)
+  [ "$n_symp" -lt 4 ] && thin="${thin}<2 sintomas citados ('...'); "
+  [ -n "$thin" ] && { note "TRIGGER MAGRO em $f: ${thin}— engordar (sinônimos+sintomas+vocabulário real do usuário)"; warn=1; }
+done < <(find "$SKILLS_DIR" -name SKILL.md -not -path "*/_template/*" 2>/dev/null)
+
 # 3) faixa sem PROCEDÊNCIA (invariante sem origem = chute) → WARN
 while IFS= read -r f; do
   grep -qiE "extra(í|i)do de|\.specs/|DA-[0-9]" "$f" \
