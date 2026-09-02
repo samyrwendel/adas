@@ -115,6 +115,32 @@ elif [ "${ADAS_CHECK_REMOTE:-0}" = "1" ] && command -v git >/dev/null 2>&1; then
   fi
 fi
 
+# 9) ENFORCEMENT LIGADO? → WARN. O modo de falha nº0, antes de todos os outros: o sistema
+# inteiro DESLIGADO. Este check auditava higiene de doc e nunca perguntava "eu estou ATIVO?" —
+# uma instalação-fantasma (ADAS.md copiado à mão, zero hooks) passava com warns cosméticos.
+# Verificador que aprova sistema desligado é pior que não ter verificador: dá confiança falsa.
+# Tudo WARN (runtime host é opcional; doc-only pode ser escolha consciente) — mas dito ALTO.
+# 9a) JIT do repo (PASSO 6 — a parte mais forte do ADAS). Só se o repo usa Claude Code (.claude/).
+if [ -d .claude ]; then
+  if [ ! -f .claude/hooks/adas-inject.sh ]; then
+    note "ENFORCEMENT: sem .claude/hooks/adas-inject.sh — o JIT (PASSO 6) não existe; a governança é só documento"; warn=1
+  elif ! grep -q "adas-inject" .claude/settings.json 2>/dev/null; then
+    note "ENFORCEMENT: adas-inject.sh existe mas não está registrado em .claude/settings.json — o hook nunca dispara"; warn=1
+  fi
+fi
+# 9b) runtime host (PASSO 11) — a escada da meia-instalação, do fantasma ao ativo.
+# Só onde há Claude Code na máquina (~/.claude); em CI não existe e o bloco cala.
+if [ -d "$HOME/.claude" ]; then
+  _rconf="${ADAS_REPOS_CONF:-$HOME/.claude/adas/repos.conf}"
+  if [ ! -f "$HOME/.claude/hooks/adas-activate.sh" ]; then
+    note "ENFORCEMENT: runtime host NÃO instalado nesta máquina — sem reinjeção (compaction/subagent/hub), sessão longa esquece a governança. Opcional, mas pule CONSCIENTE. Instalar: bash host/install.sh $PWD (repo canônico samyrwendel/adas)"; warn=1
+  elif ! grep -q "adas-activate\|adas-route" "$HOME/.claude/settings.json" 2>/dev/null; then
+    note "ENFORCEMENT: MEIA-INSTALAÇÃO — hooks adas-*.sh copiados mas ausentes de ~/.claude/settings.json (nunca disparam); rode host/install.sh de novo"; warn=1
+  elif ! grep -qxF "$PWD" "$_rconf" 2>/dev/null; then
+    note "ENFORCEMENT: runtime instalado mas este repo está FORA do repos.conf ($_rconf) — reinjeção não cobre este repo; rode: bash host/install.sh $PWD"; warn=1
+  fi
+fi
+
 # veredito
 if [ "$block" -ne 0 ]; then echo "✗ check-adas: faixa quebrada (frontmatter) — corrija antes de seguir"; exit 1; fi
 if [ "$warn" -ne 0 ]; then echo "⚠ check-adas: avisos de higiene do ADAS (acima) — não bloqueia"; exit 0; fi

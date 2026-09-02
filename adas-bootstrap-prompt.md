@@ -198,10 +198,13 @@ scripts/check-adas.sh (já vem pronto e genérico) no gate. Pega o modo de falha
 desses sistemas — a derivação .specs → faixas → ADAS.md rotar em SILÊNCIO. Checa:
 PLACEHOLDER não preenchido; faixa sem frontmatter name/description = BLOCK (não
 dispara); faixa sem PROCEDÊNCIA (invariante sem origem = chute); DRIFT (faixa/.specs
-commitada DEPOIS do ADAS.md → regenere); DA-NNN citada mas ausente do DECISIONS.md.
+commitada DEPOIS do ADAS.md → regenere); DA-NNN citada mas ausente do DECISIONS.md;
+e ENFORCEMENT LIGADO (hook JIT do repo registrado + runtime host instalado/registrado/
+com este repo no repos.conf — instalação-fantasma NÃO passa em silêncio).
 WARN por padrão, exceto frontmatter quebrado.
 
-PASSO 9 (opcional) — ONBOARDING / ÂNCORA: preencha `AGENTS.md` (já copiado) — o arquivo
+PASSO 9 (OBRIGATÓRIO — o critério de aceite da SAÍDA cobra a âncora) — ONBOARDING /
+ÂNCORA: preencha `AGENTS.md` (já copiado) — o arquivo
 que qualquer LLM/ferramenta lê no PRIMEIRO contato e que aponta pro `ADAS.md` ("leia o
 ADAS antes de produzir qualquer coisa"). Espelhe (cp) ou symlink pro nome que cada
 ferramenta lê no boot: `CLAUDE.md` (Claude Code), `.cursorrules` (Cursor), etc. Sem
@@ -226,6 +229,8 @@ merge no ~/.claude/settings.json preservando o que existe):
 A camada faz: reinjeção do NÚCLEO do ADAS.md (delimite-o com <!-- adas-core-start/end -->,
 ~30-45 linhas) em SessionStart (startup|resume|clear|compact) + SubagentStart, e roteador
 PreToolUse user-level que delega ao .claude/hooks/adas-inject.sh do repo (guard anti-dupla).
+Se pular este passo, o check-adas vai ACUSAR (warn de ENFORCEMENT) runtime ausente em toda
+rodada — pulou consciente, conviva com o aviso; ele existe pra meia-instalação nunca calar.
 
 SAÍDA: PREENCHA os arquivos COPIADOS (.specs/, .claude/skills/<faixa>/SKILL.md,
 DECISIONS.md, ADAS.md, AGENTS.md, o hook, scripts/check-*), remova `_template/` E

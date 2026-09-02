@@ -28,7 +28,10 @@ bash host/install.sh /caminho/repo1 /caminho/repo2   # repos governados como arg
 
 O instalador faz os 3 passos (scripts → `repos.conf` → merge jq do `settings-snippet.json` no
 `~/.claude/settings.json`, com backup `.bak-adas`) e ABORTA em erro (instalação é fail-closed;
-os hooks instalados continuam fail-open em runtime). Manual, se preferir:
+os hooks instalados continuam fail-open em runtime). O `scripts/check-adas.sh` do repo governado
+audita o resultado (check 9 — ENFORCEMENT): runtime ausente, hooks copiados sem registro no
+settings, ou repo fora do `repos.conf` viram WARN explícito — instalação-fantasma não cala.
+Manual, se preferir:
 
 ```bash
 # 1. Scripts no user-level

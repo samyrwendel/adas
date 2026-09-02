@@ -109,6 +109,36 @@ n2=$(jq '.hooks.SessionStart | length' "$S")
 [ "$n1" = "$n2" ] && ok "idempotente (2ª execução não duplica)" || bad "2ª execução DUPLICOU hooks ($n1→$n2)"
 grep -qxF "$R" "$HOME/.claude/adas/repos.conf" && ok "repos.conf com o repo governado" || bad "repos.conf sem o repo"
 
+echo "== 8) check-adas — ENFORCEMENT: instalação-fantasma NUNCA passa em silêncio"
+# estado do teste 7: HOME=$T/home com runtime completo e $R no repos.conf → NENHUM warn
+mkdir -p "$R/scripts"; cp "$ROOT/skeleton/scripts/check-adas.sh" "$R/scripts/"
+cp "$ROOT/skeleton/.claude/settings.json" "$R/.claude/settings.json"
+out=$(cd "$R" && bash scripts/check-adas.sh 2>/dev/null)
+echo "$out" | grep -q "ENFORCEMENT" \
+  && bad "falso positivo: tudo instalado mas acusou enforcement" || ok "instalado → sem warn de enforcement"
+# fantasma (o caso clawd): máquina com ~/.claude mas ZERO runtime → ACUSA
+H2="$T/home2"; mkdir -p "$H2/.claude"
+out=$(cd "$R" && HOME="$H2" bash scripts/check-adas.sh 2>/dev/null)
+echo "$out" | grep -q "runtime host NÃO instalado" \
+  && ok "fantasma → acusa runtime ausente" || bad "instalação-fantasma passou em silêncio"
+# meia-instalação: hooks copiados, settings sem registro → ACUSA
+mkdir -p "$H2/.claude/hooks"; cp "$ROOT"/host/adas-*.sh "$H2/.claude/hooks/"; echo '{}' > "$H2/.claude/settings.json"
+out=$(cd "$R" && HOME="$H2" bash scripts/check-adas.sh 2>/dev/null)
+echo "$out" | grep -q "MEIA-INSTALA" \
+  && ok "meia-instalação → acusa hooks sem registro" || bad "meia-instalação passou em silêncio"
+# instalado mas o repo FORA do repos.conf → ACUSA
+echo '{"hooks":"adas-activate adas-route"}' > "$H2/.claude/settings.json"
+echo "/outro/repo" > "$H2/rc"
+out=$(cd "$R" && HOME="$H2" ADAS_REPOS_CONF="$H2/rc" bash scripts/check-adas.sh 2>/dev/null)
+echo "$out" | grep -q "FORA do repos.conf" \
+  && ok "repo fora do repos.conf → acusa" || bad "repo não governado passou em silêncio"
+# JIT do repo desligado (sem adas-inject.sh) → ACUSA
+R2="$T/repo2"; mkdir -p "$R2/.claude" "$R2/scripts"; cp "$ROOT/skeleton/scripts/check-adas.sh" "$R2/scripts/"
+printf '# X\n' > "$R2/ADAS.md"; touch "$R2/DECISIONS.md"
+out=$(cd "$R2" && HOME="$H2" bash scripts/check-adas.sh 2>/dev/null)
+echo "$out" | grep -q "JIT (PASSO 6) não existe" \
+  && ok "repo sem adas-inject.sh → acusa JIT desligado" || bad "JIT desligado passou em silêncio"
+
 echo
 echo "RESULTADO: $pass ok, $fail falha(s)"
 [ "$fail" = 0 ]
