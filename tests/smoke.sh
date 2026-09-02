@@ -206,6 +206,45 @@ out=$(cd "$X" && bash scripts/check-adas.sh 2>/dev/null); rc=$?
 [ "$rc" = 1 ] && echo "$out" | grep -q "vendor-plano" \
   && ok "fork COMMITADO = adotado → audita (conflito cai no lado seguro)" || bad "tracked não virou governada"
 
+echo "== 11) selo de instalação (DA-165) — a prova de que o check RODOU"
+S1="$T/selo"; mkdir -p "$S1/scripts" "$S1/.adas"
+cp "$ROOT/skeleton/scripts/check-adas.sh" "$S1/scripts/"
+printf '# X\n<!-- adas-core-start -->\nn\n<!-- adas-core-end -->\n' > "$S1/ADAS.md"
+echo "leia ADAS.md" > "$S1/AGENTS.md"; touch "$S1/DECISIONS.md"; echo "abc1234" > "$S1/.adas/skeleton-version"
+out=$(cd "$S1" && bash scripts/check-adas.sh 2>/dev/null)
+echo "$out" | grep -q "nunca foi PROVADA" && ok "sem selo → acusa instalação nunca provada" || bad "selo ausente passou calado"
+out=$(cd "$S1" && bash scripts/check-adas.sh --seal 2>/dev/null)
+[ -f "$S1/.adas/install-check" ] && grep -q "^veredito:" "$S1/.adas/install-check" \
+  && ok "--seal grava .adas/install-check com veredito" || bad "--seal não gravou o selo"
+out=$(cd "$S1" && bash scripts/check-adas.sh 2>/dev/null)
+echo "$out" | grep -q "nunca foi PROVADA\|OBSOLETO" && bad "selado mas ainda acusa" || ok "selado + esqueleto igual → silêncio"
+echo "def5678" > "$S1/.adas/skeleton-version"
+out=$(cd "$S1" && bash scripts/check-adas.sh 2>/dev/null)
+echo "$out" | grep -q "selo OBSOLETO" && ok "esqueleto atualizado → selo obsoleto acusa" || bad "selo obsoleto passou calado"
+
+echo "== 12) install-hooks (DA-166) — o pre-commit BLOQUEIA de verdade"
+G="$T/gated"; mkdir -p "$G/scripts"
+(cd "$G" && git init -q && git config user.email t@t && git config user.name t)
+cp "$ROOT/skeleton/scripts/check-secrets.sh" "$ROOT/skeleton/scripts/da-index.sh" "$G/scripts/"
+printf '#!/bin/bash\ntouch hook-local-rodou\n' > "$G/.git/hooks/pre-commit"; chmod +x "$G/.git/hooks/pre-commit"
+(cd "$G" && bash "$ROOT/skeleton/scripts/install-hooks.sh" >/dev/null 2>&1) && ok "install-hooks instala" || bad "install-hooks falhou"
+h1="$(md5sum "$G/.git/hooks/pre-commit")"
+(cd "$G" && bash "$ROOT/skeleton/scripts/install-hooks.sh" >/dev/null 2>&1)
+[ "$h1" = "$(md5sum "$G/.git/hooks/pre-commit")" ] && ok "idempotente (2ª execução = mesmo hook)" || bad "2ª execução mudou o hook"
+[ -f "$G/.git/hooks/pre-commit.local" ] && ok "hook alheio preservado em pre-commit.local" || bad "hook alheio PERDIDO"
+# segredo montado em RUNTIME (prefixo+zeros separados): o arquivo de teste contém o
+# padrão completo, mas ESTE fonte não — senão o próprio pre-commit da DA-166 bloqueia
+# o commit do teste (aconteceu no commit de nascimento do gate; classe do portão que
+# lê o fonte — mesma lição do gate de pictograma)
+printf "tk='%s%s'\n" "ghp_" "$(printf '0%.0s' $(seq 36))" > "$G/vazou.js"
+(cd "$G" && git add vazou.js)
+expect_exit 1 "commit com segredo staged → BLOQUEADO (exercitado)" \
+  bash -c "cd '$G' && git commit -qm x"
+(cd "$G" && git rm -q --cached vazou.js && rm vazou.js && echo ok > limpo.txt && git add limpo.txt)
+expect_exit 0 "commit limpo → passa (e chama o hook local)" \
+  bash -c "cd '$G' && git commit -qm ok"
+[ -f "$G/hook-local-rodou" ] && ok "hook alheio ainda roda (encadeado)" || bad "hook alheio não foi chamado"
+
 echo
 echo "RESULTADO: $pass ok, $fail falha(s)"
 [ "$fail" = 0 ]

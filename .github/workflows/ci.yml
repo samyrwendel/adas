@@ -21,5 +21,7 @@ jobs:
       - name: node --check nos engines do adas-check
         run: |
           for f in skeleton/.claude/skills/adas-check/scripts/*.js; do node --check "$f"; done
+      - name: check-adas no PRÓPRIO esqueleto (DA-166 — o ADAS se audita fora das fixtures)
+        run: cd skeleton && bash scripts/check-adas.sh
       - name: smoke — spec executável (comportamento, não só sintaxe)
         run: bash tests/smoke.sh

@@ -81,9 +81,11 @@ projeto destino, NESTA ORDEM (a checagem de colisão vem ANTES da cópia — de 
   # 3) CONFIRME a cópia (enumeração completa e mecânica — diz QUAL arquivo falta).
   #    Se falhar o clone ou faltar arquivo: PARE e reporte — NUNCA recrie o esqueleto de memória:
   ok=1; for f in .specs/SKILL.md .specs/tokens.css .claude/settings.json \
-    .claude/hooks/adas-inject.sh .claude/skills/_template/SKILL.md \
+    .claude/hooks/adas-inject.sh .claude/hooks/da-index-hook.sh \
+    .claude/skills/_template/SKILL.md \
     .claude/skills/seguranca-acesso/SKILL.md .claude/skills/adas-check/SKILL.md \
     scripts/check-adas.sh scripts/check-secrets.sh scripts/adas-report.sh \
+    scripts/da-index.sh scripts/install-hooks.sh DECISIONS-INDEX.md \
     DECISIONS.md ADAS.md AGENTS.md .adas/profile.json .adas/skeleton-version; do
     [ -f "$f" ] || { echo "FALTA: $f"; ok=0; }
   done; [ "$ok" = 1 ] && echo "esqueleto OK" || echo "FALTA ARQUIVO — pare e reporte"
@@ -240,9 +242,13 @@ SAÍDA: PREENCHA os arquivos COPIADOS (.specs/, .claude/skills/<faixa>/SKILL.md,
 DECISIONS.md, ADAS.md, AGENTS.md, o hook, scripts/check-*), remova `_template/` E
 `scripts/check-_template.sh` (o AGENTS.md copiado já registra de onde duplicar faixa
 nova depois disso). CRITÉRIO DE ACEITE obrigatório antes de me mostrar qualquer coisa:
-rode `bash scripts/check-adas.sh` e só finalize com saída limpa (zero PLACEHOLDER,
-frontmatter ok, âncora apontando pro ADAS.md) — cole a saída no resultado. Então me
-mostre o índice e me peça pra confirmar os invariantes que você reverse-engineerou.
+rode `bash scripts/install-hooks.sh` (instala o pre-commit dos gates — DA-166: gate
+que ninguém chama é honra, não regra) e depois `bash scripts/check-adas.sh --seal` —
+só finalize com saída limpa (zero PLACEHOLDER, frontmatter ok, âncora apontando pro
+ADAS.md). O `--seal` grava `.adas/install-check` (DA-165): a PROVA de que a auditoria
+rodou, versionada com o repo — sem ela o check acusa instalação nunca provada. Cole a
+saída no resultado. Então me mostre o índice e me peça pra confirmar os invariantes
+que você reverse-engineerou.
 ```
 
 ---

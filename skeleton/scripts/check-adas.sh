@@ -6,12 +6,17 @@
 # trigger não dispara). Não precisa de _template: já funciona out-of-the-box.
 set -uo pipefail
 
+# --seal (DA-165): roda a auditoria E grava a PROVA de que ela rodou —
+# .adas/install-check (timestamp UTC · skeleton-version · veredito · contagem).
+# O selo é versionado (é prova, não cache). Sem ele, o check 11 acusa.
+SEAL=0; [ "${1:-}" = "--seal" ] && SEAL=1
+
 SKILLS_DIR="${SKILLS_DIR:-.claude/skills}"
 SPECS_DIR="${SPECS_DIR:-.specs}"
 ADAS="${ADAS:-ADAS.md}"
 DECISIONS="${DECISIONS:-DECISIONS.md}"
-warn=0; block=0
-note(){ echo "• $*"; }
+warn=0; block=0; notes=0
+note(){ echo "• $*"; notes=$((notes+1)); }
 
 # 1) PLACEHOLDER não preenchido → bootstrap incompleto (WARN)
 # Conta só docs preenchíveis (.md das faixas/ADAS/DECISIONS/AGENTS + .css dos tokens da .specs): --include exclui o
@@ -221,7 +226,33 @@ if [ -f "$DECISIONS" ] && [ -f scripts/da-index.sh ]; then
   fi
 fi
 
+# 11) SELO DE INSTALAÇÃO (DA-165): o check tem que ter RODADO alguma vez e deixado prova.
+# "Rode o check e finalize limpo" era exortação em prompt — classe que a DA-017 já julgou.
+# Custo: ler UM arquivo; nada re-executa por sessão. Selo obsoleto (esqueleto atualizou
+# depois da prova) também acusa — a prova envelhece junto com o que ela provou.
+if [ "$SEAL" != "1" ]; then
+  if [ ! -f .adas/install-check ]; then
+    note "sem .adas/install-check — a instalação nunca foi PROVADA; rode: bash scripts/check-adas.sh --seal (DA-165)"; warn=1
+  else
+    sealed_v="$(awk -F': ' '/^skeleton-version:/{print $2}' .adas/install-check 2>/dev/null | tr -d '[:space:]')"
+    cur_v="$(cut -c1-7 .adas/skeleton-version 2>/dev/null | head -1 | tr -d '[:space:]')"
+    if [ -n "$cur_v" ] && [ "$sealed_v" != "$cur_v" ]; then
+      note "selo OBSOLETO (provado em '${sealed_v:-?}', esqueleto agora '$cur_v') — re-sele: bash scripts/check-adas.sh --seal"; warn=1
+    fi
+  fi
+fi
+
 # veredito
+v="ok"; [ "$warn" -ne 0 ] && v="warn"; [ "$block" -ne 0 ] && v="block"
+if [ "$SEAL" = "1" ]; then
+  mkdir -p .adas
+  { echo "selado: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "skeleton-version: $(cut -c1-7 .adas/skeleton-version 2>/dev/null | head -1 | tr -d '[:space:]')"
+    echo "veredito: $v"
+    echo "avisos: $notes"
+  } > .adas/install-check
+  echo "🔏 selo gravado em .adas/install-check (veredito: $v, $notes aviso(s)) — versione-o: é a prova, não cache"
+fi
 if [ "$block" -ne 0 ]; then echo "✗ check-adas: faixa quebrada (frontmatter) — corrija antes de seguir"; exit 1; fi
 if [ "$warn" -ne 0 ]; then echo "⚠ check-adas: avisos de higiene do ADAS (acima) — não bloqueia"; exit 0; fi
 echo "✓ check-adas: ADAS íntegro (faixas com trigger+procedência, sem drift, DAs resolvidas)"
