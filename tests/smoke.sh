@@ -175,6 +175,37 @@ expect_exit 0 "check volta a verde após o hook" bash "$D/scripts/da-index.sh" c
 sed -i 's/DA-004 — Anexada/DA-004 — EDITADA/' "$D/DECISIONS-INDEX.md"
 expect_exit 1 "índice editado à mão → ACUSA" bash "$D/scripts/da-index.sh" check "$D"
 
+echo "== 10) propriedade governado × dependência — por SINAL, sem lista"
+X="$T/own"; mkdir -p "$X/scripts" "$X/.claude/skills/nossa-faixa" "$X/.claude/skills/vendor-plano" "$X/.claude/skills/vendor-git/sub"
+cp "$ROOT/skeleton/scripts/check-adas.sh" "$X/scripts/"
+printf -- '---\nname: nossa-faixa\ndescription: curta demais\n---\nextraído de .specs/x — regra nossa.\n' > "$X/.claude/skills/nossa-faixa/SKILL.md"
+printf 'sem frontmatter nenhum\n' > "$X/.claude/skills/vendor-plano/SKILL.md"
+mkdir -p "$X/.claude/skills/vendor-git/.git"
+printf 'quebrado tambem\n' > "$X/.claude/skills/vendor-git/sub/SKILL.md"
+printf '# ADAS de teste\n' > "$X/ADAS.md"; touch "$X/DECISIONS.md"
+out=$(cd "$X" && bash scripts/check-adas.sh 2>/dev/null); rc=$?
+[ "$rc" = 0 ] && ok "skill de terceiro quebrada NÃO bloqueia (exit 0)" || bad "dependência causou BLOCK (rc=$rc)"
+echo "$out" | grep -q "TRIGGER MAGRO.*nossa-faixa" && ok "governada (procedência) segue auditada" || bad "governada escapou da auditoria"
+echo "$out" | grep -q "2 skill(s) de DEPENDÊNCIA" && ok "dependências CONTADAS e declaradas (2)" || bad "contagem de dependência ausente/errada"
+echo "$out" | grep -q "vendor-plano\|vendor-git" && bad "achado de dependência vazou sem flag" || ok "sem flag → dependência não polui"
+out=$(cd "$X" && ADAS_CHECK_DEPS=1 bash scripts/check-adas.sh 2>/dev/null)
+echo "$out" | grep -q "dep:.*vendor-plano" && ok "ADAS_CHECK_DEPS=1 exibe achados de dependência" || bad "flag não exibiu dependências"
+# skill nova de terceiro chega AMANHÃ: classificada certo SEM tocar em config
+mkdir -p "$X/.claude/skills/vendor-novo"; printf 'chegou hoje, sem frontmatter\n' > "$X/.claude/skills/vendor-novo/SKILL.md"
+out=$(cd "$X" && bash scripts/check-adas.sh 2>/dev/null); rc=$?
+[ "$rc" = 0 ] && echo "$out" | grep -q "3 skill(s) de DEPENDÊNCIA" \
+  && ok "skill de terceiro NOVA classificada certo no 1º dia, zero config" || bad "skill nova classificada errado"
+# adoção: citar no ADAS.md → vira governada (e o frontmatter quebrado agora BLOQUEIA)
+echo "faixa vendor-novo adotada" >> "$X/ADAS.md"
+out=$(cd "$X" && bash scripts/check-adas.sh 2>/dev/null); rc=$?
+[ "$rc" = 1 ] && ok "adotada (citada no ADAS.md) → auditada, quebrada BLOQUEIA" || bad "adoção não puxou pra auditoria (rc=$rc)"
+# conflito (fork commitado): tracked no git do root → GOVERNADA mesmo com sinais de terceiro
+(cd "$X" && git init -q && git config user.email t@t && git config user.name t \
+  && git add .claude/skills/vendor-plano/SKILL.md && git commit -qm x)
+out=$(cd "$X" && bash scripts/check-adas.sh 2>/dev/null); rc=$?
+[ "$rc" = 1 ] && echo "$out" | grep -q "vendor-plano" \
+  && ok "fork COMMITADO = adotado → audita (conflito cai no lado seguro)" || bad "tracked não virou governada"
+
 echo
 echo "RESULTADO: $pass ok, $fail falha(s)"
 [ "$fail" = 0 ]

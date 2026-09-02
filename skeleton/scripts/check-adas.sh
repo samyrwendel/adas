@@ -22,24 +22,56 @@ if grep -rqlE --include="*.md" --include="*.css" --exclude-dir=_template "<PLACE
   note "PLACEHOLDER ainda presente — bootstrap incompleto (preencha)"; warn=1
 fi
 
-# 2) toda faixa tem frontmatter name+description (senão NÃO dispara) → BLOCK
-# (extrai o bloco entre os dois primeiros '---' — head fixo dava falso BLOCK em description longa)
+# 2-pré) PROPRIEDADE: governado × dependência — por SINAL DETECTÁVEL, nunca por lista
+# mantida à mão (lista morre na primeira skill nova; regra que depende de alguém lembrar
+# é a que falha). Caso real: 491 avisos contra skills de TERCEIRO (gstack, gsd-*) que não
+# podemos consertar — verificador que grita sobre o inconsertável ensina a ser ignorado.
+# Cadeia (1º sinal decide; CONFLITO → governado = audita, o lado seguro):
+#   a) root é repo git e a skill está TRACKED → GOVERNADO (commitar = adotar; fork commitado audita)
+#   b) skill tem .git próprio/ancestral dentro de SKILLS_DIR → DEPENDÊNCIA (o dono é o outro repo;
+#      sobrevive a update do pacote sem ação humana)
+#   c) SKILL.md cita procedência nossa (.specs/, DA-NNN, "extraído de") → GOVERNADO (auto-declarada
+#      por construção do template — check 3 cobra exatamente isso)
+#   d) 1º componente do caminho citado no ADAS.md → GOVERNADO (adotada; o ADAS.md já é regenerado
+#      por obrigação do protocolo — não é cadastro novo)
+#   e) sem NENHUMA evidência de posse → DEPENDÊNCIA — contada e DECLARADA no veredito (nunca
+#      silenciosa; ADAS_CHECK_DEPS=1 exibe os achados delas como informação, sem warn/block)
+GOV=(); DEP=()
+_git_root=0; [ -d .git ] && command -v git >/dev/null 2>&1 && _git_root=1
 while IFS= read -r f; do
-  fm="$(awk '/^---[[:space:]]*$/{c++; next} c==1{print} c>=2{exit}' "$f" 2>/dev/null)"
-  { printf '%s\n' "$fm" | grep -q "^name:" && printf '%s\n' "$fm" | grep -q "^description:"; } \
-    || { note "FAIXA SEM frontmatter name/description: $f (não vai disparar)"; block=1; }
+  sd="$(dirname "$f")"; own=""
+  if [ "$_git_root" = 1 ] && [ -n "$(git ls-files -- "$sd" 2>/dev/null | head -1)" ]; then
+    own=g
+  else
+    p="$sd"
+    while [ -n "$p" ] && [ "$p" != "$SKILLS_DIR" ] && [ "$p" != "." ] && [ "$p" != "/" ]; do
+      [ -e "$p/.git" ] && { own=d; break; }
+      p="$(dirname "$p")"
+    done
+  fi
+  if [ -z "$own" ]; then
+    if grep -qiE "extra(í|i)do de|\.specs/|DA-[0-9]" "$f" 2>/dev/null; then
+      own=g
+    else
+      top="${sd#"$SKILLS_DIR"/}"; top="${top%%/*}"
+      { [ -n "$top" ] && grep -qw -- "$top" "$ADAS" 2>/dev/null; } && own=g || own=d
+    fi
+  fi
+  if [ "$own" = g ]; then GOV+=("$f"); else DEP+=("$f"); fi
 done < <(find "$SKILLS_DIR" -name SKILL.md -not -path "*/_template/*" 2>/dev/null)
 
-# 2b) TRIGGER MAGRO → WARN. O description é o ROTEADOR: magro = faixa que nunca
-# acorda (modo de falha nº2, depois do drift silencioso). Exortação no prompt não
-# basta — piso MECÂNICO: ≥400 chars, ≥12 gatilhos (separados por ,/;), a cláusula
-# pushy "SEMPRE" + a negação "MESMO", e ≥2 sintomas citados ('...' — como o
-# usuário REALMENTE fala). Heurística, não censo: passar no piso ≠ trigger bom,
-# mas reprovar = certeza de magro.
-while IFS= read -r f; do
-  fm="$(awk '/^---[[:space:]]*$/{c++; next} c==1{print} c>=2{exit}' "$f" 2>/dev/null)"
+# Os checks por-faixa (2, 2b, 3) como funções: mesmo exame, dois destinos —
+# governada acusa (warn/block), dependência só INFORMA quando pedido.
+fm_issue() {  # frontmatter name+description (senão NÃO dispara)
+  local fm; fm="$(awk '/^---[[:space:]]*$/{c++; next} c==1{print} c>=2{exit}' "$1" 2>/dev/null)"
+  { printf '%s\n' "$fm" | grep -q "^name:" && printf '%s\n' "$fm" | grep -q "^description:"; } \
+    || echo "SEM frontmatter name/description (não vai disparar)"
+}
+thin_issue() {  # trigger magro (piso mecânico do description)
+  local fm desc thin n_trig n_symp
+  fm="$(awk '/^---[[:space:]]*$/{c++; next} c==1{print} c>=2{exit}' "$1" 2>/dev/null)"
   desc="$(printf '%s\n' "$fm" | awk '/^description:/{flag=1} flag && /^[a-z_]+:/ && !/^description:/{flag=0} flag{print}' | tr -d '\n')"
-  [ -z "$desc" ] && continue  # ausência total já é BLOCK no check 2
+  [ -z "$desc" ] && return 0  # ausência total já é caso do fm_issue
   thin=""
   [ "${#desc}" -lt 400 ] && thin="${thin}<400 chars; "
   n_trig=$(printf '%s' "$desc" | tr ',;' '\n' | grep -c .)
@@ -48,14 +80,50 @@ while IFS= read -r f; do
   printf '%s' "$desc" | grep -qi "MESMO" || thin="${thin}sem negação 'MESMO que não peça'; "
   n_symp=$(printf '%s' "$desc" | grep -o "'" | wc -l)
   [ "$n_symp" -lt 4 ] && thin="${thin}<2 sintomas citados ('...'); "
-  [ -n "$thin" ] && { note "TRIGGER MAGRO em $f: ${thin}— engordar (sinônimos+sintomas+vocabulário real do usuário)"; warn=1; }
-done < <(find "$SKILLS_DIR" -name SKILL.md -not -path "*/_template/*" 2>/dev/null)
+  [ -n "$thin" ] && echo "TRIGGER MAGRO: ${thin}— engordar (sinônimos+sintomas+vocabulário real do usuário)"
+  return 0
+}
+prov_issue() {  # procedência (invariante sem origem = chute)
+  grep -qiE "extra(í|i)do de|\.specs/|DA-[0-9]" "$1" \
+    || echo "sem procedência (cite .specs/ ou DA-NNN)"
+}
 
-# 3) faixa sem PROCEDÊNCIA (invariante sem origem = chute) → WARN
-while IFS= read -r f; do
-  grep -qiE "extra(í|i)do de|\.specs/|DA-[0-9]" "$f" \
-    || { note "faixa sem procedência (cite .specs/ ou DA-NNN): $f"; warn=1; }
-done < <(find "$SKILLS_DIR" -name SKILL.md -not -path "*/_template/*" 2>/dev/null)
+# 2) toda faixa GOVERNADA tem frontmatter name+description → BLOCK
+for f in ${GOV[@]+"${GOV[@]}"}; do
+  m="$(fm_issue "$f")"; [ -n "$m" ] && { note "FAIXA $m: $f"; block=1; }
+done
+
+# 2b) TRIGGER MAGRO (só GOVERNADAS) → WARN. O description é o ROTEADOR: magro = faixa
+# que nunca acorda (modo de falha nº2, depois do drift silencioso). Piso MECÂNICO:
+# ≥400 chars, ≥12 gatilhos, cláusula "SEMPRE", negação "MESMO", ≥2 sintomas citados.
+# Heurística, não censo: passar no piso ≠ trigger bom, mas reprovar = certeza de magro.
+for f in ${GOV[@]+"${GOV[@]}"}; do
+  m="$(thin_issue "$f")"; [ -n "$m" ] && { note "$m em $f"; warn=1; }
+done
+
+# 3) faixa GOVERNADA sem PROCEDÊNCIA (invariante sem origem = chute) → WARN
+for f in ${GOV[@]+"${GOV[@]}"}; do
+  m="$(prov_issue "$f")"; [ -n "$m" ] && { note "faixa $m: $f"; warn=1; }
+done
+
+# 2-dep) DEPENDÊNCIAS: fora da auditoria, mas NUNCA em silêncio — o que não se audita
+# se DECLARA (trocar ruído por ponto cego seria repetir o defeito original). Trigger
+# magro de terceiro não é inofensivo (capacidade paga que nunca acorda) — é problema
+# de AÇÃO alheia: dependência INFORMA quando perguntado, governada GRITA sempre.
+if [ "${#DEP[@]}" -gt 0 ]; then
+  dep_probs=0
+  # procedência é convenção NOSSA — cobrá-la de terceiro seria achado falso; só
+  # frontmatter quebrado e trigger magro valem como achado de dependência.
+  for f in ${DEP[@]+"${DEP[@]}"}; do
+    m="$(fm_issue "$f")$(thin_issue "$f")"
+    [ -n "$m" ] && dep_probs=$((dep_probs+1))
+    if [ "${ADAS_CHECK_DEPS:-0}" = "1" ]; then
+      m="$(fm_issue "$f")";   [ -n "$m" ] && echo "  · dep: $m — $f"
+      m="$(thin_issue "$f")"; [ -n "$m" ] && echo "  · dep: $m — $f"
+    fi
+  done
+  note "ℹ ${#DEP[@]} skill(s) de DEPENDÊNCIA (terceiros) fora da auditoria, ${dep_probs} com achados — reporte upstream; ADAS_CHECK_DEPS=1 exibe (classificação por sinal: git/procedência/ADAS.md, sem lista)"
+fi
 
 # 4) DRIFT: faixa/.specs commitada DEPOIS do ADAS.md → regenere (WARN, precisa git)
 if [ -d .git ] && command -v git >/dev/null 2>&1; then
