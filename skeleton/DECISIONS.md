@@ -2,11 +2,16 @@
 
 > Log **append-only**. Toda decisão (escolha entre alternativas, trade-off aceito, config com efeito
 > permanente, reversão) vira uma entrada numerada. **Numerar sequencial, nunca reusar.** Mudar uma
-> decisão = marcar a antiga `🔄 Supersedida por DA-MMM` (nunca apagar). Atualizar o índice + a faixa
+> decisão = marcar a antiga `🔄 Supersedida por DA-MMM` (nunca apagar). Atualizar a faixa
 > afetada + regenerar o `ADAS.md` **no mesmo commit**.
 
 ## Índice
-- **DA-001** — <título curto>
+O índice canônico é **`DECISIONS-INDEX.md`** — GERADO, 1 linha por DA (número · escopo ·
+vigente/supersedida · título · o que decide), pra consulta caber no contexto quando este
+arquivo já não couber. Ele NASCE junto com a DA: o hook `.claude/hooks/da-index-hook.sh`
+(PostToolUse) roda `scripts/da-index.sh update` no ato de qualquer edição daqui. Não edite
+o índice à mão; divergência é acusada pelo `check-adas` (check 10). Este arquivo integral
+permanece a fonte da verdade — o índice aponta, nunca substitui.
 
 ---
 

@@ -141,6 +141,18 @@ if [ -d "$HOME/.claude" ]; then
   fi
 fi
 
+# 10) ÍNDICE DE DECISÕES sincronizado → WARN. O índice nasce COM a DA (hook PostToolUse
+# da-index-hook.sh roda o update no ato da edição); se divergiu, alguém anexou por fora
+# do hook (echo >>, sed) ou editou o índice à mão — tem que ACUSAR, nunca passar batido.
+# O DECISIONS.md integral é append-only e intocado; o índice é derivado e regenerável.
+if [ -f "$DECISIONS" ] && [ -f scripts/da-index.sh ]; then
+  if [ ! -f DECISIONS-INDEX.md ]; then
+    note "sem DECISIONS-INDEX.md — o índice não nasceu; rode: bash scripts/da-index.sh update"; warn=1
+  elif ! bash scripts/da-index.sh check . >/dev/null 2>&1; then
+    note "DECISIONS-INDEX.md DIVERGE do $DECISIONS (DA anexada por fora do hook?) — rode: bash scripts/da-index.sh update"; warn=1
+  fi
+fi
+
 # veredito
 if [ "$block" -ne 0 ]; then echo "✗ check-adas: faixa quebrada (frontmatter) — corrija antes de seguir"; exit 1; fi
 if [ "$warn" -ne 0 ]; then echo "⚠ check-adas: avisos de higiene do ADAS (acima) — não bloqueia"; exit 0; fi

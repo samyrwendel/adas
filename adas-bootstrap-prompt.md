@@ -214,8 +214,12 @@ PASSO 10 — NADA A PREENCHER: a escada de decisão, o marcador `adas:` (débito
 e o relatório honesto JÁ vêm embutidos no ADAS.md/AGENTS.md copiados. Ferramentas que
 os acompanham (já copiadas): `.claude/skills/adas-check/scripts/adas-debt.js` coleta os
 atalhos marcados `adas:` em arquivo:linha; `scripts/adas-report.sh` mostra o estado sem
-inventar "% de aderência". Detalhe do padrão: github.com/samyrwendel/adas → README,
-seção PASSO 10.
+inventar "% de aderência"; `scripts/da-index.sh` gera o `DECISIONS-INDEX.md` (1 linha
+por DA — o DECISIONS.md cresce sem teto e um dia não cabe no contexto; o índice cabe
+sempre). O índice NASCE com a DA via hook PostToolUse `da-index-hook.sh` (já registrado
+no settings copiado) — não depende de lembrar de rodar comando; anexo por fora do hook
+é acusado pelo check-adas (check 10). Detalhe do padrão: github.com/samyrwendel/adas →
+README, seção PASSO 10.
 
 PASSO 11 (opcional, só Claude Code — RUNTIME ANTI-DECAIMENTO): o JIT do PASSO 6 injeta
 na edição, mas a aderência decai por 4 buracos (sessão que nasce FORA do repo — num hub

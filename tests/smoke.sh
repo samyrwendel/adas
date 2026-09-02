@@ -139,6 +139,42 @@ out=$(cd "$R2" && HOME="$H2" bash scripts/check-adas.sh 2>/dev/null)
 echo "$out" | grep -q "JIT (PASSO 6) não existe" \
   && ok "repo sem adas-inject.sh → acusa JIT desligado" || bad "JIT desligado passou em silêncio"
 
+echo "== 9) da-index — o índice nasce COM a DA e divergência NUNCA passa batido"
+D="$T/dadir"; mkdir -p "$D/scripts" "$D/.claude/hooks"
+cp "$ROOT/skeleton/scripts/da-index.sh" "$D/scripts/"
+cp "$ROOT/skeleton/.claude/hooks/da-index-hook.sh" "$D/.claude/hooks/"
+cat > "$D/DECISIONS.md" <<'EOS'
+# T — Registro de Decisões
+
+## DA-001 — Primeira decisão
+**Status:** ok
+### Decisão
+Fazemos X sempre, sem exceção.
+
+## DA-002 — Segunda decisão
+`escopo: produto`
+Este texto supersede a DA-001.
+
+## DA-003 — Terceira decisão
+DA-002 passa a `escopo: instância`.
+EOS
+bash "$D/scripts/da-index.sh" update "$D" >/dev/null 2>&1
+grep -q '^- DA-001 · 🔄 SUPERSEDIDA por DA-002' "$D/DECISIONS-INDEX.md" \
+  && ok "supersede pleno detectado por texto" || bad "supersede pleno não marcado"
+grep -q '^- DA-002 · escopo: produto · ½ alterada por DA-003' "$D/DECISIONS-INDEX.md" \
+  && ok "escopo + alteração parcial (passa a escopo)" || bad "escopo/parcial errado"
+grep -q 'Fazemos X sempre' "$D/DECISIONS-INDEX.md" \
+  && ok "linha 'o que decide' extraída do campo Decisão" || bad "decisão não extraída"
+expect_exit 0 "check: sincronizado → verde" bash "$D/scripts/da-index.sh" check "$D"
+printf '\n## DA-004 — Anexada por fora do hook\ncorpo\n' >> "$D/DECISIONS.md"
+expect_exit 1 "check: DA anexada por echo >> → ACUSA divergência" bash "$D/scripts/da-index.sh" check "$D"
+printf '{"tool_input":{"file_path":"%s/DECISIONS.md"}}' "$D" | bash "$D/.claude/hooks/da-index-hook.sh" >/dev/null 2>&1
+grep -q '^- DA-004' "$D/DECISIONS-INDEX.md" \
+  && ok "hook PostToolUse regenera no ato (a entrada nasceu com a DA)" || bad "hook não regenerou"
+expect_exit 0 "check volta a verde após o hook" bash "$D/scripts/da-index.sh" check "$D"
+sed -i 's/DA-004 — Anexada/DA-004 — EDITADA/' "$D/DECISIONS-INDEX.md"
+expect_exit 1 "índice editado à mão → ACUSA" bash "$D/scripts/da-index.sh" check "$D"
+
 echo
 echo "RESULTADO: $pass ok, $fail falha(s)"
 [ "$fail" = 0 ]
