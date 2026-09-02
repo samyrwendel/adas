@@ -24,10 +24,11 @@ case "$HOOKS_DIR" in /*) ;; *) HOOKS_DIR="$ROOT/$HOOKS_DIR" ;; esac
 PC="$HOOKS_DIR/pre-commit"
 MARK="# pre-commit ADAS (gerado por scripts/install-hooks.sh — DA-166)"
 
-# nada a instalar = falha BARULHENTA (gate que não faz nada é mentira de segurança)
+# nada a instalar = falha BARULHENTA (gate que não faz nada é mentira de segurança).
+# $HOME/scripts cobre o repo governado por instalação-home (gates da máquina, não do repo).
 if [ ! -f "$ROOT/scripts/check-secrets.sh" ] && [ ! -f "$ROOT/skeleton/scripts/check-secrets.sh" ] \
-   && [ ! -f "$ROOT/scripts/check-adas.sh" ]; then
-  echo "✗ install-hooks: nenhum gate encontrado (scripts/check-secrets.sh, scripts/check-adas.sh) — nada a instalar"; exit 1
+   && [ ! -f "$HOME/scripts/check-secrets.sh" ] && [ ! -f "$ROOT/scripts/check-adas.sh" ]; then
+  echo "✗ install-hooks: nenhum gate encontrado (scripts/check-secrets.sh no repo, no skeleton/ ou em \$HOME/scripts) — nada a instalar"; exit 1
 fi
 
 # hook alheio → preserva como pre-commit.local (chamado no fim do nosso)
@@ -44,8 +45,8 @@ $MARK
 set -uo pipefail
 cd "\$(git rev-parse --show-toplevel)"
 
-# 1) segredo staged = BLOCK, sempre
-for cs in scripts/check-secrets.sh skeleton/scripts/check-secrets.sh; do
+# 1) segredo staged = BLOCK, sempre (o gate age sobre o STAGED, mora onde morar)
+for cs in scripts/check-secrets.sh skeleton/scripts/check-secrets.sh "\$HOME/scripts/check-secrets.sh"; do
   if [ -f "\$cs" ]; then
     bash "\$cs" || { echo "✗ pre-commit: check-secrets BLOQUEOU (segredo no staged)"; exit 1; }
     break
