@@ -5,6 +5,7 @@
 # hooks do host) vira um assert permanente de regressão.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ORIG_HOME="$HOME"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
 ok(){ echo "  ✓ $1"; pass=$((pass+1)); }
@@ -244,6 +245,40 @@ expect_exit 1 "commit com segredo staged → BLOQUEADO (exercitado)" \
 expect_exit 0 "commit limpo → passa (e chama o hook local)" \
   bash -c "cd '$G' && git commit -qm ok"
 [ -f "$G/hook-local-rodou" ] && ok "hook alheio ainda roda (encadeado)" || bad "hook alheio não foi chamado"
+
+echo "== 13) adas-resolve.sh / adas-secret-guard.sh — a fonte que os plugins multi-harness chamam"
+export HOME="$ORIG_HOME"   # seções 6-12 rodaram com HOME de fixture; da aqui em diante é ambiente real
+export ADAS_REPOS_CONF="$T/repos.conf"
+echo "$R" > "$T/repos.conf"
+out=$(bash "$ROOT/host/adas-resolve.sh" "$R/sub/dir")
+[ "$out" = "$R" ] && ok "adas-resolve.sh acha a raiz de um path dentro do repo" || bad "adas-resolve.sh não resolveu (out=$out)"
+bash "$ROOT/host/adas-resolve.sh" "/nao/e/governado" >/dev/null 2>&1
+expect_exit 1 "adas-resolve.sh: path fora de repo governado → rc=1" bash "$ROOT/host/adas-resolve.sh" "/nao/e/governado"
+out=$(bash "$ROOT/host/adas-secret-guard.sh" "cat .env")
+echo "$out" | grep -q '^block:seguranca-acesso' && ok "secret-guard BLOQUEIA cat .env" || bad "secret-guard não bloqueou cat .env (out=$out)"
+out=$(bash "$ROOT/host/adas-secret-guard.sh" "cat .env.example")
+[ "$out" = "allow" ] && ok "secret-guard PERMITE .env.example" || bad "secret-guard bloqueou .env.example por engano (out=$out)"
+out=$(bash "$ROOT/host/adas-secret-guard.sh" "ls -la")
+[ "$out" = "allow" ] && ok "secret-guard PERMITE comando inofensivo" || bad "secret-guard bloqueou comando inofensivo (out=$out)"
+out=$(bash "$ROOT/host/adas-secret-guard.sh" "cat .env && rm -rf /")
+echo "$out" | grep -q '^block:' && ok "secret-guard bloqueia mesmo com comando encadeado (&&)" || bad "secret-guard vazou comando encadeado (out=$out)"
+unset ADAS_REPOS_CONF
+
+echo "== 14) plugins multi-harness — build/testes reais rodam (não só existem)"
+if command -v npm >/dev/null 2>&1 && [ -d "$ROOT/host/openclaw-plugin/node_modules/openclaw" ]; then
+  ( cd "$ROOT/host/openclaw-plugin" && npm test >/tmp/adas-openclaw-smoke.log 2>&1 )
+  oc_rc=$?
+  [ "$oc_rc" = 0 ] && ok "adas-openclaw: build+vitest verdes" || bad "adas-openclaw: npm test falhou (rc=$oc_rc, ver /tmp/adas-openclaw-smoke.log)"
+else
+  echo "  (pulado — sem npm/openclaw linkado neste ambiente; rode 'npm test' manualmente em host/openclaw-plugin/)"
+fi
+if command -v python3 >/dev/null 2>&1 && python3 -c "import pytest" >/dev/null 2>&1; then
+  ( cd "$ROOT/host/hermes-plugin" && python3 -m pytest test_adas_hermes.py -q >/tmp/adas-hermes-smoke.log 2>&1 )
+  hm_rc=$?
+  [ "$hm_rc" = 0 ] && ok "adas-hermes: pytest verde" || bad "adas-hermes: pytest falhou (rc=$hm_rc, ver /tmp/adas-hermes-smoke.log)"
+else
+  echo "  (pulado — sem pytest neste ambiente)"
+fi
 
 echo
 echo "RESULTADO: $pass ok, $fail falha(s)"

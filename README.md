@@ -79,19 +79,46 @@ você não escreve") — encaixadas no frame existente, **sem braço novo** (o p
   **se RECUSA a inventar "% de aderência"** — não há baseline do que a LLM teria inventado, então % seria chute.
   Espelha o `/ponytail-gain` (que nunca imprime número por-repo) e a regra "medir antes de substituir".
 
-### Runtime anti-decaimento (PASSO 11 — do ponytail, só Claude Code)
+### Runtime anti-decaimento (PASSO 11 — do ponytail, multi-harness)
 O JIT (PASSO 6) injeta a regra no instante da edição — mas a aderência ainda decai por **4 buracos**:
 sessão que nasce **fora do repo** (num hub multi-repo o `.claude/settings.json` do repo **nem carrega**
 — o ADAS fica inerte sem ninguém perceber), **compactação/resume** (o "leia o ADAS.md" do turno 1
 evapora), **subagents órfãos** (nascem sem o contexto do pai — e é onde a invenção nasce) e **injeção
-dupla** (user+project settings se mesclam). A camada [`host/`](host/) fecha os quatro: `SessionStart
-(startup|resume|clear|compact)` reinjeta o **núcleo** do `ADAS.md` (seção `<!-- adas-core-start/end -->`)
-nas fronteiras de contexto; `SubagentStart` injeta em todo subagent (envelope obrigatório);
-`adas-route.sh` (PreToolUse user-level) roteia pelo path e delega ao `adas-inject.sh` **do repo**
-(texto versionado com o código), com guard anti-dupla. Estado por repo, tudo fail-open — e o que
-**não** absorver do ponytail está documentado em [`host/README.md`](host/README.md). Instalação:
-`bash host/install.sh /caminho/repo1 …` (idempotente; faz scripts → `repos.conf` → merge do
+dupla** (user+project settings se mesclam). No **Claude Code**, a camada [`host/`](host/) fecha os
+quatro: `SessionStart (startup|resume|clear|compact)` reinjeta o **núcleo** do `ADAS.md` (seção
+`<!-- adas-core-start/end -->`) nas fronteiras de contexto; `SubagentStart` injeta em todo subagent
+(envelope obrigatório); `adas-route.sh` (PreToolUse user-level) roteia pelo path e delega ao
+`adas-inject.sh` **do repo** (texto versionado com o código), com guard anti-dupla. Estado por repo,
+tudo fail-open — e o que **não** absorver do ponytail está documentado em [`host/README.md`](host/README.md).
+Instalação: `bash host/install.sh /caminho/repo1 …` (idempotente; faz scripts → `repos.conf` → merge do
 `settings-snippet.json` preservando o que existe).
+
+**OpenClaw e Hermes também têm runtime** ([`host/openclaw-plugin/`](host/openclaw-plugin/),
+[`host/hermes-plugin/`](host/hermes-plugin/)) — cada um chama os MESMOS scripts do `host/`
+(`adas-resolve.sh`/`adas-core.sh`/`adas-secret-guard.sh`) via subprocess, nunca reimplementa a
+regra. A forma muda por harness (ver a tabela abaixo) — nos dois, um plugin nativo consegue
+**bloquear** um comando proibido pela faixa, não só injetar contexto (mais forte que o Claude Code
+hoje). Detalhe completo, o que cada harness cobre e o que NÃO cobre, e como testar: ver
+[`Instalação por harness`](#instalação-por-harness) mais abaixo.
+
+## Instalação por harness
+
+| | **Claude Code** (referência) | **OpenClaw** | **Hermes** |
+|---|---|---|---|
+| **O que copiar** (documento) | `skeleton/` inteiro (`.specs/`, faixas, `ADAS.md`, `DECISIONS.md`) — igual pra qualquer harness/LLM, nada específico aqui | mesmo `skeleton/` — o documento não muda | mesmo `skeleton/` — o documento não muda |
+| **O que instalar** (mecanismo) | `.claude/settings.json` do repo (JIT por faixa) + opcional `host/install.sh` (runtime anti-decaimento) | [`host/openclaw-plugin/`](host/openclaw-plugin/) (`npm install && npm run build && openclaw plugins install . --link`) | [`host/hermes-plugin/`](host/hermes-plugin/) (copiar pra `plugins/adas-hermes/` ou `hermes plugins install`) |
+| **Onde liga** | `.claude/settings.json` do repo (JIT) + `~/.claude/settings.json` (runtime, via `host/settings-snippet.json`) | config do plugin (`adasHome`) + `~/.claude/adas/repos.conf` (compartilhado) | `ADAS_HOME` (env) ou `~/adas` + mesmo `~/.claude/adas/repos.conf` |
+| **Núcleo do ADAS.md por turno/sessão** | `SessionStart` (reinjeta nas fronteiras: startup/resume/clear/compact) | `before_prompt_build` (roda TODO turno — sem "buraco" de compactação, por desenho) | `register_system_prompt_section` (congelado em CADA sessão nova) |
+| **Subagente** | `SubagentStart` (envelope `additionalContext` obrigatório) | mesmo `before_prompt_build` (cobre turnos de subagente) — **não provado contra subagente real** | `subagent_start` (existe, confirmado) — **não provado se é redundante com a seção de prompt** |
+| **Faixa por-arquivo no instante da edição** (JIT, PASSO 6) | `PreToolUse` (`Edit\|Write\|MultiEdit`) → `adas-inject.sh` do repo, injeta a faixa que casa o glob | **não coberto** por este plugin ainda | **não coberto** por este plugin ainda |
+| **Bloqueio de comando proibido** | **não existe** — o ADAS no Claude Code hoje só injeta contexto no PreToolUse, nunca recusa a ferramenta | `before_tool_call` com `block: true` (mais forte que o Claude Code) | `pre_tool_call` com `{"action":"block", ...}` (mesmo contrato do plugin real `security-guidance` deste repo Hermes) |
+| **Testar que os ganchos disparam** | `host/README.md#teste-rápido` (comandos prontos, sem abrir sessão) | `cd host/openclaw-plugin && npm test` (real, sem Gateway) — ver `host/openclaw-plugin/README.md` pro que falta pra loader-backed | `cd host/hermes-plugin && python3 -m pytest -v` (real, sem Hermes rodando) — ver `host/hermes-plugin/README.md` pro que falta em produção |
+| **Custo/política** | assinatura Claude (`claude` CLI) | roda o binário `claude-cli` — caminho permitido pela conta usada nesta instância | **API key** — o OAuth de assinatura foi cortado pra harnesses de terceiro, e o Hermes é nomeado explicitamente nessa restrição; sem key própria, não roda |
+
+Cada seção do README de cada plugin (`host/openclaw-plugin/README.md`, `host/hermes-plugin/README.md`)
+lista, sem inventar equivalência, exatamente o que foi PROVADO e o que ficou marcado como não-provado
+por falta de acesso a uma instância real desses dois harnesses (ver DA correspondente em
+`DECISIONS.md`).
 
 ### Faixa = Anthropic Skill (formato oficial, não reinventado)
 Uma faixa do ADAS **é** uma [Anthropic Skill](https://github.com/anthropics/skills) (mesmo `SKILL.md` + frontmatter).

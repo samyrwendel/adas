@@ -1,0 +1,19 @@
+{
+  "id": "adas-openclaw",
+  "name": "ADAS (Anti-Drift Adherence System)",
+  "description": "Injeta a governança ADAS (ADAS.md do repo + faixas) no início de cada turno e bloqueia comandos que violam a faixa seguranca-acesso (ex.: ler .env fora do lugar). Lê a MESMA fonte que o host Claude Code (host/adas-core.sh, host/adas-secret-guard.sh) — nenhuma regra reimplementada aqui.",
+  "version": "0.1.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "adasHome": {
+        "type": "string",
+        "description": "Caminho do repo adas (onde estão host/adas-core.sh, adas-resolve.sh, adas-secret-guard.sh). Default: $HOME/adas."
+      }
+    }
+  },
+  "activation": {
+    "onStartup": true
+  }
+}

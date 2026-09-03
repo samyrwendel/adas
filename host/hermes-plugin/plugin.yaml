@@ -1,0 +1,8 @@
+name: adas-hermes
+version: "0.1.0"
+description: "Injeta a governanca ADAS (ADAS.md do repo + faixas) no inicio de cada sessao/subagent e bloqueia comando que viola a faixa seguranca-acesso (ex.: ler .env fora do lugar). Le a MESMA fonte que o host Claude Code (host/adas-core.sh, host/adas-secret-guard.sh) -- nenhuma regra reimplementada aqui."
+author: "samyrwendel/adas"
+hooks:
+  - on_session_start
+  - subagent_start
+  - pre_tool_call

@@ -1,4 +1,9 @@
-# host/ — Runtime anti-decaimento do ADAS (PASSO 11, opcional — só Claude Code)
+# host/ — Runtime anti-decaimento do ADAS (PASSO 11, opcional)
+
+> Este documento é a referência **Claude Code**. Para OpenClaw e Hermes, ver
+> [`openclaw-plugin/README.md`](openclaw-plugin/README.md) e [`hermes-plugin/README.md`](hermes-plugin/README.md)
+> — os três chamam os MESMOS scripts abaixo (`adas-resolve.sh`/`adas-core.sh`/`adas-secret-guard.sh`),
+> só a forma de ligar no harness muda. Visão geral comparativa: [README.md raiz, "Instalação por harness"](../README.md#instalação-por-harness).
 
 > O JIT por faixa (PASSO 6) injeta a regra **no instante da edição** — é a parte mais forte do ADAS.
 > Mas sozinho ele deixa **quatro buracos** por onde a aderência decai numa sessão longa. Esta camada
