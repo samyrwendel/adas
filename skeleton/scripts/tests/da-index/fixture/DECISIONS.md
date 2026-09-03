@@ -56,7 +56,7 @@ Date:   Thu Jan 1 00:00:02 2026 -0400
 ## DA-005 — DA-cabeça com tags compostas, consolidando DA-001
 `escopo: produto,instância` · `saga: saga-teste, outra-saga` · `data: 2026-01-05` · `refs: DA-001` · `consolida: DA-001` · `supersede: —`
 **Regra:** Regra vigente da cabeça, consolidando a saga-teste.
-**Motivo:** motivo fundador de teste.
+**Motivo:** motivo fundador de teste, resolve de vez a faixa DA-001–DA-002 e também cita DA-003 solta.
 **Trade-off:** trade-off da cabeça de teste.
 **Lição:** lição transferível de teste.
 ### Histórico
@@ -66,3 +66,61 @@ Date:   Thu Jan 1 00:00:02 2026 -0400
 Texto qualquer de decisão em parágrafo solto, sem cabeçalho de tags e sem ### Decisão —
 este é o fallback de primeiro parágrafo. O escopo e a saga desta DA vêm inteiramente de
 DECISIONS-anexos/DA-182/membros.tsv (fixture), nunca de uma tag local.
+
+## DA-007 — Parágrafo de metadado quebrado em duas linhas não pode vazar a continuação (Regra-Fallback)
+`escopo: produto` · `saga: regra-fallback-swallow`
+
+**Data:** 2026-02-01 · **Pedido do Samyr, via mainbot** (task 20260201-001) · **Implementado
+por:** devbot. **Escopo:** `arquivo/qualquer.sh`, `outro/arquivo.py`.
+
+### O buraco
+Isto é o parágrafo de conteúdo real, que deve virar a Regra no índice. Nada disso é metadado.
+
+## DA-008 — Rótulo curto tipo "**O problema.**" não é frase de conteúdo válida (Regra-Fallback)
+`escopo: produto` · `saga: regra-fallback-curto`
+
+**Data:** 2026-02-02 · **Autor:** devbot. **Escopo:** `arquivo/qualquer.sh`.
+
+**O problema.** Isso é só a segunda frase deste parágrafo, que não deveria ser usada aqui.
+
+## DA-009 — Decisão em lista de alternativas extrai a frase do primeiro item (Regra-Fallback)
+`escopo: produto` · `saga: regra-fallback-lista`
+
+**Decisão, com a alternativa descartada e o porquê:**
+- **Manter o processo atual em produção** (escolhida). Complemento que continua
+  na linha seguinte do mesmo item.
+- **Trocar de tecnologia** (descartada). Não serve porque falha em produção.
+
+## DA-010 — Parágrafo que é só citação entre aspas/itálico não pode virar a Regra (Regra-Fallback)
+`escopo: produto` · `saga: regra-fallback-citacao`
+
+*"Isso é uma citação solta que não deveria nunca virar a Regra no índice de decisões."*
+
+Esta linha de conteúdo real, fora da citação, é que deve aparecer como Regra no índice gerado.
+
+## DA-011 — Parágrafo iniciado por atribuição sem tag Data também é metadado (Regra-Fallback)
+`escopo: produto` · `saga: regra-fallback-atribuicao`
+
+**Decidido por:** Samyr, numa conversa qualquer, sem tag de Data nesta linha específica.
+
+Este parágrafo é o conteúdo de verdade que deve virar a Regra mostrada no índice gerado.
+
+## DA-012 — Frase de conteúdo longa demais não vira Regra, cai no fallback ver DA-NNN (Regra-Fallback)
+`escopo: produto` · `saga: regra-fallback-longa`
+
+Esta é uma frase de conteúdo propositalmente muito longa para ultrapassar de propósito o teto de
+duzentos e quarenta caracteres estabelecido pela regra de extração determinística da Regra,
+continuando ainda um bom pedaço mais adiante até finalmente passar do limite com folga suficiente
+para o teste do harness não deixar dúvida nenhuma sobre a validação de tamanho máximo aceito.
+
+## DA-013 — Data vem de linha em negrito isolada no corpo, sem tag e sem rótulo Data (Regra-Fallback)
+`escopo: produto` · `saga: regra-fallback-datas`
+
+**15/03/2026** · alguma referência qualquer, sem rótulo "Data:" explícito nesta linha.
+
+Conteúdo qualquer desta DA, só para ter um corpo mínimo de teste no harness.
+
+## DA-014 — DA genuinamente sem nenhuma data em lugar nenhum do corpo (Regra-Fallback)
+`escopo: produto` · `saga: regra-fallback-datas`
+
+Este corpo não menciona nenhuma data em formato reconhecível, em lugar nenhum do texto.

@@ -52,9 +52,81 @@ function mark_targets(map_name, targets, by,    k, a, i, key) {
     else if (map_name == "con") { if (!(key in conby)) conby[key] = by }
   }
 }
+
+# ---- Regra fallback (b), consciente de PARÁGRAFO (DA-181 fix pós-teste 03/09) --------------
+# Um parágrafo pode vir hard-wrapped em várias linhas físicas. A linha ORIGINAL só olhava a
+# 1a linha física pra decidir "é metadado?" — uma continuação como "por:** devbot. **Escopo:**"
+# (2a linha de um `**Data:** ... **Implementado\npor:** devbot...` quebrado) passava batida e
+# virava a Regra. Agora classifica o PARÁGRAFO inteiro (até linha em branco/heading/---) pela
+# 1a linha, e só then extrai a 1a FRASE (até .!?) do parágrafo de conteúdo real.
+function is_metadata_start(l) {
+  if (l ~ /^\*\*(Data|Status|Autor|Decidido por|Implementado por|Gatilho|Pedido do|Escopo)[:]?\*\*?/) return 1
+  if (l ~ /^Relacionadas:/) return 1
+  if (l ~ /^`/) return 1
+  if (l ~ /^>/) return 1
+  if (l ~ /^---/) return 1
+  if (l ~ /^[([]/) return 1
+  if (l ~ /^\*?"/) return 1
+  return 0
+}
+function strip_prefix_markup(s,    r) {
+  r = s
+  sub(/^[ \t]*([-*][ \t]+|[0-9]+\.[ \t]+)/, "", r)
+  gsub(/\*\*/, "", r)
+  return trim(r)
+}
+function first_sentence(s,    n2, i, ch, nx) {
+  n2 = length(s)
+  for (i = 1; i <= n2; i++) {
+    ch = substr(s, i, 1)
+    if (ch == "." || ch == "!" || ch == "?") {
+      nx = (i < n2) ? substr(s, i+1, 1) : ""
+      if (nx == "" || nx == " " || nx == "\t") return substr(s, 1, i)
+    }
+  }
+  return ""
+}
+function valid_sentence(s,    c) {
+  if (s == "") return 0
+  if (length(s) < 30 || length(s) > 240) return 0
+  c = substr(s, 1, 1)
+  if (c ~ /^[]["'`(){}*_.,;:!?#>—–-]/) return 0
+  return 1
+}
+# para_line: alimenta uma linha do corpo no acumulador do canal ch ("f"=1o parágrafo do
+# corpo inteiro, "d"=1o parágrafo dentro de uma seção ### Decisão). Fecha o parágrafo em
+# linha branca/heading/---; se o parágrafo fechado NÃO era metadado, tenta commitá-lo
+# (uma tentativa só — falhar validação não passa pro parágrafo seguinte, vira "none").
+function para_line(ch, line) {
+  if (ptried[ch]) return
+  if (!pactive[ch]) return
+  if (line ~ /^[[:space:]]*$/ || line ~ /^#/ || line ~ /^---[ \t]*$/) {
+    if (pbufopen[ch]) {
+      if (!pbufmeta[ch]) para_commit(ch)
+      pbufopen[ch] = 0; pbuf[ch] = ""; pbufmeta[ch] = 0
+    }
+    return
+  }
+  if (!pbufopen[ch]) { pbufopen[ch] = 1; pbufmeta[ch] = is_metadata_start(line); pbuf[ch] = trim(line) }
+  else pbuf[ch] = pbuf[ch] " " trim(line)
+}
+function para_commit(ch,    cleaned, sent) {
+  cleaned = strip_prefix_markup(pbuf[ch])
+  sent = first_sentence(cleaned)
+  if (valid_sentence(sent)) presult[ch] = sent
+  ptried[ch] = 1
+}
+function para_finalize(ch) {
+  if (!ptried[ch] && pbufopen[ch] && !pbufmeta[ch]) para_commit(ch)
+}
+function iso_from_br(d,    a) { split(d, a, "/"); return a[3] "-" a[2] "-" a[1] }
+
 function flush(   ) {
+  para_finalize("f"); para_finalize("d")
   if (cur != "") {
+    d0 = presult["d"]; f0 = presult["f"]
     if (regra == "") { if (d0 != "") { regra = d0; regrasrc = "decisao" } else if (f0 != "") { regra = f0; regrasrc = "paragrafo" } else regrasrc = "none" }
+    bodydata = (bodydata_label != "") ? bodydata_label : bodydateline
     n++
     ord[n] = cur; rawnum[n] = curraw; lineno[n] = curline; title_a[n] = t
     escopo_a[n] = e_escopo; saga_a[n] = e_saga; data_a[n] = e_data; refs_a[n] = e_refs
@@ -69,9 +141,12 @@ function flush(   ) {
   }
   cur=""; curraw=""; curline=0; t=""
   e_escopo=""; e_saga=""; e_data=""; e_refs=""; e_consolida=""; e_supersede=""; e_medido=""
-  regra=""; regrasrc="none"; motivo=""; tradeoff=""; licao=""; bodydata=""; d0=""; f0=""
+  regra=""; regrasrc="none"; motivo=""; tradeoff=""; licao=""; bodydata=""; bodydata_label=""; bodydateline=""; d0=""; f0=""
   bl=0; commitcount=0; efficiency_seen=0; tablelines=0
-  wantdec=0; inhist=0; historico_list=""; tagline_seen=0
+  inhist=0; historico_list=""; tagline_seen=0
+  ptried["f"]=0; ptried["d"]=0; pactive["f"]=1; pactive["d"]=0
+  pbufopen["f"]=0; pbufopen["d"]=0; pbuf["f"]=""; pbuf["d"]=""; pbufmeta["f"]=0; pbufmeta["d"]=0
+  presult["f"]=""; presult["d"]=""
 }
 /^## DA-[0-9]+/ { inbody = 1 }
 !inbody && /^- \*\*DA-[0-9]+\*\*/ && /[Ss]upersed[a-z]* (pela|por) DA-[0-9]+/ {
@@ -118,11 +193,32 @@ cur == "" { next }
   if (motivo == "" && match(line, /^\*\*Motivo:?\*\*[:]?[ \t]*/)) motivo = substr(line, RLENGTH+1)
   if (tradeoff == "" && match(line, /^\*\*Trade-off:?\*\*[:]?[ \t]*/)) tradeoff = substr(line, RLENGTH+1)
   if (licao == "" && match(line, /^\*\*Li(ção|cao):?\*\*[:]?[ \t]*/)) licao = substr(line, RLENGTH+1)
-  if (bodydata == "" && match(line, /\*\*Data:?\*\*[:]?[ \t]*/)) { bodydata = substr(line, RSTART+RLENGTH); sub(/[ \t]*·.*$/, "", bodydata) }
-  if (wantdec && line !~ /^[[:space:]]*$/ && length(line) >= 15 && line !~ /^[([]/) { d0 = line; wantdec = 0 }
-  if (d0 == "" && (line ~ /^### Decis/ || line ~ /^\*\*Decis[^*]*\*\*[[:space:]]*$/)) wantdec = 1
-  if (d0 == "" && !wantdec && match(line, /^\*\*Decis[^*]*\*\*[[:space:]]*:?[[:space:]]*/) && length(line) > RLENGTH) d0 = substr(line, RLENGTH+1)
-  if (f0 == "" && line !~ /^[[:space:]]*$/ && line !~ /^(\*\*Status|\*\*Data|`|>|#|---)/) f0 = line
+  # data do corpo: (2) linha "**Data:** YYYY-MM-DD" rotulada — pega o PREFIXO ISO (o resto da
+  # linha pode ter hora "20:07", parêntese "(noite autônoma)" etc.; só a data importa aqui)
+  if (bodydata_label == "" && match(line, /\*\*Data:?\*\*[:]?[ \t]*/)) {
+    bl_cand = substr(line, RSTART+RLENGTH)
+    if (match(bl_cand, /^[0-9]{4}-[0-9]{2}-[0-9]{2}/)) bodydata_label = substr(bl_cand, RSTART, RLENGTH)
+  }
+  # data do corpo: (3) 1a data (BR DD/MM/YYYY ou ISO) que abre a linha isolada — convenção comum
+  # quando não há rótulo "Data:" (ex.: "**23/08/2026** · refs ..."). NÃO pega data em prosa
+  # solta no meio da frase (ex.: "[Samyr, 22/07/2026, msg 1051]") — só a que abre a linha.
+  if (bodydateline == "" && match(line, /^\*{0,2}[0-9]{2}\/[0-9]{2}\/[0-9]{4}\*{0,2}/)) {
+    rawdt = substr(line, RSTART, RLENGTH); gsub(/\*/, "", rawdt); bodydateline = iso_from_br(rawdt)
+  } else if (bodydateline == "" && match(line, /^\*{0,2}[0-9]{4}-[0-9]{2}-[0-9]{2}\*{0,2}/)) {
+    rawdt = substr(line, RSTART, RLENGTH); gsub(/\*/, "", rawdt); bodydateline = rawdt
+  }
+  if (!ptried["d"] && !pactive["d"]) {
+    if (line ~ /^### Decis/ || line ~ /^\*\*Decis[^*]*\*\*[[:space:]]*$/) {
+      pactive["d"] = 1
+    } else if (match(line, /^\*\*Decis[^*]*\*\*[[:space:]]*:?[[:space:]]*/) && length(line) > RLENGTH) {
+      pactive["d"] = 1
+      para_line("d", substr(line, RLENGTH+1))
+    }
+  } else if (!ptried["d"]) {
+    para_line("d", line)
+    if (line ~ /^#/) pactive["d"] = 0
+  }
+  if (!ptried["f"]) para_line("f", line)
   if (line ~ /^### Hist(ó|o)rico/) inhist = 1
   else if (inhist && line ~ /^(##|---)/) inhist = 0
   else if (inhist && line ~ /^- DA-[0-9]/) historico_list = historico_list (historico_list=="" ? "" : ";") refs_in(line)
@@ -820,7 +916,7 @@ cmd_export_saga() {
     [ -n "${REGRA[$src]}" ] && [ "${REGRASRC[$src]}" != "none" ] && echo "**Regra:** ${REGRA[$src]}"
     [ -n "${MOTIVO[$src]}" ] && echo "**Motivo:** ${MOTIVO[$src]}"
     [ -n "${TRADEOFF[$src]}" ] && echo "**Trade-off:** ${TRADEOFF[$src]}"
-  } | sed -E 's/DA-[0-9]+[a-z]?//g'
+  } | sed -E 's/DA-[0-9]+[a-z]?[–-]DA-[0-9]+[a-z]?/[decisões internas]/g; s/DA-[0-9]+[a-z]?/[decisão interna]/g; s/  +/ /g'
 }
 
 MODE="${1:-}"; shift || true
