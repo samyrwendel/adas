@@ -8,13 +8,13 @@ DIR="$(dirname "$0")"
 
 base="${CLAUDE_PROJECT_DIR:-$PWD}"
 repo="$(adas_resolve "$base")"
+ctx=""
 if [ -n "$repo" ]; then
   ctx="$(bash "$DIR/adas-core.sh" "$repo" 2>/dev/null || true)"
 elif adas_is_hub "$base"; then
   ctx="$(adas_hub_header)"
-else
-  exit 0
 fi
+ctx="${ctx}$(adas_da_layer0 "$base" 2>/dev/null || true)"
 [ -n "$ctx" ] || exit 0
 printf '%s' "$ctx" | jq -Rs '{hookSpecificOutput:{hookEventName:"SubagentStart",additionalContext:.}}' 2>/dev/null || true
 exit 0

@@ -1,149 +1,835 @@
 #!/usr/bin/env bash
-# da-index.sh — índice do DECISIONS.md que NASCE junto com a DA.
+# da-index.sh — índice + sagas do DECISIONS.md que NASCEM junto com a DA (DA-181/182).
 #
-# O problema que resolve: DECISIONS.md é append-only e cresce sem teto (no caso real que
-# gerou isto: 163 DAs, ~244k tokens). Consultar "isso já foi decidido?" exigiria ler tudo —
-# então ninguém lê, e decisões são violadas por desconhecimento. O índice é a versão que
-# CABE no contexto (1 linha por DA); o integral permanece intocado — o índice APONTA,
-# nunca substitui. NÃO compacta, NÃO resume, NÃO altera uma linha do corpo das DAs.
+# NÃO compacta, NÃO resume, NÃO altera uma linha do corpo das DAs — só DERIVA. O hook
+# PostToolUse da-index-hook.sh roda `update` no ATO de qualquer edição do DECISIONS.md;
+# o `check` (chamado pelo check-adas, check 10) ACUSA divergência — nunca passa batido.
 #
-# Mecanismo (a entrada nasce COM a DA, não depois): o hook PostToolUse
-# .claude/hooks/da-index-hook.sh roda `update` no ATO de qualquer edição do DECISIONS.md —
-# não depende de boa vontade de quem anexa. Anexou por fora do hook (echo >>, sed)?
-# O `check` (chamado pelo check-adas, check 10) ACUSA a divergência — nunca passa batido.
+# uso:
+#   da-index.sh update [dir]                          # (re)gera todos os gerados
+#   da-index.sh check  [dir]                           # regenera em tmp e compara; diverge = exit 1
+#   da-index.sh sagas [--escopo a,b] [--projeto nome] [dir]   # camada 0
+#   da-index.sh list  [--escopo a,b] [--saga slug] [--vigentes] [--desde AAAA-MM-DD] [dir]
+#   da-index.sh show DA-NNN [dir] | show --saga slug [dir] | show --anexos DA-NNN [dir]
+#   da-index.sh export-saga slug [dir]
+# [dir] = onde vivem DECISIONS.md e os gerados (default: cwd).
 #
-# uso: da-index.sh update [dir]   # (re)gera DECISIONS-INDEX.md a partir de DECISIONS.md
-#      da-index.sh check  [dir]   # regenera em tmp e compara; divergência = exit 1 barulhento
-# [dir] = onde vivem DECISIONS.md e DECISIONS-INDEX.md (default: cwd).
-#
-# Determinístico: mesmo DECISIONS.md ⇒ mesmo índice byte a byte (update é idempotente e
-# serve de regeneração em lote/backfill). Supersede é detectado por TEXTO, conservador —
-# relação que o texto não afirma NÃO é marcada:
-#   · "Supersedida/superseded por/pela DA-NNN" (na própria DA ou no índice embutido) → 🔄
-#   · "supersede ... DA-NNN" sem qualificador e sem negação ("NÃO supersede") → 🔄
-#   · com qualificador (PARCIAL, "a linha", "o escopo", "a regra", "o critério", "no campo")
-#     ou "corrige o escopo", ou "DA-X ... passa(m) a `escopo:" → ½ alterada por (parcial)
+# Determinístico: mesmo DECISIONS.md + membros.tsv ⇒ mesmos gerados byte a byte.
+# Grandfather: checks de qualidade (c1/c2/c4/c5) só valem para DA-NNN > 180 — o corpo
+# das DA-001..180 (a DA-127 inclusive) é intocável (DA-181/182) e nunca é re-julgado.
 set -uo pipefail
 
-MODE="${1:-}"; DIR="${2:-.}"
-DEC="$DIR/DECISIONS.md"; IDX="$DIR/DECISIONS-INDEX.md"
-[ "$MODE" = update ] || [ "$MODE" = check ] || { echo "uso: da-index.sh update|check [dir]"; exit 2; }
-[ -f "$DEC" ] || { echo "✗ da-index: $DEC não existe"; exit 2; }
+SELFDIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+SEP=$'\037'
+GRANDFATHER="${DA_INDEX_GRANDFATHER:-180}"   # DA-001..180 nunca são re-julgadas pelas checks de qualidade novas (override p/ harness de fixtures)
 
-gen() {
-  awk '
-    function flush() {
-      if (cur != "") { title[cur]=t; esc[cur]=e; dec[cur]=d; fp[cur]=f0; ord[++n]=cur }
-      t=""; e=""; d=""; f0=""; wantdec=0
-    }
-    function refs_in(s, seg,  m, out) {  # todos os DA-NNN de s, separados por espaço
-      out=""
-      while (match(s, /DA-[0-9]+/)) { out=out " " substr(s, RSTART, RLENGTH); s=substr(s, RSTART+RLENGTH) }
-      return out
-    }
-    function mark(kind, targets, by,  k, a, i) {
-      k=split(targets, a, " ")
-      for (i=1; i<=k; i++) if (a[i] != "" && a[i] != "DA-" by) {
-        if (kind=="sup") sup[a[i]]=by; else if (!(a[i] in sup)) par[a[i]]=by
-      }
-    }
-    # ---- índice embutido/preâmbulo (antes da 1ª DA): só auto-marcadores explícitos
-    /^## DA-[0-9]+/ { inbody=1 }
-    !inbody && /^- \*\*DA-[0-9]+\*\*/ && /[Ss]upersed[a-z]* (pela|por) DA-[0-9]+/ {
-      match($0, /DA-[0-9]+/); self=substr($0, RSTART, RLENGTH)
-      rest=substr($0, RSTART+RLENGTH)
-      if (match(rest, /[Ss]upersed[a-z]* (pela|por) DA-[0-9]+/)) {
-        seg=substr(rest, RSTART, RLENGTH); match(seg, /DA-[0-9]+/)
-        sup[self]=substr(seg, RSTART+3, RLENGTH-3)
-      }
-    }
-    # ---- cabeçalho de DA
-    /^## DA-[0-9]+ — / {
-      flush()
-      match($0, /DA-[0-9]+/); cur=substr($0, RSTART, RLENGTH)
-      t=$0; sub(/^## DA-[0-9]+ — /, "", t)   # sub() e não offset: o em-dash é multibyte
-      bl=0
-      next
-    }
-    cur == "" { next }
-    # ---- corpo da DA corrente
-    {
-      line=$0; bl++
-      # escopo declarado (DA-131 do caso real: `escopo: produto` LOGO SOB o título —
-      # só nas 3 primeiras linhas; menção a escopo no meio do corpo não é declaração)
-      if (e=="" && bl <= 3 && match(line, /`?escopo: ?[^` ]+/)) {
-        e=substr(line, RSTART, RLENGTH); sub(/^`?escopo: ?/, "", e)
-      }
-      # uma linha do que decide: 1ª linha após o rótulo Decisão; fallback = 1ª linha "de prosa"
-      if (wantdec && line !~ /^[[:space:]]*$/ && length(line) >= 15 && line !~ /^[([]/) { d=line; wantdec=0 }
-      if (d=="" && (line ~ /^### Decis/ || line ~ /^\*\*Decis[^*]*\*\*[[:space:]]*$/)) wantdec=1
-      if (d=="" && !wantdec && match(line, /^\*\*Decis[^*]*\*\*[[:space:]]*:?[[:space:]]*/) && length(line) > RLENGTH) d=substr(line, RLENGTH+1)
-      if (f0=="" && line !~ /^[[:space:]]*$/ && line !~ /^(\*\*Status|\*\*Data|`?escopo:|>|#|---)/) f0=line
-      # supersede/alteração — por TEXTO, mesma linha, conservador
-      if (line ~ /(NÃO|não|nao|Não) supersede/) next
-      if (match(line, /[Ss]upersed(ida|ed)[a-z]* (pela|por) DA-[0-9]+/)) {
-        seg=substr(line, RSTART, RLENGTH); match(seg, /DA-[0-9]+/)
-        sup[cur]=substr(seg, RSTART+3, RLENGTH-3)
-        next
-      }
-      if (match(line, /[Ss]upersede[a-z]*/)) {
-        seg=substr(line, RSTART)
-        if (match(seg, /[;.]/)) seg=substr(seg, 1, RSTART-1)   # só até o fim da oração
-        r=refs_in(seg)
-        if (r != "") {
-          if (seg ~ /(PARCIAL|parcial|a linha|o escopo|a regra|o crit[eé]rio|no campo)/) mark("par", r, substr(cur,4))
-          else mark("sup", r, substr(cur,4))
-        }
-        next
-      }
-      if (match(line, /corrige o escopo[a-z ]* d[aeo][a-z]* DA-[0-9]+/) || (line ~ /passam? a `?escopo:/ && line ~ /DA-[0-9]+/)) {
-        mark("par", refs_in(line), substr(cur,4))
-      }
-    }
-    END {
-      flush()
-      for (i=1; i<=n; i++) {
-        c=ord[i]
-        st=""
-        if (c in sup)      st=" · 🔄 SUPERSEDIDA por DA-" sup[c]
-        else if (c in par) st=" · ½ alterada por DA-" par[c]
-        sc=""; if (esc[c] != "") sc=" · escopo: " esc[c]
-        dl=dec[c]; if (dl=="") dl=fp[c]
-        gsub(/^[[:space:]*>-]+|[[:space:]]+$/, "", dl); gsub(/\*\*/, "", dl)
-        if (length(dl) > 140) { dl=substr(dl, 1, 137); sub(/[^ ]*$/, "", dl); dl=dl "..." }
-        printf "- %s%s%s — %s%s\n", c, sc, st, title[c], (dl=="" ? "" : " — " dl)
-      }
-    }
-  ' "$DEC"
+# ============================================================================
+# 1) PARSER — awk extrai um registro por DA (ver cabeçalho de campos abaixo)
+# ============================================================================
+_parse_awk() {
+cat <<'AWKEOF'
+BEGIN { SEP = sprintf("%c", 31); n = 0; inbody = 0 }
+function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
+function refs_in(s,    out) {
+  out = ""
+  while (match(s, /DA-[0-9]+[a-z]?/)) { out = out (out=="" ? "" : ",") substr(s, RSTART, RLENGTH); s = substr(s, RSTART+RLENGTH) }
+  return out
 }
-
-build() {
-  local n sha
-  n="$(grep -c '^## DA-[0-9]' "$DEC")"
-  sha="$(sha256sum "$DEC" | cut -c1-16)"
-  {
-    echo "# Índice de Decisões — GERADO de DECISIONS.md (NÃO EDITE À MÃO)"
-    echo "# Regenerar: bash scripts/da-index.sh update · Conferir: bash scripts/da-index.sh check"
-    echo "# Sem tag = vigente · 🔄 SUPERSEDIDA (íntegra) · ½ alterada (parcial — o resto vale) · o texto INTEGRAL das DAs segue no DECISIONS.md"
-    echo "# fonte: $n DAs · sha256(DECISIONS.md)=$sha"
-    echo
-    gen
+function refs_in_plain(s,    out) {
+  out = ""
+  while (match(s, /DA-[0-9]+/)) { out = out (out=="" ? "" : ",") substr(s, RSTART, RLENGTH); s = substr(s, RSTART+RLENGTH) }
+  return out
+}
+function csv_add(list, item) { if (item == "") return list; if (list == "") return item; return list "," item }
+function mark_targets(map_name, targets, by,    k, a, i, key) {
+  k = split(targets, a, ",")
+  for (i=1; i<=k; i++) {
+    key = trim(a[i]); if (key == "") continue
+    sub(/^DA-/, "", key)
+    if (key == by) continue
+    if (map_name == "sup") { if (!(key in supby)) supby[key] = by }
+    else if (map_name == "par") { if (!(key in parby)) parby[key] = by }
+    else if (map_name == "con") { if (!(key in conby)) conby[key] = by }
   }
 }
+function flush(   ) {
+  if (cur != "") {
+    if (regra == "") { if (d0 != "") { regra = d0; regrasrc = "decisao" } else if (f0 != "") { regra = f0; regrasrc = "paragrafo" } else regrasrc = "none" }
+    n++
+    ord[n] = cur; rawnum[n] = curraw; lineno[n] = curline; title_a[n] = t
+    escopo_a[n] = e_escopo; saga_a[n] = e_saga; data_a[n] = e_data; refs_a[n] = e_refs
+    consolida_a[n] = e_consolida; supersede_a[n] = e_supersede; medido_a[n] = e_medido
+    regra_a[n] = regra; regrasrc_a[n] = regrasrc
+    motivo_a[n] = motivo; tradeoff_a[n] = tradeoff; licao_a[n] = licao
+    bodydata_a[n] = bodydata; corpolines_a[n] = bl
+    haspaste_a[n] = (commitcount >= 3 || efficiency_seen == 1 || tablelines >= 2) ? 1 : 0
+    historico_a[n] = historico_list
+    if (e_supersede != "") mark_targets("sup", e_supersede, curraw)
+    if (e_consolida != "") mark_targets("con", e_consolida, curraw)
+  }
+  cur=""; curraw=""; curline=0; t=""
+  e_escopo=""; e_saga=""; e_data=""; e_refs=""; e_consolida=""; e_supersede=""; e_medido=""
+  regra=""; regrasrc="none"; motivo=""; tradeoff=""; licao=""; bodydata=""; d0=""; f0=""
+  bl=0; commitcount=0; efficiency_seen=0; tablelines=0
+  wantdec=0; inhist=0; historico_list=""; tagline_seen=0
+}
+/^## DA-[0-9]+/ { inbody = 1 }
+!inbody && /^- \*\*DA-[0-9]+\*\*/ && /[Ss]upersed[a-z]* (pela|por) DA-[0-9]+/ {
+  match($0, /DA-[0-9]+/); self = substr($0, RSTART+3, RLENGTH-3)
+  rest = substr($0, RSTART+RLENGTH)
+  if (match(rest, /[Ss]upersed[a-z]* (pela|por) DA-[0-9]+/)) {
+    seg = substr(rest, RSTART, RLENGTH); match(seg, /DA-[0-9]+/)
+    tgt = substr(seg, RSTART+3, RLENGTH-3)
+    if (!(self in supby)) supby[self] = tgt
+  }
+}
+/^## DA-[0-9]+ — / {
+  flush()
+  match($0, /DA-[0-9]+/); curraw = substr($0, RSTART+3, RLENGTH-3)
+  cur = "DA-" curraw; curline = NR
+  t = $0; sub(/^## DA-[0-9]+ — /, "", t)
+  bl = 0
+  next
+}
+cur == "" { next }
+{
+  line = $0; bl++
+  if (bl <= 3 && !tagline_seen && (index(line, "`escopo:") > 0 || index(line, "`saga:") > 0)) {
+    tagline_seen = 1
+    s = line
+    while (match(s, /`[^`]+`/)) {
+      tag = substr(s, RSTART+1, RLENGTH-2); s = substr(s, RSTART+RLENGTH)
+      ci = index(tag, ":")
+      if (ci > 0) {
+        key = trim(substr(tag, 1, ci-1)); val = trim(substr(tag, ci+1))
+        if (val == "—" || val == "-") val = ""
+        if (key == "escopo") e_escopo = csv_add(e_escopo, val)
+        else if (key == "saga") { k2 = split(val, sa, ","); for (j2=1;j2<=k2;j2++) e_saga = csv_add(e_saga, trim(sa[j2])) }
+        else if (key == "data") e_data = val
+        else if (key == "refs") e_refs = csv_add(e_refs, val)
+        else if (key == "consolida") e_consolida = csv_add(e_consolida, val)
+        else if (key == "supersede") e_supersede = csv_add(e_supersede, val)
+        else if (key == "medido") e_medido = val
+      }
+    }
+    next
+  }
+  if (regrasrc != "regra" && regra == "" && match(line, /^\*\*Regra:?\*\*[:]?[ \t]*/)) { regra = substr(line, RLENGTH+1); regrasrc = "regra" }
+  if (motivo == "" && match(line, /^\*\*Motivo:?\*\*[:]?[ \t]*/)) motivo = substr(line, RLENGTH+1)
+  if (tradeoff == "" && match(line, /^\*\*Trade-off:?\*\*[:]?[ \t]*/)) tradeoff = substr(line, RLENGTH+1)
+  if (licao == "" && match(line, /^\*\*Li(ção|cao):?\*\*[:]?[ \t]*/)) licao = substr(line, RLENGTH+1)
+  if (bodydata == "" && match(line, /\*\*Data:?\*\*[:]?[ \t]*/)) { bodydata = substr(line, RSTART+RLENGTH); sub(/[ \t]*·.*$/, "", bodydata) }
+  if (wantdec && line !~ /^[[:space:]]*$/ && length(line) >= 15 && line !~ /^[([]/) { d0 = line; wantdec = 0 }
+  if (d0 == "" && (line ~ /^### Decis/ || line ~ /^\*\*Decis[^*]*\*\*[[:space:]]*$/)) wantdec = 1
+  if (d0 == "" && !wantdec && match(line, /^\*\*Decis[^*]*\*\*[[:space:]]*:?[[:space:]]*/) && length(line) > RLENGTH) d0 = substr(line, RLENGTH+1)
+  if (f0 == "" && line !~ /^[[:space:]]*$/ && line !~ /^(\*\*Status|\*\*Data|`|>|#|---)/) f0 = line
+  if (line ~ /^### Hist(ó|o)rico/) inhist = 1
+  else if (inhist && line ~ /^(##|---)/) inhist = 0
+  else if (inhist && line ~ /^- DA-[0-9]/) historico_list = historico_list (historico_list=="" ? "" : ";") refs_in(line)
+  if (line ~ /^commit [0-9a-f]{40}$/) commitcount++
+  if (index(line, "Efficiency meter") > 0) efficiency_seen = 1
+  if (index(line,"────")>0 || index(line,"━━━━")>0 || index(line,"════")>0 || index(line,"░░░░")>0 || index(line,"▓▓▓▓")>0 || index(line,"█████")>0) tablelines++
+  if (line ~ /(NÃO|não|nao|Não) supersede/) next
+  if (match(line, /[Ss]upersed(ida|ed)[a-z]* (pela|por) DA-[0-9]+/)) {
+    seg = substr(line, RSTART, RLENGTH); match(seg, /DA-[0-9]+/)
+    tgt = substr(seg, RSTART+3, RLENGTH-3)
+    if (!(curraw in supby)) supby[curraw] = tgt
+    next
+  }
+  if (match(line, /[Ss]upersede[a-z]*/)) {
+    seg = substr(line, RSTART)
+    if (match(seg, /[;.]/)) seg = substr(seg, 1, RSTART-1)
+    r = refs_in_plain(seg)
+    if (r != "") {
+      if (seg ~ /(PARCIAL|parcial|a linha|o escopo|a regra|o crit(é|e)rio|no campo)/) mark_targets("par", r, curraw)
+      else mark_targets("sup", r, curraw)
+    }
+    next
+  }
+  if (match(line, /corrige o escopo[a-z ]* d[aeo][a-z]* DA-[0-9]+/) || (line ~ /passam? a `?escopo:/ && line ~ /DA-[0-9]+/)) {
+    mark_targets("par", refs_in_plain(line), curraw)
+  }
+}
+END {
+  flush()
+  for (i=1;i<=n;i++) totalcnt[rawnum[i]]++
+  for (i=1;i<=n;i++) {
+    if (totalcnt[rawnum[i]] > 1) { seen[rawnum[i]]++; suf = sprintf("%c", 96+seen[rawnum[i]]); key_a[i] = "DA-" rawnum[i] suf }
+    else key_a[i] = "DA-" rawnum[i]
+  }
+  for (i=1; i<=n; i++) {
+    ksuf = key_a[i]; sub(/^DA-/, "", ksuf)
+    ms = (ksuf in supby) ? supby[ksuf] : ((rawnum[i] in supby) ? supby[rawnum[i]] : "")
+    mp = (ksuf in parby) ? parby[ksuf] : ((rawnum[i] in parby) ? parby[rawnum[i]] : "")
+    mc = (ksuf in conby) ? conby[ksuf] : ((rawnum[i] in conby) ? conby[rawnum[i]] : "")
+    out = key_a[i] SEP rawnum[i] SEP lineno[i] SEP title_a[i] SEP \
+          escopo_a[i] SEP saga_a[i] SEP data_a[i] SEP refs_a[i] SEP \
+          consolida_a[i] SEP supersede_a[i] SEP medido_a[i] SEP \
+          regra_a[i] SEP regrasrc_a[i] SEP motivo_a[i] SEP tradeoff_a[i] SEP \
+          licao_a[i] SEP bodydata_a[i] SEP corpolines_a[i] SEP haspaste_a[i] SEP \
+          historico_a[i] SEP ms SEP mp SEP mc
+    print out
+  }
+}
+AWKEOF
+}
 
+# ============================================================================
+# 2) CARREGAMENTO — popula arrays globais a partir do DECISIONS.md + membros.tsv
+#    Campos (0-based, array KEY/RAWNUM/.../MCON), N = total de registros.
+# ============================================================================
+declare -a KEY RAWNUM LINE TITLE ESCOPO SAGA DATATAG REFS CONSOLIDA SUPERSEDE MEDIDO
+declare -a REGRA REGRASRC MOTIVO TRADEOFF LICAO BODYDATA CORPOLINES HASPASTE HISTORICO MSUP MPAR MCON
+declare -A MTSV_SAGA MTSV_ESCOPO
+declare -a EFF_SAGA EFF_ESCOPO   # indexado 0..N-1 (NÃO associativo — subscrito é aritmético)
+N=0
+
+# DA-024: fantasma conhecido (DA-182) — anunciada, nunca escrita; substância alhures.
+declare -A FANTASMA_REF=( ["DA-024"]="029" )
+
+load_records() {
+  local dir="$1"; local dec="$dir/DECISIONS.md"
+  KEY=(); RAWNUM=(); LINE=(); TITLE=(); ESCOPO=(); SAGA=(); DATATAG=(); REFS=(); CONSOLIDA=(); SUPERSEDE=(); MEDIDO=()
+  REGRA=(); REGRASRC=(); MOTIVO=(); TRADEOFF=(); LICAO=(); BODYDATA=(); CORPOLINES=(); HASPASTE=(); HISTORICO=(); MSUP=(); MPAR=(); MCON=()
+  local i=0
+  while IFS="$SEP" read -r f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12 f13 f14 f15 f16 f17 f18 f19 f20 f21 f22 f23; do
+    KEY[i]="$f1"; RAWNUM[i]="$f2"; LINE[i]="$f3"; TITLE[i]="$f4"; ESCOPO[i]="$f5"; SAGA[i]="$f6"; DATATAG[i]="$f7"
+    REFS[i]="$f8"; CONSOLIDA[i]="$f9"; SUPERSEDE[i]="$f10"; MEDIDO[i]="$f11"; REGRA[i]="$f12"; REGRASRC[i]="$f13"
+    MOTIVO[i]="$f14"; TRADEOFF[i]="$f15"; LICAO[i]="$f16"; BODYDATA[i]="$f17"; CORPOLINES[i]="$f18"; HASPASTE[i]="$f19"
+    HISTORICO[i]="$f20"; MSUP[i]="$f21"; MPAR[i]="$f22"; MCON[i]="$f23"
+    i=$((i+1))
+  done < <(awk "$(_parse_awk)" "$dec")
+  N=$i
+
+  MTSV_SAGA=(); MTSV_ESCOPO=()
+  local mtsv="$dir/DECISIONS-anexos/DA-182/membros.tsv"
+  if [ -f "$mtsv" ]; then
+    local da s e f first=1
+    while IFS=$'\t' read -r da s e f; do
+      [ "$first" = 1 ] && { first=0; continue; }
+      [ -z "$da" ] && continue
+      MTSV_SAGA["$da"]="$s"; MTSV_ESCOPO["$da"]="$e"
+    done < "$mtsv"
+  fi
+
+  EFF_SAGA=(); EFF_ESCOPO=()
+  local idx
+  for ((idx=0; idx<N; idx++)); do
+    local es="${SAGA[idx]}"; [ -z "$es" ] && es="${MTSV_SAGA[${KEY[idx]}]:-}"
+    local ee="${ESCOPO[idx]}"; [ -z "$ee" ] && ee="${MTSV_ESCOPO[${KEY[idx]}]:-}"
+    EFF_SAGA[idx]="$es"; EFF_ESCOPO[idx]="$ee"
+  done
+}
+
+# marca final de uma DA (índice i): "" (vigente) | "sup:<alvo>" | "par:<alvo>" | "con:<alvo>"
+mark_of() {
+  local i="$1"
+  [ -n "${MSUP[i]}" ] && { echo "sup:${MSUP[i]}"; return; }
+  [ -n "${MPAR[i]}" ] && { echo "par:${MPAR[i]}"; return; }
+  [ -n "${MCON[i]}" ] && { echo "con:${MCON[i]}"; return; }
+  echo ""
+}
+mark_render() {   # "🔄 por DA-x" | "½ por DA-y" | "📚 em DA-z" | ""
+  local m; m="$(mark_of "$1")"
+  [ -z "$m" ] && { echo ""; return; }
+  local kind="${m%%:*}" tgt="${m#*:}"
+  case "$kind" in
+    sup) echo "🔄 por DA-$tgt" ;;
+    par) echo "½ por DA-$tgt" ;;
+    con) echo "📚 em DA-$tgt" ;;
+  esac
+}
+
+trunc() {  # trunc "$texto" N
+  local s="$1" n="$2"
+  if [ "${#s}" -le "$n" ]; then printf '%s' "$s"; return; fi
+  printf '%s...' "${s:0:$((n-3))}"
+}
+
+# ============================================================================
+# 3) AGRUPAMENTO POR SAGA
+# ============================================================================
+declare -A SAGA_MEMBERS SAGA_ESCOPO SAGA_HEAD_IDX
+SAGA_SLUGS=()
+
+group_sagas() {
+  SAGA_MEMBERS=(); SAGA_ESCOPO=(); SAGA_HEAD_IDX=(); SAGA_SLUGS=()
+  local idx slug
+  for ((idx=0; idx<N; idx++)); do
+    [ -z "${EFF_SAGA[idx]}" ] && continue
+    IFS=',' read -ra _slugs <<< "${EFF_SAGA[idx]}"
+    for slug in "${_slugs[@]}"; do
+      slug="$(printf '%s' "$slug" | sed 's/^[ \t]*//;s/[ \t]*$//')"
+      [ -z "$slug" ] && continue
+      [ "$slug" = "fantasma" ] && continue
+      if [ -z "${SAGA_MEMBERS[$slug]:-}" ]; then SAGA_SLUGS+=("$slug"); fi
+      SAGA_MEMBERS[$slug]+="$idx "
+      if [ -z "${SAGA_ESCOPO[$slug]:-}" ] && [ -n "${EFF_ESCOPO[idx]}" ]; then SAGA_ESCOPO[$slug]="${EFF_ESCOPO[idx]}"; fi
+      if [ -n "${CONSOLIDA[idx]}" ]; then SAGA_HEAD_IDX[$slug]="$idx"; fi
+    done
+  done
+  IFS=$'\n' SAGA_SLUGS=($(sort <<<"${SAGA_SLUGS[*]}")); unset IFS
+}
+
+# membros de uma saga, ORDENADOS por LINE (ordem no diário). Ecoa índices separados por espaço.
+saga_members_sorted() {
+  local slug="$1" idx
+  local -a idxs=(${SAGA_MEMBERS[$slug]:-})
+  local -a withline=()
+  for idx in "${idxs[@]}"; do withline+=("${LINE[idx]}:$idx"); done
+  printf '%s\n' "${withline[@]}" | sort -t: -k1,1n | cut -d: -f2
+}
+
+# fonte da "Regra atual" de uma saga: última DA vigente por ordem no diário
+# (a da cabeça quando não há rodada depois; a própria cabeça se regra não parseia => "ver DA-NNN")
+saga_regra_source_idx() {
+  local slug="$1"
+  local -a members=($(saga_members_sorted "$slug"))
+  local head="${SAGA_HEAD_IDX[$slug]:-}"
+  if [ -z "$head" ]; then
+    echo "${members[-1]}"
+    return
+  fi
+  local headline="${LINE[$head]}"
+  local last="$head" idx
+  for idx in "${members[@]}"; do
+    [ "${LINE[$idx]}" -gt "$headline" ] && last="$idx"
+  done
+  echo "$last"
+}
+
+saga_rodadas_depois_da_cabeca() {  # conta membros com LINE > cabeça
+  local slug="$1"
+  local head="${SAGA_HEAD_IDX[$slug]:-}"
+  [ -z "$head" ] && { echo 0; return; }
+  local headline="${LINE[$head]}" idx c=0
+  for idx in $(saga_members_sorted "$slug"); do
+    [ "${LINE[$idx]}" -gt "$headline" ] && c=$((c+1))
+  done
+  echo "$c"
+}
+
+saga_estado() {  # viva|encerrada — heurística: título/regra da última DA menciona "encerr"
+  local slug="$1"
+  local -a members=($(saga_members_sorted "$slug"))
+  local last="${members[-1]}"
+  if printf '%s %s' "${TITLE[$last]}" "${REGRA[$last]}" | grep -qiE 'encerr(ada|amento)'; then
+    echo "encerrada"
+  else
+    echo "viva"
+  fi
+}
+
+# ============================================================================
+# 4) GERAÇÃO — DECISIONS-INDEX.md / DECISIONS-SAGAS.md / DECISIONS-LICOES.md /
+#    DECISIONS-VIGENTE-<escopo>.md
+# ============================================================================
+saga_summary_line() {
+  local slug="$1"
+  local -a members=($(saga_members_sorted "$slug"))
+  local escopo="${SAGA_ESCOPO[$slug]:-—}"
+  local head="${SAGA_HEAD_IDX[$slug]:-}"
+  local cabeca="—"; [ -n "$head" ] && cabeca="${KEY[$head]}"
+  local n_das="${#members[@]}"
+  local memlist=""; local idx
+  for idx in "${members[@]}"; do memlist+="${memlist:+, }${KEY[$idx]}"; done
+  local src; src="$(saga_regra_source_idx "$slug")"
+  local regra="ver ${KEY[$src]}"
+  [ "${REGRASRC[$src]}" != "none" ] && regra="$(trunc "${REGRA[$src]}" 200)"
+  local rodadas; rodadas="$(saga_rodadas_depois_da_cabeca "$slug")"
+  local aviso=""
+  if [ -n "$head" ] && [ "$rodadas" -ge 1 ]; then
+    local extras=""
+    local hl="${LINE[$head]}"
+    for idx in "${members[@]}"; do [ "${LINE[$idx]}" -gt "$hl" ] && extras+="${extras:+, }${KEY[$idx]}"; done
+    aviso=" · ⚠ $rodadas rodada(s) depois da cabeça $cabeca — ler $extras"
+    [ "$rodadas" -ge 3 ] && aviso+=" (hora de nova cabeça)"
+  fi
+  printf -- "- %s · %s · cabeça: %s · %s DA%s · membros: %s · Regra: %s%s\n" \
+    "$slug" "$escopo" "$cabeca" "$n_das" "$([ "$n_das" = 1 ] && echo "" || echo "s")" "$memlist" "$regra" "$aviso"
+}
+
+build_sagas_block() {   # usado tanto por 'sagas' quanto pelo bloco embutido do INDEX
+  local filtro_escopo="$1"   # csv ou vazio
+  local slug
+  for slug in "${SAGA_SLUGS[@]}"; do
+    if [ -n "$filtro_escopo" ]; then
+      local match=0 fe se
+      IFS=',' read -ra _fe <<< "$filtro_escopo"
+      for fe in "${_fe[@]}"; do
+        IFS=',' read -ra _se <<< "${SAGA_ESCOPO[$slug]:-}"
+        for se in "${_se[@]}"; do [ "$se" = "$fe" ] && match=1; done
+      done
+      [ "$match" = 0 ] && continue
+    fi
+    saga_summary_line "$slug"
+  done
+}
+
+index_line_for() {
+  local i="$1"
+  local escopo="${EFF_ESCOPO[i]:-—}"; local saga="${EFF_SAGA[i]:-—}"
+  local marca; marca="$(mark_render "$i")"
+  local regra="${REGRA[$i]}"; [ "${REGRASRC[$i]}" = "none" ] && regra=""
+  local sufixo=""; [ -n "$marca" ] && sufixo=" · $marca"
+  printf -- "- %s · %s · %s%s — %s%s\n" \
+    "${KEY[$i]}" "$escopo" "$saga" "$sufixo" "${TITLE[$i]}" "$([ -n "$regra" ] && echo " — $(trunc "$regra" 140)" || echo "")"
+}
+
+build_index() {
+  local dir="$1"; local dec="$dir/DECISIONS.md"
+  local nheaders sha; nheaders="$(grep -c '^## DA-[0-9]' "$dec")"; sha="$(sha256sum "$dec" | cut -c1-16)"
+  echo "# Índice de Decisões — GERADO de DECISIONS.md (NÃO EDITE À MÃO)"
+  echo "# Regenerar: bash scripts/da-index.sh update · Conferir: bash scripts/da-index.sh check"
+  echo "# Sem marca = vigente · 🔄 por DA-x = SUPERSEDIDA (íntegra) · ½ por DA-y = alterada (parcial) · 📚 em DA-z = consolidada na cabeça da saga"
+  echo "# fonte: $nheaders cabeçalhos (182 chaves com DA-012a/012b; DA-024 é fantasma) · sha256(DECISIONS.md)=$sha"
+  echo
+  echo "<!-- da-sagas-start -->"
+  echo "## Sagas"
+  build_sagas_block ""
+  echo "<!-- da-sagas-end -->"
+  echo
+  local i inserted024=0
+  for ((i=0; i<N; i++)); do
+    if [ "$inserted024" = 0 ] && [ "$(nv "${RAWNUM[i]}")" -gt 24 ]; then
+      printf -- "- DA-024 · fantasma → ver DA-%s (anunciada no índice congelado, nunca escrita)\n" "${FANTASMA_REF[DA-024]:-029}"
+      inserted024=1
+    fi
+    index_line_for "$i"
+  done
+  if [ "$inserted024" = 0 ]; then
+    printf -- "- DA-024 · fantasma → ver DA-%s (anunciada no índice congelado, nunca escrita)\n" "${FANTASMA_REF[DA-024]:-029}"
+  fi
+  return 0
+}
+
+build_sagas_md() {
+  echo "# DECISIONS-SAGAS.md — NA-<slug>, GERADO de DECISIONS.md (NÃO EDITE À MÃO)"
+  echo "# Regenerar: bash scripts/da-index.sh update · uma seção por saga com 2+ DAs. Ninguém escreve aqui — é awk."
+  echo
+  local slug
+  for slug in "${SAGA_SLUGS[@]}"; do
+    local -a members=($(saga_members_sorted "$slug"))
+    [ "${#members[@]}" -lt 2 ] && continue
+    local escopo="${SAGA_ESCOPO[$slug]:-—}"
+    local head="${SAGA_HEAD_IDX[$slug]:-}"
+    local cabeca="—"; [ -n "$head" ] && cabeca="${KEY[$head]}"
+    local memlist=""; local idx
+    for idx in "${members[@]}"; do memlist+="${memlist:+, }${KEY[$idx]}"; done
+    local src; src="$(saga_regra_source_idx "$slug")"
+    local regra="ver ${KEY[$src]}"
+    [ "${REGRASRC[$src]}" != "none" ] && regra="${REGRA[$src]}"
+    local msrc="$head"; [ -z "$msrc" ] && msrc="${members[-1]}"
+    local motivo="${MOTIVO[$msrc]:-—}"; local tradeoff="${TRADEOFF[$msrc]:-—}"; local licao="${LICAO[$msrc]:-—}"
+    local rodadas; rodadas="$(saga_rodadas_depois_da_cabeca "$slug")"
+    local estado; estado="$(saga_estado "$slug")"
+
+    echo "## NA-$slug"
+    echo "- escopo: $escopo"
+    echo "- cabeça: $cabeca"
+    echo "- membros: $memlist"
+    echo "- **Regra atual:** $regra"
+    echo "- Motivo: $motivo"
+    echo "- Trade-off: $tradeoff"
+    echo "- Lição: $licao"
+    echo "### Histórico"
+    for idx in "${members[@]}"; do
+      local data="${DATATAG[$idx]:-${BODYDATA[$idx]:-—}}"
+      local mr; mr="$(mark_render "$idx")"; [ -z "$mr" ] && mr="vigente"
+      local medido="${MEDIDO[$idx]:-—}"
+      local rline="${REGRA[$idx]}"; [ "${REGRASRC[$idx]}" = "none" ] && rline="—"
+      printf -- "- %s · %s · %s · %s · %s · medido: %s\n" "$data" "${KEY[$idx]}" "${TITLE[$idx]}" "$(trunc "$rline" 120)" "$mr" "$medido"
+    done
+    if [ -n "$head" ] && [ "$rodadas" -ge 1 ]; then
+      local extras="" hl="${LINE[$head]}"
+      for idx in "${members[@]}"; do [ "${LINE[$idx]}" -gt "$hl" ] && extras+="${extras:+, }${KEY[$idx]}"; done
+      echo "> ⚠ $rodadas rodada(s) depois da cabeça $cabeca — ler $extras$([ "$rodadas" -ge 3 ] && echo ' — hora de nova cabeça')"
+    fi
+    echo "- estado: $estado"
+    echo
+  done
+}
+
+build_licoes() {
+  echo "# DECISIONS-LICOES.md — GERADO de DECISIONS.md (NÃO EDITE À MÃO). Injetado inteiro na sessão."
+  echo
+  declare -A appliedby
+  local i
+  for ((i=0; i<N; i++)); do
+    local l="${LICAO[i]}"
+    [ -z "$l" ] && continue
+    if [[ "$l" =~ ^[Aa]plica[[:space:]]+DA-([0-9]+[a-z]?) ]]; then
+      appliedby["${BASH_REMATCH[1]}"]+="${appliedby[${BASH_REMATCH[1]}]:+, }${KEY[i]}"
+    fi
+  done
+  for ((i=0; i<N; i++)); do
+    local l="${LICAO[i]}"
+    [ -z "$l" ] && continue
+    [[ "$l" =~ ^[Nn]enhuma ]] && continue
+    [[ "$l" =~ ^[Aa]plica[[:space:]]+DA- ]] && continue
+    local raw="${RAWNUM[i]}"; local apl="${appliedby[$raw]:-}"
+    printf -- "- %s · %s · %s · %s%s\n" "${KEY[i]}" "${EFF_ESCOPO[i]:-—}" "${EFF_SAGA[i]:-—}" "$l" "$([ -n "$apl" ] && echo " · aplicada por: $apl" || echo "")"
+  done
+}
+
+build_vigente_for_escopo() {
+  local alvo="$1" i
+  echo "# DECISIONS-VIGENTE-$alvo.md — GERADO de DECISIONS.md (NÃO EDITE À MÃO). Cabeçalhos de DAs vigentes do escopo $alvo."
+  echo
+  for ((i=0; i<N; i++)); do
+    local match=0 ee
+    IFS=',' read -ra _ee <<< "${EFF_ESCOPO[i]}"
+    for ee in "${_ee[@]}"; do [ "$ee" = "$alvo" ] && match=1; done
+    [ "$match" = 0 ] && continue
+    local m; m="$(mark_of "$i")"
+    [ -n "$m" ] && [ "${m%%:*}" != "par" ] && continue   # 🔄 e 📚 não são vigentes; ½ continua valendo no que não foi alterado
+    echo "## ${KEY[i]} — ${TITLE[i]}"
+    [ -n "${REGRA[i]}" ] && [ "${REGRASRC[i]}" != "none" ] && echo "**Regra:** ${REGRA[i]}"
+    echo
+  done
+}
+
+all_escopos() {
+  local i ee
+  declare -A seen
+  for ((i=0; i<N; i++)); do
+    IFS=',' read -ra _ee <<< "${EFF_ESCOPO[i]}"
+    for ee in "${_ee[@]}"; do [ -n "$ee" ] && seen["$ee"]=1; done
+  done
+  printf '%s\n' "${!seen[@]}" | sort
+}
+
+vigente_filename() { echo "DECISIONS-VIGENTE-$(printf '%s' "$1" | tr '/' '-').md"; }
+
+# ============================================================================
+# 5) CHECKS DE QUALIDADE c1..c11 (WARN — nenhum FAIL nesta fase; ver GRANDFATHER)
+# ============================================================================
+nv() { echo $((10#${1:-0})); }   # valor numérico seguro (evita "008" ser lido como octal)
+
+run_quality_checks() {
+  local dir="$1" warn=0
+  local sagas_conf="${ADAS_SAGAS_CONF:-$HOME/.adas/sagas.conf}"
+  local i
+  # c1: teto de corpo (120 WARN / 300 seria FAIL — ainda não ligado)
+  for ((i=0; i<N; i++)); do
+    [ "$(nv "${RAWNUM[i]}")" -le "$GRANDFATHER" ] && continue
+    [ "${CORPOLINES[i]}" -gt 120 ] && { echo "WARN c1: ${KEY[i]} corpo com ${CORPOLINES[i]} linhas (teto 120)"; warn=1; }
+  done
+  # c2: paste de terminal
+  for ((i=0; i<N; i++)); do
+    [ "$(nv "${RAWNUM[i]}")" -le "$GRANDFATHER" ] && continue
+    [ "${HASPASTE[i]}" = "1" ] && { echo "WARN c2: ${KEY[i]} parece ter paste de terminal — evidência vai pro anexo"; warn=1; }
+  done
+  # c3: slug fora do sagas.conf sem prefixo nova/
+  if [ -f "$sagas_conf" ]; then
+    for ((i=0; i<N; i++)); do
+      [ -z "${SAGA[i]}" ] && continue
+      IFS=',' read -ra _sg <<< "${SAGA[i]}"
+      local sgv
+      for sgv in "${_sg[@]}"; do
+        [[ "$sgv" == nova/* ]] && continue
+        grep -qE "^${sgv}\||[|,]${sgv}(,|\$)" "$sagas_conf" 2>/dev/null || { echo "WARN c3: ${KEY[i]} usa saga '$sgv' fora do sagas.conf (use 'nova/$sgv' se for nova)"; warn=1; }
+      done
+    done
+  fi
+  # c4: número duplicado NOVO (ambos > grandfather)
+  declare -A cnt
+  for ((i=0; i<N; i++)); do cnt["${RAWNUM[i]}"]=$(( ${cnt["${RAWNUM[i]}"]:-0} + 1 )); done
+  local k
+  for k in "${!cnt[@]}"; do
+    [ "${cnt[$k]}" -gt 1 ] && [ "$(nv "$k")" -gt "$GRANDFATHER" ] && { echo "WARN c4: DA-$k duplicada (número novo, não é o caso grandfathered DA-012)"; warn=1; }
+  done
+  # c5: tags obrigatórias (escopo, saga, Regra) — só DA nova
+  for ((i=0; i<N; i++)); do
+    [ "$(nv "${RAWNUM[i]}")" -le "$GRANDFATHER" ] && continue
+    local falt=""
+    [ -z "${ESCOPO[i]}" ] && falt+="escopo "
+    [ -z "${SAGA[i]}" ] && falt+="saga "
+    [ "${REGRASRC[i]}" != "regra" ] && falt+="Regra "
+    [ -n "$falt" ] && { echo "WARN c5: ${KEY[i]} sem tag(s) obrigatória(s): $falt"; warn=1; }
+  done
+  # c6: lição com caminho ou nome próprio
+  local nomes="$HOME/.adas/nomes-proprios.txt"
+  for ((i=0; i<N; i++)); do
+    local l="${LICAO[i]}"; [ -z "$l" ] && continue
+    if [[ "$l" == *"~/"* || "$l" == *"/home/"* || "$l" == *".sh"* || "$l" == *".py"* || "$l" == *"scripts/"* ]]; then
+      echo "WARN c6: ${KEY[i]} Lição parece regra disfarçada (caminho/extensão): ${l:0:80}"; warn=1
+    elif [ -f "$nomes" ] && grep -qFf "$nomes" <<< "$l" 2>/dev/null; then
+      echo "WARN c6: ${KEY[i]} Lição cita nome próprio: ${l:0:80}"; warn=1
+    fi
+  done
+  # c7: cabeça com Histórico incompleto vs consolida:
+  for ((i=0; i<N; i++)); do
+    [ -z "${CONSOLIDA[i]}" ] && continue
+    IFS=',' read -ra _cons <<< "${CONSOLIDA[i]}"
+    local miss="" c
+    for c in "${_cons[@]}"; do
+      c="$(printf '%s' "$c" | sed 's/^[ \t]*//;s/[ \t]*$//;s/^DA-//')"
+      [[ ",${HISTORICO[i]}," == *",DA-$c,"* ]] || miss+="DA-$c "
+    done
+    [ -n "$miss" ] && { echo "WARN c7: ${KEY[i]} (cabeça) tem consolida: sem linha correspondente no Histórico: $miss"; warn=1; }
+  done
+  # c9: saga com >=3 rodadas após a cabeça
+  local slug
+  for slug in "${SAGA_SLUGS[@]}"; do
+    [ -z "${SAGA_HEAD_IDX[$slug]:-}" ] && continue
+    local r; r="$(saga_rodadas_depois_da_cabeca "$slug")"
+    [ "$r" -ge 3 ] && { echo "WARN c9: saga $slug tem $r rodadas depois da cabeça — hora de nova cabeça"; warn=1; }
+  done
+  # c10: NA-/slug citado fora do lugar (scripts, claude-tg-tmux, skills, axon) — UMA
+  # passada só (alternação de todos os slugs) em vez de N greps recursivos (era o
+  # gargalo: 37 sagas × grep -r em ~1GB deixava o hook (síncrono) lento demais).
+  if [ "${#SAGA_SLUGS[@]}" -gt 0 ]; then
+    local paths=()
+    for p in "$HOME/scripts" "$HOME/claude-tg-tmux" "$HOME/.claude/skills" "$HOME/axon"; do [ -d "$p" ] && paths+=("$p"); done
+    if [ "${#paths[@]}" -gt 0 ]; then
+      local altpat; altpat="$(printf '%s\n' "${SAGA_SLUGS[@]}" | paste -sd'|')"
+      local hits
+      hits="$(grep -rloE --include='*.sh' --include='*.md' --include='*.js' --include='*.py' \
+        --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=dist \
+        "NA-(${altpat})" "${paths[@]}" 2>/dev/null)"
+      if [ -n "$hits" ]; then
+        local f slugshit
+        while IFS= read -r f; do
+          slugshit="$(grep -ohE "NA-(${altpat})" "$f" 2>/dev/null | sort -u | tr '\n' ' ')"
+          echo "WARN c10: $f cita ${slugshit}— NA não tem identidade fora de DECISIONS-SAGAS.md"; warn=1
+        done <<< "$hits"
+      fi
+    fi
+  fi
+  # c11: número citado que não existe no diário (exceto DA-024, fantasma conhecida)
+  local dec="$dir/DECISIONS.md"
+  declare -A exists
+  for ((i=0; i<N; i++)); do exists["$(nv "${RAWNUM[i]}")"]=1; done
+  local cited unknown=""
+  for cited in $(grep -oE 'DA-[0-9]+' "$dec" 2>/dev/null | sort -u); do
+    [ "$cited" = "DA-024" ] && continue
+    local num; num="$(nv "${cited#DA-}")"
+    [ -z "${exists[$num]:-}" ] && unknown+="$cited "
+  done
+  [ -n "$unknown" ] && { echo "WARN c11: citações a número inexistente no diário: $unknown"; warn=1; }
+  return 0
+}
+
+# ============================================================================
+# 6) COMANDOS
+# ============================================================================
+usage() {
+  echo "uso: da-index.sh update|check [dir]"
+  echo "     da-index.sh sagas [--escopo a,b] [--projeto nome] [dir]"
+  echo "     da-index.sh list [--escopo a,b] [--saga slug] [--vigentes] [--desde AAAA-MM-DD] [dir]"
+  echo "     da-index.sh show DA-NNN|--saga slug|--anexos DA-NNN [dir]"
+  echo "     da-index.sh export-saga slug [dir]"
+  exit 2
+}
+
+# regenera o conteúdo entre <!-- da-sagas-start/end --> de um arquivo (ADAS.md);
+# no-op se o arquivo não existe ou não tem os marcadores (nada a fazer, sem erro).
+splice_sagas_block() {
+  local file="$1"
+  [ -f "$file" ] || return 0
+  grep -qF '<!-- da-sagas-start -->' "$file" 2>/dev/null || return 0
+  local tmp; tmp="$(mktemp)"
+  awk '
+    /<!-- da-sagas-start -->/ { print; f=1; next }
+    /<!-- da-sagas-end -->/ { f=0; print; next }
+    !f { print }
+  ' "$file" > "$tmp"
+  # injeta o bloco logo após a linha de start (dentro do arquivo temporário)
+  local tmp2; tmp2="$(mktemp)"
+  awk -v blockfile="$2" '
+    { print }
+    /<!-- da-sagas-start -->/ { while ((getline line < blockfile) > 0) print line }
+  ' "$tmp" > "$tmp2"
+  rm -f "$tmp"
+  printf '%s' "$tmp2"
+}
+
+cmd_update() {
+  local dir="${1:-.}"
+  [ -f "$dir/DECISIONS.md" ] || { echo "✗ da-index: $dir/DECISIONS.md não existe"; exit 2; }
+  load_records "$dir"; group_sagas
+  local tmp; tmp="$(mktemp)"; build_index "$dir" > "$tmp" || { rm -f "$tmp"; echo "✗ da-index: geração do índice falhou"; exit 1; }
+  mv "$tmp" "$dir/DECISIONS-INDEX.md"
+  tmp="$(mktemp)"; build_sagas_md > "$tmp"; mv "$tmp" "$dir/DECISIONS-SAGAS.md"
+  tmp="$(mktemp)"; build_licoes > "$tmp"; mv "$tmp" "$dir/DECISIONS-LICOES.md"
+  local esc
+  for esc in $(all_escopos); do
+    tmp="$(mktemp)"; build_vigente_for_escopo "$esc" > "$tmp"; mv "$tmp" "$dir/$(vigente_filename "$esc")"
+  done
+  if [ -f "$dir/ADAS.md" ] && grep -qF '<!-- da-sagas-start -->' "$dir/ADAS.md" 2>/dev/null; then
+    local blk; blk="$(mktemp)"; build_sagas_block "" > "$blk"
+    local spliced; spliced="$(splice_sagas_block "$dir/ADAS.md" "$blk")"
+    if [ -n "$spliced" ] && [ -f "$spliced" ]; then mv "$spliced" "$dir/ADAS.md"; fi
+    rm -f "$blk"
+  fi
+  echo "✓ da-index: INDEX ($N DAs) · SAGAS (${#SAGA_SLUGS[@]} sagas, $(printf '%s\n' "${SAGA_SLUGS[@]}" | while read -r s; do [ "$(saga_members_sorted "$s" | wc -l)" -ge 2 ] && echo x; done | wc -l) com 2+ DAs) · LICOES · VIGENTE-*"
+  run_quality_checks "$dir"
+}
+
+cmd_check() {
+  local dir="${1:-.}"
+  [ -f "$dir/DECISIONS-INDEX.md" ] || { echo "✗ da-index: $dir/DECISIONS-INDEX.md NÃO EXISTE — rode: bash scripts/da-index.sh update"; exit 1; }
+  load_records "$dir"; group_sagas
+  local tmpdir; tmpdir="$(mktemp -d)"
+  build_index "$dir" > "$tmpdir/INDEX"
+  build_sagas_md > "$tmpdir/SAGAS"
+  build_licoes > "$tmpdir/LICOES"
+  local esc rc=0
+  for esc in $(all_escopos); do build_vigente_for_escopo "$esc" > "$tmpdir/VIGENTE-$(printf '%s' "$esc" | tr '/' '-')"; done
+
+  if ! cmp -s "$tmpdir/INDEX" "$dir/DECISIONS-INDEX.md"; then
+    echo "✗ da-index: DECISIONS-INDEX.md DIVERGE do DECISIONS.md"; diff "$dir/DECISIONS-INDEX.md" "$tmpdir/INDEX" 2>/dev/null | head -10; rc=1
+  fi
+  if [ -f "$dir/DECISIONS-SAGAS.md" ] && ! cmp -s "$tmpdir/SAGAS" "$dir/DECISIONS-SAGAS.md"; then
+    echo "✗ da-index: DECISIONS-SAGAS.md DIVERGE"; diff "$dir/DECISIONS-SAGAS.md" "$tmpdir/SAGAS" 2>/dev/null | head -10; rc=1
+  elif [ ! -f "$dir/DECISIONS-SAGAS.md" ]; then echo "✗ da-index: DECISIONS-SAGAS.md NÃO EXISTE"; rc=1; fi
+  if [ -f "$dir/DECISIONS-LICOES.md" ] && ! cmp -s "$tmpdir/LICOES" "$dir/DECISIONS-LICOES.md"; then
+    echo "✗ da-index: DECISIONS-LICOES.md DIVERGE"; rc=1
+  elif [ ! -f "$dir/DECISIONS-LICOES.md" ]; then echo "✗ da-index: DECISIONS-LICOES.md NÃO EXISTE"; rc=1; fi
+  for esc in $(all_escopos); do
+    local fn; fn="$(vigente_filename "$esc")"
+    if [ -f "$dir/$fn" ] && ! cmp -s "$tmpdir/VIGENTE-$(printf '%s' "$esc" | tr '/' '-')" "$dir/$fn"; then
+      echo "✗ da-index: $fn DIVERGE"; rc=1
+    elif [ ! -f "$dir/$fn" ]; then echo "✗ da-index: $fn NÃO EXISTE"; rc=1; fi
+  done
+  if [ -f "$dir/ADAS.md" ] && grep -qF '<!-- da-sagas-start -->' "$dir/ADAS.md" 2>/dev/null; then
+    build_sagas_block "" > "$tmpdir/ADASBLK"
+    local spliced; spliced="$(splice_sagas_block "$dir/ADAS.md" "$tmpdir/ADASBLK")"
+    if [ -n "$spliced" ] && [ -f "$spliced" ] && ! cmp -s "$spliced" "$dir/ADAS.md"; then
+      echo "✗ da-index: ADAS.md (bloco de sagas) DIVERGE"; rc=1
+    fi
+    rm -f "$spliced"
+  fi
+  rm -rf "$tmpdir"
+
+  run_quality_checks "$dir"
+  if [ "$rc" = 0 ]; then echo "✓ da-index: todos os gerados sincronizados com DECISIONS.md"; fi
+  exit "$rc"
+}
+
+cmd_sagas() {
+  local escopo="" projeto="" dir="."
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --escopo) escopo="$2"; shift 2 ;;
+      --projeto) projeto="$2"; escopo="${escopo:+$escopo,}projeto/$2"; shift 2 ;;
+      *) dir="$1"; shift ;;
+    esac
+  done
+  load_records "$dir"; group_sagas
+  build_sagas_block "$escopo"
+}
+
+cmd_list() {
+  local escopo="" saga_f="" vigentes=0 desde="" dir="."
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --escopo) escopo="$2"; shift 2 ;;
+      --saga) saga_f="$2"; shift 2 ;;
+      --vigentes) vigentes=1; shift ;;
+      --desde) desde="$2"; shift 2 ;;
+      *) dir="$1"; shift ;;
+    esac
+  done
+  load_records "$dir"; group_sagas
+  local i
+  for ((i=0; i<N; i++)); do
+    if [ -n "$escopo" ]; then
+      local match=0 fe se
+      IFS=',' read -ra _fe <<< "$escopo"; IFS=',' read -ra _se <<< "${EFF_ESCOPO[i]}"
+      for fe in "${_fe[@]}"; do for se in "${_se[@]}"; do [ "$se" = "$fe" ] && match=1; done; done
+      [ "$match" = 0 ] && continue
+    fi
+    if [ -n "$saga_f" ]; then
+      [[ ",${EFF_SAGA[i]}," == *",$saga_f,"* ]] || continue
+    fi
+    if [ "$vigentes" = 1 ]; then
+      [ -n "$(mark_of "$i")" ] && continue
+    fi
+    if [ -n "$desde" ]; then
+      local d="${DATATAG[i]:-${BODYDATA[i]}}"
+      [[ "$d" < "$desde" ]] && continue
+    fi
+    index_line_for "$i"
+  done
+}
+
+collapse_paste() {
+  awk '
+    function is_paste_start(l) {
+      return (l ~ /^commit [0-9a-f]{40}$/) || (index(l,"Efficiency meter")>0) || \
+             (index(l,"────")>0) || (index(l,"━━━━")>0) || (index(l,"════")>0) || (index(l,"░░░░")>0) || \
+             (index(l,"▓▓▓▓")>0) || (index(l,"█████")>0)
+    }
+    function is_prose(l) { return (l ~ /^\*\*[^*]+:?\*\*/) || (l ~ /^### /) }
+    {
+      if (!inpaste && is_paste_start($0)) { inpaste=1; skipped=0 }
+      if (inpaste) {
+        if (is_prose($0)) {
+          if (skipped>0) print "  [... bloco de paste omitido (" skipped " linhas) ...]"
+          inpaste=0; print; next
+        }
+        skipped++; next
+      }
+      print
+    }
+    END { if (inpaste && skipped>0) print "  [... bloco de paste omitido (" skipped " linhas) ...]" }
+  '
+}
+
+cmd_show() {
+  local dir="." mode="da" arg=""
+  case "${1:-}" in
+    --saga) mode="saga"; arg="$2"; dir="${3:-.}" ;;
+    --anexos) mode="anexos"; arg="$2"; dir="${3:-.}" ;;
+    *) mode="da"; arg="$1"; dir="${2:-.}" ;;
+  esac
+  [ -z "$arg" ] && usage
+  load_records "$dir"
+  case "$mode" in
+    da)
+      local i found=-1
+      for ((i=0; i<N; i++)); do [ "${KEY[i]}" = "$arg" ] && { found=$i; break; }; done
+      [ "$found" = -1 ] && { echo "✗ da-index show: $arg não encontrada"; exit 1; }
+      local start="${LINE[found]}" end
+      if [ $((found+1)) -lt "$N" ]; then end=$(( ${LINE[$((found+1))]} - 1 )); else end='$'; fi
+      sed -n "${start},${end}p" "$dir/DECISIONS.md" | collapse_paste
+      ;;
+    saga)
+      group_sagas
+      build_sagas_md | awk -v s="## NA-$arg" 'index($0,s)==1{f=1} f{print; if($0=="" && started)exit; if(f)started=1} f && /^## NA-/ && $0!=s && started{exit}'
+      ;;
+    anexos)
+      local d2="$dir/DECISIONS-anexos/$arg"
+      [ -d "$d2" ] && ls -la "$d2" || echo "(sem anexos para $arg)"
+      ;;
+  esac
+}
+
+cmd_export_saga() {
+  local slug="$1" dir="${2:-.}"
+  load_records "$dir"; group_sagas
+  [ -z "${SAGA_MEMBERS[$slug]:-}" ] && { echo "✗ export-saga: saga '$slug' não existe ou tem 0 membros"; exit 1; }
+  local estado; estado="$(saga_estado "$slug")"
+  [ "$estado" = "encerrada" ] && { echo "✗ export-saga: saga '$slug' está encerrada — não exporta"; exit 1; }
+  local head="${SAGA_HEAD_IDX[$slug]:-}"; local src="$head"
+  [ -z "$src" ] && src="$(saga_regra_source_idx "$slug")"
+  {
+    echo "## ${TITLE[$src]}"
+    [ -n "${REGRA[$src]}" ] && [ "${REGRASRC[$src]}" != "none" ] && echo "**Regra:** ${REGRA[$src]}"
+    [ -n "${MOTIVO[$src]}" ] && echo "**Motivo:** ${MOTIVO[$src]}"
+    [ -n "${TRADEOFF[$src]}" ] && echo "**Trade-off:** ${TRADEOFF[$src]}"
+  } | sed -E 's/DA-[0-9]+[a-z]?//g'
+}
+
+MODE="${1:-}"; shift || true
 case "$MODE" in
-  update)
-    tmp="$(mktemp)"; build > "$tmp" || { rm -f "$tmp"; echo "✗ da-index: geração falhou"; exit 1; }
-    mv "$tmp" "$IDX"
-    echo "✓ da-index: $IDX ($(grep -c '^- DA-' "$IDX") entradas)"
-    ;;
-  check)
-    [ -f "$IDX" ] || { echo "✗ da-index: $IDX NÃO EXISTE — o índice não nasceu; rode: bash scripts/da-index.sh update"; exit 1; }
-    tmp="$(mktemp)"; build > "$tmp"
-    if cmp -s "$tmp" "$IDX"; then rm -f "$tmp"; echo "✓ da-index: índice sincronizado com DECISIONS.md"; exit 0; fi
-    echo "✗ da-index: DECISIONS-INDEX.md DIVERGE do DECISIONS.md — DA anexada por fora do hook, ou índice editado à mão."
-    echo "  Conserto: bash scripts/da-index.sh update   (diferença abaixo)"
-    diff "$IDX" "$tmp" | head -10
-    rm -f "$tmp"; exit 1
-    ;;
+  update) cmd_update "$@" ;;
+  check) cmd_check "$@" ;;
+  sagas) cmd_sagas "$@" ;;
+  list) cmd_list "$@" ;;
+  show) cmd_show "$@" ;;
+  export-saga) cmd_export_saga "$@" ;;
+  *) usage ;;
 esac

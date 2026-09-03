@@ -32,6 +32,48 @@ EOF
   return 1
 }
 
+# adas_da_rotas <cwd> → imprime o csv de escopos do ~/.adas/rotas.conf cujo prefixo
+# bate com <cwd> (prefixo MAIS LONGO vence); vazio se nenhuma rota casar.
+adas_da_rotas() {
+  local cwd="$1" conf="${ADAS_ROTAS_CONF:-$HOME/.adas/rotas.conf}"
+  [ -f "$conf" ] || return 0
+  local best="" bestlen=-1 prefixo escopos
+  while IFS='|' read -r prefixo escopos; do
+    case "$prefixo" in ""|"#"*) continue ;; esac
+    case "$cwd" in
+      "$prefixo"|"$prefixo"/*)
+        if [ "${#prefixo}" -gt "$bestlen" ]; then best="$escopos"; bestlen="${#prefixo}"; fi
+        ;;
+    esac
+  done < "$conf"
+  printf '%s' "$best"
+}
+
+# adas_da_layer0 <cwd> → camada 0 do diário de decisões (DA-181): 'sagas --escopo
+# <conjunto>' + DECISIONS-LICOES.md inteiro. DA_LOAD=off desliga (0 tokens, cron
+# mecânico); default é injetar. Fail-open: qualquer ausência = string vazia.
+adas_da_layer0() {
+  [ "${DA_LOAD:-index}" = "off" ] && return 0
+  local cwd="$1"
+  local dec="$HOME/DECISIONS.md" idx="$HOME/scripts/da-index.sh"
+  [ -f "$dec" ] && [ -f "$idx" ] || return 0
+
+  local escopo=""
+  if [ -n "${ADAS_PROJETO:-}" ]; then
+    escopo="produto,projeto/${ADAS_PROJETO}"
+    case "$ADAS_PROJETO" in claude-tg-tmux|axon|adas|"") escopo="$escopo,instância" ;; esac
+  else
+    escopo="$(adas_da_rotas "$cwd")"
+  fi
+  [ -z "$escopo" ] && escopo="produto,instância"
+
+  local sagas licoes
+  sagas="$(bash "$idx" sagas --escopo "$escopo" "$HOME" 2>/dev/null)"
+  [ -f "$HOME/DECISIONS-LICOES.md" ] && licoes="$(cat "$HOME/DECISIONS-LICOES.md" 2>/dev/null)"
+  [ -z "$sagas" ] && [ -z "${licoes:-}" ] && return 0
+  printf '\n[DECISIONS camada 0 — escopo %s] sagas do diário de decisões (~/DECISIONS.md). "quem decidiu?" = DA-NNN, nunca a NA. Rodadas pendentes avisadas abaixo devem ser lidas (show DA-NNN) antes de decidir na saga.\n%s\n\n%s\n' "$escopo" "$sagas" "${licoes:-}"
+}
+
 # adas_hub_header → cabeçalho multi-repo genérico (lista os repos governados)
 adas_hub_header() {
   local names

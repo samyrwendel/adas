@@ -19,4 +19,5 @@ if [ -n "$repo" ]; then
 elif adas_is_hub "$cwd"; then
   adas_hub_header
 fi
+adas_da_layer0 "$cwd" 2>/dev/null || true
 exit 0
