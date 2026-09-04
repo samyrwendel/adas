@@ -12,7 +12,7 @@
 #   da-index.sh list  [--escopo a,b] [--saga slug] [--vigentes] [--desde AAAA-MM-DD] [dir]
 #   da-index.sh show DA-NNN [dir] | show --saga slug [dir] | show --anexos DA-NNN [dir]
 #   da-index.sh export-saga slug [dir]
-# [dir] = onde vivem DECISIONS.md e os gerados (default: cwd).
+# [dir] = onde vivem DECISIONS.md e os gerados (default: $HOME — NUNCA o cwd; DA-196).
 #
 # Determinístico: mesmo DECISIONS.md + membros.tsv ⇒ mesmos gerados byte a byte.
 # Grandfather: checks de qualidade (c1/c2/c4/c5) só valem para DA-NNN > 180 — o corpo
@@ -22,6 +22,9 @@ set -uo pipefail
 SELFDIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 SEP=$'\037'
 GRANDFATHER="${DA_INDEX_GRANDFATHER:-180}"   # DA-001..180 nunca são re-julgadas pelas checks de qualidade novas (override p/ harness de fixtures)
+# [dir] ausente → $HOME, NUNCA o cwd (DA-196/DA-186: rodar de outro diretório não pode
+# fazer "não achei o arquivo" virar "a decisão não existe"). [dir] explícito sempre vence.
+DA_DIR_DEFAULT="${HOME:-.}"
 
 # ============================================================================
 # 1) PARSER — awk extrai um registro por DA (ver cabeçalho de campos abaixo)
@@ -285,6 +288,14 @@ declare -A FANTASMA_REF=( ["DA-024"]="029" )
 
 load_records() {
   local dir="$1"; local dec="$dir/DECISIONS.md"
+  if [ ! -f "$dec" ]; then
+    echo "✗ da-index: não consegui ler $dec (arquivo não existe) — dir='$dir'" >&2
+    exit 1
+  fi
+  if [ ! -r "$dec" ]; then
+    echo "✗ da-index: não consegui ler $dec (sem permissão de leitura)" >&2
+    exit 1
+  fi
   KEY=(); RAWNUM=(); LINE=(); TITLE=(); ESCOPO=(); SAGA=(); DATATAG=(); REFS=(); CONSOLIDA=(); SUPERSEDE=(); MEDIDO=()
   REGRA=(); REGRASRC=(); MOTIVO=(); TRADEOFF=(); LICAO=(); BODYDATA=(); CORPOLINES=(); HASPASTE=(); HISTORICO=(); MSUP=(); MPAR=(); MCON=()
   local i=0
@@ -742,7 +753,7 @@ splice_sagas_block() {
 }
 
 cmd_update() {
-  local dir="${1:-.}"
+  local dir="${1:-$DA_DIR_DEFAULT}"
   [ -f "$dir/DECISIONS.md" ] || { echo "✗ da-index: $dir/DECISIONS.md não existe"; exit 2; }
   load_records "$dir"; group_sagas
   local tmp; tmp="$(mktemp)"; build_index "$dir" > "$tmp" || { rm -f "$tmp"; echo "✗ da-index: geração do índice falhou"; exit 1; }
@@ -764,7 +775,7 @@ cmd_update() {
 }
 
 cmd_check() {
-  local dir="${1:-.}"
+  local dir="${1:-$DA_DIR_DEFAULT}"
   [ -f "$dir/DECISIONS-INDEX.md" ] || { echo "✗ da-index: $dir/DECISIONS-INDEX.md NÃO EXISTE — rode: bash scripts/da-index.sh update"; exit 1; }
   load_records "$dir"; group_sagas
   local tmpdir; tmpdir="$(mktemp -d)"
@@ -805,7 +816,7 @@ cmd_check() {
 }
 
 cmd_sagas() {
-  local escopo="" projeto="" dir="."
+  local escopo="" projeto="" dir="$DA_DIR_DEFAULT"
   while [ $# -gt 0 ]; do
     case "$1" in
       --escopo) escopo="$2"; shift 2 ;;
@@ -818,7 +829,7 @@ cmd_sagas() {
 }
 
 cmd_list() {
-  local escopo="" saga_f="" vigentes=0 desde="" dir="."
+  local escopo="" saga_f="" vigentes=0 desde="" dir="$DA_DIR_DEFAULT"
   while [ $# -gt 0 ]; do
     case "$1" in
       --escopo) escopo="$2"; shift 2 ;;
@@ -875,11 +886,11 @@ collapse_paste() {
 }
 
 cmd_show() {
-  local dir="." mode="da" arg=""
+  local dir="$DA_DIR_DEFAULT" mode="da" arg=""
   case "${1:-}" in
-    --saga) mode="saga"; arg="$2"; dir="${3:-.}" ;;
-    --anexos) mode="anexos"; arg="$2"; dir="${3:-.}" ;;
-    *) mode="da"; arg="$1"; dir="${2:-.}" ;;
+    --saga) mode="saga"; arg="$2"; dir="${3:-$DA_DIR_DEFAULT}" ;;
+    --anexos) mode="anexos"; arg="$2"; dir="${3:-$DA_DIR_DEFAULT}" ;;
+    *) mode="da"; arg="$1"; dir="${2:-$DA_DIR_DEFAULT}" ;;
   esac
   [ -z "$arg" ] && usage
   load_records "$dir"
@@ -904,7 +915,7 @@ cmd_show() {
 }
 
 cmd_export_saga() {
-  local slug="$1" dir="${2:-.}"
+  local slug="$1" dir="${2:-$DA_DIR_DEFAULT}"
   load_records "$dir"; group_sagas
   [ -z "${SAGA_MEMBERS[$slug]:-}" ] && { echo "✗ export-saga: saga '$slug' não existe ou tem 0 membros"; exit 1; }
   local estado; estado="$(saga_estado "$slug")"

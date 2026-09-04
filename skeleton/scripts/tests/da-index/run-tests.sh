@@ -132,6 +132,41 @@ realhome_after="$(ls -1 "$HOME/.adas/snapshots" 2>/dev/null | wc -l)"
 count_dirtest="$(ls -1 "$DIRTEST/.adas/snapshots" | wc -l)"
 [ "$count_dirtest" = 30 ] && pass "rotação mantém exatamente os 30 snapshots mais recentes" || fail "rotação não manteve 30 (tem $count_dirtest)"
 
+echo "== DA-196: [dir] ausente resolve por \$HOME, nunca pelo cwd =="
+mkdir -p "$TMP/elsewhere"
+show_home="$(cd "$TMP" && HOME="$TMP" bash "$DAIDX" show DA-001)"
+show_elsewhere="$(cd "$TMP/elsewhere" && HOME="$TMP" bash "$DAIDX" show DA-001)"
+[ "$show_home" = "$show_elsewhere" ] && [ -n "$show_home" ] && pass "show DA-001 sem [dir]: mesmo resultado de \$HOME e de outro cwd" || fail "show DA-001 sem [dir] diverge por cwd"
+
+list_home="$(cd "$TMP" && HOME="$TMP" bash "$DAIDX" list)"
+list_elsewhere="$(cd "$TMP/elsewhere" && HOME="$TMP" bash "$DAIDX" list)"
+[ "$list_home" = "$list_elsewhere" ] && [ -n "$list_home" ] && pass "list sem [dir]: mesmo resultado de \$HOME e de outro cwd" || fail "list sem [dir] diverge por cwd"
+
+# normaliza primeiro (da-new.sh dos testes anteriores anexou DA-015/016 sem passar pelo
+# hook PostToolUse que regeneraria os gerados — não é o que este teste mede)
+bash "$DAIDX" update "$TMP" >/dev/null 2>&1
+before_upd_sha="$(sha256sum "$TMP/DECISIONS-INDEX.md" "$TMP/DECISIONS-SAGAS.md" "$TMP/DECISIONS-LICOES.md")"
+( cd "$TMP/elsewhere" && HOME="$TMP" bash "$DAIDX" update >/dev/null 2>&1 )
+after_upd_sha="$(sha256sum "$TMP/DECISIONS-INDEX.md" "$TMP/DECISIONS-SAGAS.md" "$TMP/DECISIONS-LICOES.md")"
+[ "$before_upd_sha" = "$after_upd_sha" ] && pass "update sem [dir] rodado de outro cwd: gerados byte-idênticos aos de \$HOME" || fail "update sem [dir] rodado de outro cwd mudou os gerados"
+[ -z "$(ls -A "$TMP/elsewhere" 2>/dev/null)" ] && pass "update sem [dir] escreveu em \$HOME, não vazou pro cwd (elsewhere continua vazio)" || fail "update sem [dir] escreveu no cwd errado"
+
+echo "== DA-196: diário ausente/ilegível nunca vira 'não encontrada' (arquivo ausente ≠ decisão ausente) =="
+EMPTYDIR="$TMP/sem-diario"; mkdir -p "$EMPTYDIR"
+out_missing="$(bash "$DAIDX" show DA-001 "$EMPTYDIR" 2>&1)"; rc_missing=$?
+[ "$rc_missing" -ne 0 ] && pass "show com diário ausente: exit != 0" || fail "show com diário ausente: exit 0 (deveria falhar)"
+echo "$out_missing" | grep -qF "$EMPTYDIR/DECISIONS.md" && pass "erro de ausente cita o caminho tentado" || fail "erro de ausente não cita o caminho tentado"
+echo "$out_missing" | grep -qi "não encontrada" && fail "erro de arquivo ausente usa 'não encontrada' (mascara ausência de dado como ausência de decisão)" || pass "erro de arquivo ausente NÃO usa 'não encontrada'"
+
+UNREADABLE="$TMP/sem-permissao"; mkdir -p "$UNREADABLE"
+cp "$TMP/DECISIONS.md" "$UNREADABLE/DECISIONS.md"
+chmod 000 "$UNREADABLE/DECISIONS.md"
+out_unreadable="$(bash "$DAIDX" list "$UNREADABLE" 2>&1)"; rc_unreadable=$?
+chmod 644 "$UNREADABLE/DECISIONS.md"
+[ "$rc_unreadable" -ne 0 ] && pass "list com diário ilegível (chmod 000): exit != 0" || fail "list com diário ilegível: exit 0 (deveria falhar)"
+echo "$out_unreadable" | grep -qF "$UNREADABLE/DECISIONS.md" && pass "erro de ilegível cita o caminho tentado" || fail "erro de ilegível não cita o caminho tentado"
+echo "$out_unreadable" | grep -qi "não encontrada" && fail "erro de diário ilegível usa 'não encontrada'" || pass "erro de diário ilegível NÃO usa 'não encontrada'"
+
 echo
 if [ "$FAIL" = 0 ]; then
   echo "✓✓✓ harness da-index: TODOS OS TESTES PASSARAM"
