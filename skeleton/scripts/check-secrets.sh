@@ -2,9 +2,15 @@
 # check-secrets — GATE de segurança (ADAS · faixa seguranca-acesso). BLOQUEIA segredo entrando no repo.
 # O hook avisa na EDIÇÃO; este BLOQUEIA no COMMIT/DEPLOY. Pré-commit por padrão (conteúdo STAGED).
 #   bash scripts/check-secrets.sh            # staged (pré-commit)
-#   bash scripts/check-secrets.sh --all      # toda a árvore tracked
+#   bash scripts/check-secrets.sh --all      # toda a árvore tracked + porta 2 (histórico do git)
 #   bash scripts/check-secrets.sh --dir src  # um diretório
 # Gate: "precommit": "bash scripts/check-secrets.sh"  ·  no deploy junto dos outros check-*.
+#
+# PORTAS 1 e 2 das "seis portas do app" (DA-189, faixa seguranca-acesso — ver SKILL.md
+# seção "Seis portas do app"): são as duas MECÂNICAS (grep puro, sem prova humana — as
+# outras quatro exigem evidência e vivem em scripts/check-app-security.sh). Linhas
+# marcadas "[porta 1" / "[porta 2" são o contrato que check-adas.sh lê pra montar o
+# resumo das seis portas — não mude o prefixo sem atualizar os dois lados.
 set -uo pipefail
 
 mode="staged"; dir="."
@@ -29,8 +35,38 @@ HI='ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,}|gh[osu]_[A-Za-z0-9]{36}|---
 # heurística key=value → WARN (pode ser falso-positivo)
 LO='(api[_-]?key|secret|passwd|password|access[_-]?token|auth[_-]?token)["'"'"' ]*[:=]["'"'"' ]*[A-Za-z0-9/_+.-]{16,}'
 
+# ── PORTA 1 (DA-189) — chave/token no que é servido ao NAVEGADOR ─────────────────────
+# Padrões pedidos pela DA: sk- (OpenAI/Anthropic), AIza (Google), ghp_ (GitHub), AKIA
+# (AWS), xox[abp]- (Slack), "Bearer <token literal>", e KEY=valor dos quatro provedores
+# citados por nome. Reusa o HI de cima (mesma classe) mais o que falta pra cobrir a
+# lista exata da DA.
+FRONT_KEY='sk-[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{35}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16}|xox[abp]-[0-9A-Za-z-]{10,}|[Bb]earer +[A-Za-z0-9._-]{16,}|(ELEVENLABS_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|TELEGRAM_BOT_TOKEN) *[:=] *[A-Za-z0-9]{8,}'
+# NEXT_PUBLIC_/VITE_/REACT_APP_ resolvem em BUILD TIME — o valor vai pro bundle público
+# mesmo que o código "pareça" server-side. Proibido quando o NOME da variável contém
+# KEY/SECRET/TOKEN/PASS (case-insensitive): a intenção do nome já denuncia segredo.
+FRONT_PREFIX='(NEXT_PUBLIC_|VITE_|REACT_APP_)[A-Z0-9_]*(KEY|SECRET|TOKEN|PASS)[A-Z0-9_]*[[:space:]]*[:=]'
+# Diretórios convencionalmente SERVIDOS ao navegador (build output / templates
+# renderizados). Heurística por NOME de componente do caminho — sem stack conhecida
+# não dá pra fazer melhor que convenção.
+SERVED_DIR_RE='(^|/)(static|build|dist|public|templates)(/|$)'
+
 block=0; warn=0
-env_tracked(){ grep -E '(^|/)\.env($|\.[^/]*)$' | grep -vE '\.env\.(example|sample|template)$'; }
+base="$dir"; [ "$mode" = "all" ] && base="."
+# Exclusão por SUFIXO (.example/.sample/.template), não por "logo depois de .env":
+# ".env.enterprise.example" (achado real ao rodar isto contra um projeto de verdade,
+# task 20260904-005) tem SEGMENTO A MAIS entre ".env" e ".example" e escapava da
+# exclusão antiga (\.env\.(example|...)$ exige os dois lado a lado) — virava falso
+# "BLOCK .env tracked" sobre um arquivo que É o contrato (chave sem valor), não o
+# segredo. Qualquer coisa que já passou pelo filtro ".env" e termina em
+# example/sample/template é template, não importa quantos segmentos tem no meio.
+env_tracked(){ grep -E '(^|/)\.env($|\.[^/]*)$' | grep -vE '\.(example|sample|template)$'; }
+# Conteúdo de um arquivo rastreado, no modo certo: STAGED (índice, `git show :path`)
+# quando ainda não commitado, ou o que está NO DISCO/tracked quando já é all/dir —
+# um helper só, pra portas 1/2 não duplicarem a lógica staged×all três vezes.
+_conteudo() {
+  if [ "$mode" = "staged" ] && [ -d .git ]; then git show ":$1" 2>/dev/null
+  else cat "$base/$1" 2>/dev/null; fi
+}
 
 if [ "$mode" = "staged" ] && [ -d .git ]; then
   if git diff --cached --name-only 2>/dev/null | env_tracked >/dev/null; then
@@ -55,6 +91,71 @@ else
   done <<EOF
 $list
 EOF
+fi
+
+# ── PORTA 1 (DA-189) — chave/token no que é servido ao navegador. Roda em QUALQUER
+# modo (staged ou all/dir): o nome do arquivo já basta pra saber se ele é "servido"
+# (SERVED_DIR_RE), então não precisa esperar --all pra pegar um segredo novo indo
+# pra dentro de static/build/dist/public/templates.
+porta1_files=""
+if [ "$mode" = "staged" ] && [ -d .git ]; then
+  porta1_files=$(git diff --cached --name-only 2>/dev/null || true)
+else
+  porta1_files=$(git -C "$base" ls-files 2>/dev/null)
+  [ -z "$porta1_files" ] && porta1_files=$(cd "$base" 2>/dev/null && find . -type f -not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null | sed 's#^\./##')
+fi
+p1_hit=0
+served=$(printf '%s\n' "$porta1_files" | grep -E "$SERVED_DIR_RE" || true)
+if [ -n "$served" ]; then
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    h=$(_conteudo "$f" | grep -nEi "$FRONT_KEY" || true)
+    [ -n "$h" ] && { echo "✗ [BLOCK] [porta 1 — chave no front] $f serve chave/token ao navegador:"; printf '%s\n' "$h" | sed 's/^/    /' | head -4; block=1; p1_hit=1; }
+  done <<EOF
+$served
+EOF
+fi
+# NEXT_PUBLIC_/VITE_/REACT_APP_ com nome de KEY/SECRET/TOKEN/PASS — checa QUALQUER
+# arquivo rastreado (não só os diretórios servidos): é ONDE A VARIÁVEL NASCE
+# (.env.example, config do bundler) que decide se ela vai pro bundle público.
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  case "$f" in *node_modules/*|*.min.*|*.lock|*/.git/*) continue ;; esac
+  h=$(_conteudo "$f" | grep -nE "$FRONT_PREFIX" || true)
+  [ -n "$h" ] && { echo "✗ [BLOCK] [porta 1 — chave no front] $f declara variável NEXT_PUBLIC_/VITE_/REACT_APP_ com nome de segredo:"; printf '%s\n' "$h" | sed 's/^/    /' | head -4; block=1; p1_hit=1; }
+done <<EOF
+$porta1_files
+EOF
+[ "$p1_hit" = 0 ] && echo "✓ [porta 1 — chave no front] nada em static/build/dist/public/templates, nenhum NEXT_PUBLIC_/VITE_/REACT_APP_ com nome de segredo"
+
+# ── PORTA 2 (DA-189) — segredo no HISTÓRICO do git. Só em all/dir: reescrever a
+# história não é frequente, e a varredura é sobre commits PASSADOS — não muda entre
+# um commit novo e outro, então não vale pagar rev-list+grep em CADA pré-commit.
+if [ "$mode" != "staged" ] && [ -d .git ]; then
+  # .env.example/.sample/.template são o CONTRATO (chaves sem valor) — sempre
+  # permitidos, mesma exclusão de env_tracked() acima. `git log -- pathspec` não
+  # filtra por sufixo sozinho, então pega o nome de arquivo por commit (--name-only)
+  # e só mantém o commit se SOBRAR pelo menos um arquivo que não é exemplo.
+  hist_names=$(git log --all --full-history --format='@@%H %s' --name-only \
+    -- '*.env' '.env.*' 'auth.json' 2>/dev/null | awk '
+    /^@@/ { if (commit != "" && keep) print commit; commit=$0; keep=0; next }
+    NF && $0 !~ /\.(example|sample|template)$/ { keep=1 }
+    END { if (commit != "" && keep) print commit }
+  ')
+  hist_content=""
+  revs=$(git rev-list --all 2>/dev/null || true)
+  if [ -n "$revs" ]; then
+    hist_content=$(printf '%s\n' "$revs" | xargs git grep -lE "$FRONT_KEY" 2>/dev/null || true)
+  fi
+  if [ -n "$hist_names" ] || [ -n "$hist_content" ]; then
+    echo "✗ [BLOCK] [porta 2 — .env no histórico] segredo/arquivo sensível JÁ ESTEVE no git:"
+    [ -n "$hist_names" ] && { echo "  arquivos (.env/.env.*/auth.json, exceto .example/.sample/.template):"; printf '%s\n' "$hist_names" | sed 's/^@@/    /' | head -6; }
+    [ -n "$hist_content" ] && { echo "  commits com padrão de chave:"; printf '%s\n' "$hist_content" | sed 's/^/    /' | head -6; }
+    echo "  rotacione ANTES de limpar o histórico — apagar o arquivo no HEAD não apaga o commit antigo"
+    block=1
+  else
+    echo "✓ [porta 2 — .env no histórico] nenhum .env/.env.*/auth.json nem padrão de chave em nenhum commit"
+  fi
 fi
 
 if [ "$block" -ne 0 ]; then echo; echo "✗ check-secrets: segredo detectado — NÃO commitar. Se já vazou, ROTACIONE o segredo."; exit 1; fi

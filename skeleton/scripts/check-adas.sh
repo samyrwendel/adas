@@ -242,6 +242,54 @@ if [ "$SEAL" != "1" ]; then
   fi
 fi
 
+# 12) SEIS PORTAS DE SEGURANÇA DO APP (DA-189) → WARN. Todo projeto que nasce com
+# ADAS nasce com estas seis obrigações: chave no front, .env no histórico (mecânicas,
+# scripts/check-secrets.sh), validação-só-na-tela, arquivo-público, erro-fala-demais,
+# rate-limit (com prova, scripts/check-app-security.sh + .adas/seguranca-app.json).
+# Este check não REPETE a lógica dos dois scripts — RODA os dois (quando existem) e
+# resume o veredito de cada porta numa linha só, pro relatório do projeto nunca
+# esconder "faltam seis verificações" atrás de dois comandos que ninguém lembra de rodar.
+_porta_mec() {  # $1 = "porta 1" ou "porta 2" (rótulo que check-secrets.sh imprime)
+  local marca="$1" out="$2"
+  if printf '%s\n' "$out" | grep -q "✗ \[BLOCK\] \[$marca"; then echo "FALHA"
+  elif printf '%s\n' "$out" | grep -q "✓ \[$marca"; then echo "PASSA"
+  else echo "?"; fi
+}
+if [ ! -d .git ]; then
+  # Sem .git, `check-secrets.sh --all` cai no fallback `find .` da árvore INTEIRA
+  # (git ls-files vazio) — em ~/ (raiz de governança, não repo) isso varre TUDO
+  # embaixo (clones de projeto, node_modules, .venv…) e travou minutos na task
+  # 20260904-005. Sem controle de versão não há "árvore do projeto" bem definida
+  # pra escopar; reporta honesto em vez de arriscar o check inteiro pendurado.
+  p1="sem .git (não verificável com segurança aqui)"; p2="$p1"
+elif [ -f scripts/check-secrets.sh ]; then
+  sec_out="$(bash scripts/check-secrets.sh --all 2>/dev/null)"
+  p1="$(_porta_mec "porta 1" "$sec_out")"; p2="$(_porta_mec "porta 2" "$sec_out")"
+else
+  p1="sem check-secrets.sh"; p2="sem check-secrets.sh"
+fi
+if [ -f scripts/check-app-security.sh ]; then
+  asec_out="$(bash scripts/check-app-security.sh 2>/dev/null)"
+else
+  asec_out=""
+fi
+_porta_prova() {  # $1 = rótulo que check-app-security.sh usa (ex.: "porta 3")
+  local marca="$1"
+  if [ ! -f scripts/check-app-security.sh ]; then echo "sem check-app-security.sh"; return; fi
+  if printf '%s\n' "$asec_out" | grep -q "✗ \[seis portas\].*($marca)"; then echo "FALHA (sem prova válida)"
+  elif printf '%s\n' "$asec_out" | grep -q "adas: débito.*($marca)"; then echo "débito"
+  elif printf '%s\n' "$asec_out" | grep -q "✓ \[seis portas\].*($marca): N/A"; then echo "N/A (justificado)"
+  elif printf '%s\n' "$asec_out" | grep -q "✓ \[seis portas\].*($marca)"; then echo "PASSA"
+  else echo "débito"
+  fi
+}
+p3="$(_porta_prova "porta 3")"; p4="$(_porta_prova "porta 4")"
+p5="$(_porta_prova "porta 5")"; p6="$(_porta_prova "porta 6")"
+note "SEIS PORTAS (DA-189): 1 chave-no-front=$p1 · 2 env-historico=$p2 · 3 validacao-servidor=$p3 · 4 arquivo-publico=$p4 · 5 erro-fala-demais=$p5 · 6 rate-limit=$p6"
+for pv in "$p1" "$p2" "$p3" "$p4" "$p5" "$p6"; do
+  case "$pv" in PASSA|*"justificado"*) ;; *) warn=1 ;; esac
+done
+
 # veredito
 v="ok"; [ "$warn" -ne 0 ] && v="warn"; [ "$block" -ne 0 ] && v="block"
 if [ "$SEAL" = "1" ]; then

@@ -280,6 +280,99 @@ else
   echo "  (pulado — sem pytest neste ambiente)"
 fi
 
+echo "== 15) seis portas de segurança do app (DA-189) — 6 fixtures"
+# Portas 1/2 (mecânicas, check-secrets.sh) e 3-6 (com prova, check-app-security.sh).
+mkdir -p "$T/sp1/static" && (cd "$T/sp1" && git init -q && git config user.email t@t && git config user.name t \
+  && mkdir -p scripts && cp "$ROOT/skeleton/scripts/check-secrets.sh" scripts/ \
+  && echo ok > README.md && git add -A && git commit -qm x)
+(cd "$T/sp1" && echo 'const k = "sk-ABCDEFGHIJKLMNOPQRSTUVWX";' > static/app.js && git add static/app.js)
+out=$(cd "$T/sp1" && bash scripts/check-secrets.sh 2>&1); rc=$?
+[ "$rc" = 1 ] && ok "porta 1 — chave sk- em static/ → FALHA" || bad "porta 1 (chave em static) não bloqueou (rc=$rc)"
+echo "$out" | grep -q "porta 1" || bad "porta 1: mensagem não identifica a porta"
+
+mkdir -p "$T/sp2" && (cd "$T/sp2" && git init -q && git config user.email t@t && git config user.name t \
+  && mkdir -p scripts && cp "$ROOT/skeleton/scripts/check-secrets.sh" scripts/ \
+  && echo ok > README.md && git add -A && git commit -qm x)
+(cd "$T/sp2" && echo 'NEXT_PUBLIC_STRIPE_SECRET'"_KEY=abc" > .env.example && git add .env.example)
+# ^ literal quebrada em duas strings de propósito: concatenada em runtime pro
+#   fixture ficar íntegra, mas SEM aparecer contígua na fonte deste arquivo —
+#   senão o check-secrets.sh REAL (rodando no pre-commit deste repo) bloqueava
+#   o commit da própria suite por causa do padrão que ela mesma testa.
+out=$(cd "$T/sp2" && bash scripts/check-secrets.sh 2>&1); rc=$?
+[ "$rc" = 1 ] && ok "porta 1 — NEXT_PUBLIC_*_SECRET_KEY → FALHA" || bad "porta 1 (prefixo público) não bloqueou (rc=$rc)"
+
+mkdir -p "$T/sp3" && (cd "$T/sp3" && git init -q && git config user.email t@t && git config user.name t \
+  && mkdir -p scripts && cp "$ROOT/skeleton/scripts/check-secrets.sh" scripts/ \
+  && echo ok > README.md && git add -A && git commit -qm x \
+  && echo "TELEGRAM_BOT_TOKEN=123456:AAfake" > .env && git add -f .env && git commit -qm "oops" \
+  && git rm -q .env && git commit -qm "remove env")
+out=$(cd "$T/sp3" && bash scripts/check-secrets.sh --all 2>&1); rc=$?
+[ "$rc" = 1 ] && ok "porta 2 — .env removido mas vivo no histórico → FALHA" || bad "porta 2 (.env no histórico) não bloqueou (rc=$rc)"
+echo "$out" | grep -qi "rotacione ANTES de limpar" || bad "porta 2: sem a instrução de rotacionar antes de limpar"
+
+mkdir -p "$T/sp3b" && (cd "$T/sp3b" && git init -q && git config user.email t@t && git config user.name t \
+  && mkdir -p scripts && cp "$ROOT/skeleton/scripts/check-secrets.sh" scripts/ \
+  && printf 'OPENAI_API_KEY=\nANTHROPIC_API_KEY=\n' > .env.example && git add -A && git commit -qm "add .env.example")
+out=$(cd "$T/sp3b" && bash scripts/check-secrets.sh --all 2>&1); rc=$?
+[ "$rc" = 0 ] && ok "porta 2 — .env.example (SEM valor) no histórico → não é falha (falso positivo corrigido)" \
+  || bad "porta 2 confundiu .env.example com .env real (rc=$rc): $out"
+
+mkdir -p "$T/sp3c" && (cd "$T/sp3c" && git init -q && git config user.email t@t && git config user.name t \
+  && mkdir -p scripts && cp "$ROOT/skeleton/scripts/check-secrets.sh" scripts/ \
+  && printf 'OPENAI_API_KEY=\n' > .env.enterprise.example && git add -A && git commit -qm x)
+out=$(cd "$T/sp3c" && bash scripts/check-secrets.sh --all 2>&1); rc=$?
+[ "$rc" = 0 ] && ok ".env.<algo>.example (segmento extra) tracked → não é falso BLOCK (achado real da task 20260904-005)" \
+  || bad ".env.enterprise.example ainda bloqueia por engano (rc=$rc): $out"
+
+mkdir -p "$T/sp4/scripts" && cp "$ROOT/skeleton/scripts/check-app-security.sh" "$T/sp4/scripts/"
+out=$(cd "$T/sp4" && bash scripts/check-app-security.sh 2>&1); rc=$?
+[ "$rc" = 0 ] && ok "sem .adas/seguranca-app.json → WARN, não bloqueia" || bad "sem json bloqueou (esperado warn, rc=$rc)"
+[ "$(echo "$out" | grep -c "adas: débito")" = 4 ] && ok "sem json — as 4 portas com prova viram débito adas:" \
+  || bad "sem json — não listou as 4 portas como débito"
+
+mkdir -p "$T/sp5/scripts" "$T/sp5/.adas" && cp "$ROOT/skeleton/scripts/check-app-security.sh" "$T/sp5/scripts/"
+cat > "$T/sp5/.adas/seguranca-app.json" <<'EOS'
+{
+  "validacao_servidor": {"estado": "passa", "evidencia": "", "data": "2026-09-04"},
+  "arquivo_publico": {"estado": "debito"},
+  "erro_fala_demais": {"estado": "debito"},
+  "rate_limit": {"estado": "debito"}
+}
+EOS
+out=$(cd "$T/sp5" && bash scripts/check-app-security.sh 2>&1); rc=$?
+[ "$rc" = 1 ] && ok "porta 3 'passa' SEM evidência → FAIL (DA-174)" || bad "'passa' sem evidência não falhou (rc=$rc)"
+echo "$out" | grep -qi "DA-174" || bad "FAIL sem evidência não cita DA-174"
+
+mkdir -p "$T/sp6/scripts" "$T/sp6/.adas" && cp "$ROOT/skeleton/scripts/check-app-security.sh" "$T/sp6/scripts/"
+cat > "$T/sp6/.adas/seguranca-app.json" <<'EOS'
+{
+  "validacao_servidor": {"estado": "na", "evidencia": "site estático, nenhuma rota de escrita", "data": "2026-09-04"},
+  "arquivo_publico": {"estado": "debito"},
+  "erro_fala_demais": {"estado": "debito"},
+  "rate_limit": {"estado": "debito"}
+}
+EOS
+out=$(cd "$T/sp6" && bash scripts/check-app-security.sh 2>&1); rc=$?
+[ "$rc" = 0 ] && ok "porta 3 'na' JUSTIFICADO → PASSA (não bloqueia)" || bad "'na' justificado bloqueou (rc=$rc)"
+echo "$out" | grep -q "N/A (justificado)" || bad "'na' justificado não imprimiu o veredito PASSA"
+
+mkdir -p "$T/sp7/scripts" "$T/sp7/.adas" && (cd "$T/sp7" && git init -q && git config user.email t@t && git config user.name t)
+cp "$ROOT/skeleton/scripts/check-secrets.sh" "$T/sp7/scripts/"
+cp "$ROOT/skeleton/scripts/check-app-security.sh" "$T/sp7/scripts/"
+cp "$ROOT/skeleton/scripts/check-adas.sh" "$T/sp7/scripts/"
+cp "$T/sp6/.adas/seguranca-app.json" "$T/sp7/.adas/"
+(cd "$T/sp7" && echo "leia ADAS.md" > AGENTS.md \
+  && printf '# X\n<!-- adas-core-start -->\nN\n<!-- adas-core-end -->\n' > ADAS.md \
+  && touch DECISIONS.md && git add -A && git commit -qm init)
+out=$(cd "$T/sp7" && bash scripts/check-adas.sh 2>&1)
+echo "$out" | grep -q "SEIS PORTAS (DA-189):" && ok "check-adas.sh mostra o resumo das 6 portas" || bad "check-adas.sh não mostrou as 6 portas"
+echo "$out" | grep -q "1 chave-no-front=PASSA · 2 env-historico=PASSA" && ok "check-adas.sh: portas mecânicas (1/2) refletem o check-secrets.sh live" \
+  || bad "check-adas.sh não rodou/leu as portas mecânicas"
+echo "$out" | grep -q "3 validacao-servidor=N/A (justificado)" && ok "check-adas.sh: porta 3 lê .adas/seguranca-app.json" \
+  || bad "check-adas.sh não leu o estado da porta 3"
+echo "$out" | grep -q "5 erro-fala-demais=débito" && ok "check-adas.sh: porta sem prova aparece como débito" \
+  || bad "check-adas.sh não marcou a porta sem prova como débito"
+
 echo
 echo "RESULTADO: $pass ok, $fail falha(s)"
 [ "$fail" = 0 ]

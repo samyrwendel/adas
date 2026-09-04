@@ -1,0 +1,27 @@
+{
+  "_leia_me": "As seis portas de segurança do app (DA-189). As portas 1 e 2 (chave no front, .env no histórico) são MECÂNICAS — scripts/check-secrets.sh já as verifica por grep, nada a preencher aqui. As quatro abaixo exigem um TESTE do próprio projeto — rode-o, e grave a evidência (comando + resultado, ou caminho do arquivo de teste). Troque 'debito' por 'passa' (com evidência) ou 'na' (com justificativa) — 'passa'/'na' SEM evidencia não vale (DA-174) e check-app-security.sh falha. Enforcement: scripts/check-app-security.sh.",
+  "validacao_servidor": {
+    "_o_que_provar": "toda rota de ESCRITA (POST/PUT/DELETE) recusa sem credencial/token válido — teste ao vivo: bata a rota SEM cookie/header de auth e confirme 401/403; preço, role e user_id nunca vêm do CLIENTE, só do servidor.",
+    "estado": "debito",
+    "evidencia": "",
+    "data": ""
+  },
+  "arquivo_publico": {
+    "_o_que_provar": "nenhuma rota estática expõe upload/documento/backup por link previsível (id sequencial, nome de arquivo adivinhável); teste path traversal (../../etc/passwd) → 404; URL assinada com expiração, ou N/A se o projeto não serve arquivo nenhum.",
+    "estado": "debito",
+    "evidencia": "",
+    "data": ""
+  },
+  "erro_fala_demais": {
+    "_o_que_provar": "force um erro (id inexistente, JSON inválido, credencial errada) e confirme que o corpo da resposta NÃO tem stack trace, caminho de arquivo, nome de tabela; login não diferencia 'usuário não existe' de 'senha errada'; logs não gravam credencial/CPF em claro.",
+    "estado": "debito",
+    "evidencia": "",
+    "data": ""
+  },
+  "rate_limit": {
+    "_o_que_provar": "N requisições seguidas em login e em rota cara (IA paga) são recusadas depois de um teto (429/backoff/CAPTCHA); teto de gasto declarado nas APIs pagas (provedor/valor).",
+    "estado": "debito",
+    "evidencia": "",
+    "data": ""
+  }
+}

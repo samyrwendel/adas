@@ -63,7 +63,7 @@ projeto destino, NESTA ORDEM (a checagem de colisão vem ANTES da cópia — de 
   #    (re-execução destruiria o log de decisões). README.md fica FORA da lista:
   #    o esqueleto nunca o traz (o rm do passo 2 o remove na ORIGEM + cp -Rn não sobrescreve).
   for t in AGENTS.md DECISIONS.md ADAS.md .claude/settings.json \
-           .claude/hooks/adas-inject.sh .adas/profile.json; do
+           .claude/hooks/adas-inject.sh .adas/profile.json .adas/seguranca-app.json; do
     [ -e "$t" ] && echo "COLISÃO: $t — merge manual antes de prosseguir"
   done
 
@@ -84,9 +84,11 @@ projeto destino, NESTA ORDEM (a checagem de colisão vem ANTES da cópia — de 
     .claude/hooks/adas-inject.sh .claude/hooks/da-index-hook.sh \
     .claude/skills/_template/SKILL.md \
     .claude/skills/seguranca-acesso/SKILL.md .claude/skills/adas-check/SKILL.md \
-    scripts/check-adas.sh scripts/check-secrets.sh scripts/adas-report.sh \
+    scripts/check-adas.sh scripts/check-secrets.sh scripts/check-app-security.sh \
+    scripts/adas-report.sh \
     scripts/da-index.sh scripts/install-hooks.sh DECISIONS-INDEX.md \
-    DECISIONS.md ADAS.md AGENTS.md .adas/profile.json .adas/skeleton-version; do
+    DECISIONS.md ADAS.md AGENTS.md .adas/profile.json .adas/seguranca-app.json \
+    .adas/skeleton-version; do
     [ -f "$f" ] || { echo "FALTA: $f"; ok=0; }
   done; [ "$ok" = 1 ] && echo "esqueleto OK" || echo "FALTA ARQUIVO — pare e reporte"
 
@@ -109,6 +111,13 @@ Idioma/Copy/i18n · **Segredos & Acesso** (token/.env/chave/repo) · Decisões/G
 A faixa **Segredos & Acesso** (`.claude/skills/seguranca-acesso/`) já vem PREENCHIDA no esqueleto
 (regras universais: nunca commitar segredo, token least-privilege, não caçar credencial, confirmar
 op de repo irreversível) + o gate `scripts/check-secrets.sh` — MANTENHA, não recrie; só ajuste o específico do projeto.
+Ela também já traz a seção **"Seis portas do app"** (DA-189 — o padrão de falha de app gerado por
+IA: chave no front, `.env` no histórico, validação só na tela, arquivo público, erro que fala
+demais, sem rate limit). As duas MECÂNICAS (chave no front, `.env` no histórico) já rodam via
+`scripts/check-secrets.sh`, sem preencher nada. As outras quatro exigem um TESTE do próprio
+projeto — preencha `.adas/seguranca-app.json` (já copiado, com as quatro em `debito` e o texto do
+que provar) conforme for testando; `scripts/check-app-security.sh` confere que toda porta "passa"
+ou "N/A" tem evidência (DA-174 — declaração sem prova não conta). MANTENHA os dois scripts.
 
 PASSO 2 — Para CADA faixa, DUPLIQUE a pasta-modelo `.claude/skills/_template/` →
 `.claude/skills/<nome>/` e preencha o `SKILL.md` (apague `_template/` no fim):
@@ -185,6 +194,12 @@ num check RODÁVEL em scripts/check-<nome>.sh (duplique scripts/check-_template.
   - SEGREDOS no gate: o check-secrets.sh é staged por default (pré-commit); no deploy
     não há nada staged — o script cai sozinho pra varredura completa nesse caso, mas
     rodando manual prefira `bash scripts/check-secrets.sh --all`.
+  - SEIS PORTAS no gate: `check-secrets.sh --all` já cobre as portas 1/2 (mecânicas) —
+    nada a mais pra ligar. `scripts/check-app-security.sh` cobre as portas 3-6 (com
+    prova) lendo `.adas/seguranca-app.json`; entra no MESMO loop de `check-*.sh` —
+    WARN enquanto houver porta em `debito` (não bloqueia o deploy: débito visível é o
+    ponto da DA-189, não travar quem ainda está testando), FAIL só se alguém marcar
+    "passa"/"na" sem preencher `evidencia` (DA-174).
   - Duplicou o template? REMOVA scripts/check-_template.sh no fim (como o `_template/`
     das skills) — ele casa com o glob `check-*.sh` e entraria no gate.
   Registre o gate como DA-NNN e cite o check na faixa ("enforcement: scripts/check-<nome>.sh").
@@ -202,7 +217,10 @@ PLACEHOLDER não preenchido; faixa sem frontmatter name/description = BLOCK (nã
 dispara); faixa sem PROCEDÊNCIA (invariante sem origem = chute); DRIFT (faixa/.specs
 commitada DEPOIS do ADAS.md → regenere); DA-NNN citada mas ausente do DECISIONS.md;
 e ENFORCEMENT LIGADO (hook JIT do repo registrado + runtime host instalado/registrado/
-com este repo no repos.conf — instalação-fantasma NÃO passa em silêncio).
+com este repo no repos.conf — instalação-fantasma NÃO passa em silêncio). Também
+resume as SEIS PORTAS (DA-189, PASSO 1): roda check-secrets.sh/check-app-security.sh
+(quando existem) e mostra o veredito das seis numa linha — PASSA, N/A justificado ou
+débito, nunca escondido atrás de dois comandos que ninguém lembra de rodar.
 WARN por padrão, exceto frontmatter quebrado.
 
 PASSO 9 (OBRIGATÓRIO — o critério de aceite da SAÍDA cobra a âncora) — ONBOARDING /
