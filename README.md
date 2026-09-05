@@ -22,10 +22,22 @@ ADAS.md  (PORTÁTIL: cola em qualquer LLM, sem hook/sem repo)
    │  injetada JIT →
 .claude/settings.json hook  (REFORÇO no instante da edição — só Claude Code)
    +
-DECISIONS.md  (LOG append-only DA-NNN, com cadeia de supersede)
+DECISIONS.md  (DIÁRIO EM CAMADAS — o loop de volta):
+   ├─ DA-NNN         append-only, nunca some — o que foi DECIDIDO e por quê
+   ├─ NA-<saga>      DA-CABEÇA por saga — o que VALE HOJE (consolida a linhagem)
+   └─ views geradas  índice · sagas · lições · vigentes-por-escopo (regeneradas)
 ```
 Cada camada **cita e é gerada da de cima**. Por isso "auto-aprimorar" é mecânico: decisão entra como
-`DA-NNN`, dobra na faixa que afeta, regenera o portátil — **no mesmo commit**; nunca apaga, só *supersede*.
+`DA-NNN`, dobra na faixa que afeta, regenera o portátil — **no mesmo commit**. São **três papéis
+distintos**, não um: **constituição/faixa = COMO se trabalha**; **`DA-NNN` = O QUE foi decidido e por quê**
+(histórico imutável); **`NA-<saga>` = O QUE vale hoje** — a cabeça da saga, que se lê sem varrer o histórico.
+
+**Aposentar decisão são DOIS mecanismos, não um.** *Supersede* é substituição **pontual e declarada** de
+uma decisão específica — raro por natureza (medido: ~1 uso em ~200 decisões). O que resolve **acúmulo** é a
+**consolidação na cabeça da saga**: a `NA-<saga>` reescreve o que vale e absorve a linhagem **sem apagar
+nenhuma** decisão — medido, **28 cabeças cobrindo ~150 decisões**, e a **leitura obrigatória caiu de ~200
+para ~78**. Nada some; muda só o que você **precisa** ler pra saber a regra atual.
+
 O mesmo vale pro **aprendizado de fix**: fix aprovado que representa uma **classe** de erro (mesmo padrão
 possível em superfície irmã — ex.: errou igual no spot E no colateral) dobra na **faixa sensível** que
 dispara no momento certo (description/hook/check), **não em doc morto** — doc morto não dispara.
@@ -41,6 +53,20 @@ Assim a faixa pega no **commit/deploy**, não só na edição. É o PASSO 7 do p
 a derivação `.specs → faixas → ADAS.md` **rotar em silêncio**. Detecta **DRIFT** (faixa/`.specs`
 commitada depois do `ADAS.md` → regenere), `<PLACEHOLDER>` não preenchido, **faixa sem frontmatter**
 (não dispara) e **sem procedência** (invariante = chute), e `DA-NNN` órfã. Roda no CI/pre-commit.
+
+### O verificador tem que ser honesto sobre o próprio limite
+Governança **vive de check** — mas um check que transforma a **própria limitação** em acusação treina todo
+mundo a **ignorar o alarme**, e alarme ignorado é pior que alarme nenhum. Quatro modos de falha, a **mesma
+raiz**: **ausência de DADO reportada como ausência de FATO**.
+- **timeout curto lendo silêncio como mentira** — sem resposta a tempo é **INCONCLUSIVO**, não reprovação;
+- **procurar no escopo errado** e ler a ausência ali como inatividade real;
+- **comparar com o separador errado** — um checador que reprovaria 100% do formato canônico e **nunca
+  disparou porque nunca foi exercitado** (check sem teste é fé, não gate);
+- **resolver o caminho pelo diretório atual** e responder "não encontrado" quando na verdade **não conseguiu LER**.
+
+A regra, e vale pra qualquer check: **distinga "confirmei que está errado" de "não consegui verificar"**, e
+**diga ONDE procurou quando reprova** — veredito sem escopo não é verificável, e um NÃO que era só um silêncio
+apodrece a confiança no alarme inteiro.
 
 ### Âncora de onboarding (PASSO 9)
 `AGENTS.md` é o arquivo que **qualquer LLM/ferramenta lê no primeiro contato** e aponta pro `ADAS.md`
