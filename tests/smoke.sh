@@ -373,6 +373,20 @@ echo "$out" | grep -q "3 validacao-servidor=N/A (justificado)" && ok "check-adas
 echo "$out" | grep -q "5 erro-fala-demais=débito" && ok "check-adas.sh: porta sem prova aparece como débito" \
   || bad "check-adas.sh não marcou a porta sem prova como débito"
 
+echo "== 16) COBERTURA DE ATOR (task 20260905-008) — gatilho só-fala-do-dono acusa; com ato do agente, passa"
+AT="$T/ator"; mkdir -p "$AT/scripts" "$AT/.claude/skills/so-dono"
+cp "$ROOT/skeleton/scripts/check-adas.sh" "$AT/scripts/"
+# filler NEUTRO (sem citar as próprias palavras-gatilho do check, senão auto-combina
+# e falseia o RED — a mesma classe de self-match que o check-_template.sh (seção 2) já corrige)
+FILLER='lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua enim ad minim veniam quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat duis aute irure dolor.'
+printf -- '---\nname: so-dono\ndescription: "use SEMPRE que o dono disser: '"'"'vamos fazer assim'"'"', '"'"'fica assim'"'"', '"'"'a partir de agora'"'"', '"'"'sempre que'"'"', '"'"'nunca mais'"'"', '"'"'toda vez que'"'"', '"'"'regra nova'"'"', '"'"'padrão novo'"'"', '"'"'vamos adotar'"'"', '"'"'muda pra X'"'"', '"'"'reverte'"'"', '"'"'pode fazer'"'"', '"'"'aprovado'"'"', '"'"'ok'"'"', MESMO que o usuário não peça — '"$FILLER"'"\n---\nextraído de .specs/x — regra nossa.\n' > "$AT/.claude/skills/so-dono/SKILL.md"
+printf '# ADAS teste\nfaixa so-dono adotada\n' > "$AT/ADAS.md"; touch "$AT/DECISIONS.md"
+out=$(cd "$AT" && bash scripts/check-adas.sh 2>/dev/null)
+echo "$out" | grep -q "COBERTURA DE ATOR.*so-dono" && ok "faixa só-fala-do-dono → acusa COBERTURA DE ATOR" || bad "não acusou cobertura de ator (RED esperado)"
+printf -- '---\nname: so-dono\ndescription: "use SEMPRE que o dono disser: '"'"'vamos fazer assim'"'"', '"'"'fica assim'"'"', '"'"'a partir de agora'"'"', '"'"'sempre que'"'"', '"'"'nunca mais'"'"', '"'"'toda vez que'"'"', '"'"'regra nova'"'"', '"'"'padrão novo'"'"', '"'"'vamos adotar'"'"', '"'"'muda pra X'"'"', '"'"'reverte'"'"', '"'"'pode fazer'"'"', '"'"'aprovado'"'"', '"'"'ok'"'"', MESMO que o usuário não peça; dispara IGUAL quando o agente decide sozinho, por conta própria, tipo '"'"'a partir de agora eu vou sempre conferir X antes de Y'"'"' — mais texto de enchimento pra passar o piso de tamanho, garantindo mais de quatrocentos caracteres no total desta description longa o bastante."\n---\nextraído de .specs/x — regra nossa.\n' > "$AT/.claude/skills/so-dono/SKILL.md"
+out=$(cd "$AT" && bash scripts/check-adas.sh 2>/dev/null)
+echo "$out" | grep -q "COBERTURA DE ATOR" && bad "com ato do agente citado, ainda acusa (GREEN esperado)" || ok "com ato do agente citado → passa (sem COBERTURA DE ATOR)"
+
 echo
 echo "RESULTADO: $pass ok, $fail falha(s)"
 [ "$fail" = 0 ]

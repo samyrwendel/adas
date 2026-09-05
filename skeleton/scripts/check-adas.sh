@@ -85,6 +85,15 @@ thin_issue() {  # trigger magro (piso mecânico do description)
   printf '%s' "$desc" | grep -qi "MESMO" || thin="${thin}sem negação 'MESMO que não peça'; "
   n_symp=$(printf '%s' "$desc" | grep -o "'" | wc -l)
   [ "$n_symp" -lt 4 ] && thin="${thin}<2 sintomas citados ('...'); "
+  # COBERTURA DE ATOR (task 20260905-008, achado pós-DA-229): gatilho entre aspas
+  # é convenção deste ADAS pra fala do DONO — mas o dono não é o único que
+  # estabelece regra. Faixa com vários gatilhos-fala-do-dono e ZERO menção a um
+  # ato do AGENTE por conta própria é cega pro caso em que o agente decide
+  # sozinho: a regra nasce e nada dispara (DA-198/199/205).
+  if [ "$n_symp" -ge 4 ] && ! printf '%s' "$desc" | grep -qiE \
+    "\bagente (decide|estabelece|institui|cria|adota)\b|\bpor conta pr[oó]pria\b|\bsozinho\b|\beu vou\b|\bsem (o )?(dono|usu[aá]rio) (pedir|falar|mandar)\b"; then
+    thin="${thin}COBERTURA DE ATOR: só fala do dono, nenhum ato do agente citado; "
+  fi
   [ -n "$thin" ] && echo "TRIGGER MAGRO: ${thin}— engordar (sinônimos+sintomas+vocabulário real do usuário)"
   return 0
 }
