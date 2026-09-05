@@ -2,6 +2,20 @@
 # ADAS host — resolução de repos governados. Fonte: ~/.claude/adas/repos.conf
 # (um caminho absoluto por linha; '#' comenta). Override: env ADAS_REPOS_CONF.
 ADAS_CONF="${ADAS_REPOS_CONF:-$HOME/.claude/adas/repos.conf}"
+ADAS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || dirname "${BASH_SOURCE[0]}")"
+
+# ORÇAMENTO de bytes da emissão do SessionStart. O harness do Claude Code PERSISTE
+# (guarda em tool-results/ e entrega ao modelo só um preview de 2 KiB) o stdout de um
+# hook acima de 10 KiB (10.240 bytes). Medido nos transcripts desta máquina (05/09,
+# tests/smoke.sh secção 17): maior stdout ENTREGUE inline = 10.215 B; menor stdout
+# PERSISTIDO = 10.822 B → a fronteira é 10*1024. Preview = primeiros 2.048 B. Orçamos
+# 9.600 B: 640 B (6%) abaixo do teto e abaixo dos 10.215 B que JÁ chegaram inteiros,
+# logo toda emissão que cabe no orçamento é entrega garantida. Emissão > teto some em
+# silêncio; é o defeito que este orçamento fecha. Override: env ADAS_EMIT_BUDGET.
+ADAS_EMIT_BUDGET="${ADAS_EMIT_BUDGET:-9600}"
+
+# adas_blen <str> → nº de BYTES (não chars) — o teto do harness é em bytes.
+adas_blen() { LC_ALL=C printf '%s' "${1:-}" | wc -c; }
 
 adas_repos() {
   [ -f "$ADAS_CONF" ] || return 0
@@ -49,12 +63,16 @@ adas_da_rotas() {
   printf '%s' "$best"
 }
 
-# adas_da_layer0 <cwd> → camada 0 do diário de decisões (DA-181): 'sagas --escopo
-# <conjunto>' + DECISIONS-LICOES.md inteiro. DA_LOAD=off desliga (0 tokens, cron
-# mecânico); default é injetar. Fail-open: qualquer ausência = string vazia.
+# adas_da_layer0 <cwd> [budget_bytes] → camada 0 do diário (DA-181): 'sagas --escopo
+# <conjunto>' + DECISIONS-LICOES.md inteiro. Cabe em [budget_bytes] (default: sem teto,
+# p/ o caminho SubagentStart que usa additionalContext). PRIORIDADE DE CORTE DECLARADA:
+# vigente (sagas) ANTES de histórico (lições) — as lições cedem primeiro. O que não
+# couber NÃO some em silêncio: vira uma linha-ponteiro [ADAS-CORTE] com o tamanho e o
+# comando pra ler o resto (DA-036 — ausência de dado tem que estar escrita). DA_LOAD=off
+# desliga (0 tokens, cron mecânico). Fail-open: qualquer ausência = string vazia.
 adas_da_layer0() {
   [ "${DA_LOAD:-index}" = "off" ] && return 0
-  local cwd="$1"
+  local cwd="$1" budget="${2:-1000000000}"
   local dec="$HOME/DECISIONS.md" idx="$HOME/scripts/da-index.sh"
   [ -f "$dec" ] && [ -f "$idx" ] || return 0
 
@@ -71,7 +89,32 @@ adas_da_layer0() {
   sagas="$(bash "$idx" sagas --escopo "$escopo" "$HOME" 2>/dev/null)"
   [ -f "$HOME/DECISIONS-LICOES.md" ] && licoes="$(cat "$HOME/DECISIONS-LICOES.md" 2>/dev/null)"
   [ -z "$sagas" ] && [ -z "${licoes:-}" ] && return 0
-  printf '\n[DECISIONS camada 0 — escopo %s] sagas do diário de decisões (~/DECISIONS.md). "quem decidiu?" = DA-NNN, nunca a NA. Rodadas pendentes avisadas abaixo devem ser lidas (show DA-NNN) antes de decidir na saga.\n%s\n\n%s\n' "$escopo" "$sagas" "${licoes:-}"
+
+  local out used part plen ptr
+  out="$(printf '\n[DECISIONS camada 0 — escopo %s] sagas do diário de decisões (~/DECISIONS.md). "quem decidiu?" = DA-NNN, nunca a NA. Rodadas pendentes avisadas abaixo devem ser lidas (show DA-NNN) antes de decidir na saga.\n' "$escopo")"
+  used="$(adas_blen "$out")"
+
+  # 1) sagas (VIGENTES) — prioridade máxima
+  if [ -n "$sagas" ]; then
+    part="$(printf '%s\n' "$sagas")"; plen="$(adas_blen "$part")"
+    if [ $((used + plen)) -le "$budget" ]; then
+      out="${out}${part}"; used=$((used + plen))
+    else
+      ptr="$(printf '\n[ADAS-CORTE] sagas vigentes (%d bytes) nao couberam no orcamento de %d bytes — leia com: bash ~/scripts/da-index.sh sagas --escopo %s ~\n' "$plen" "$budget" "$escopo")"
+      [ $((used + $(adas_blen "$ptr"))) -le "$budget" ] && { out="${out}${ptr}"; used=$((used + $(adas_blen "$ptr"))); }
+    fi
+  fi
+  # 2) lições (HISTÓRICO) — entra por último, cede primeiro
+  if [ -n "${licoes:-}" ]; then
+    part="$(printf '\n%s\n' "$licoes")"; plen="$(adas_blen "$part")"
+    if [ $((used + plen)) -le "$budget" ]; then
+      out="${out}${part}"; used=$((used + plen))
+    else
+      ptr="$(printf '\n[ADAS-CORTE] licoes/historico (~/DECISIONS-LICOES.md, %d bytes) nao couberam no orcamento de %d bytes — leia com: cat ~/DECISIONS-LICOES.md\n' "$plen" "$budget")"
+      [ $((used + $(adas_blen "$ptr"))) -le "$budget" ] && { out="${out}${ptr}"; used=$((used + $(adas_blen "$ptr"))); }
+    fi
+  fi
+  printf '%s' "$out"
 }
 
 # adas_hub_header → cabeçalho multi-repo genérico (lista os repos governados)
@@ -79,4 +122,26 @@ adas_hub_header() {
   local names
   names="$(adas_repos | while IFS= read -r r; do basename "$r"; done | tr '\n' ',' | sed 's/,$//; s/,/, /g')"
   printf '[ADAS] Governanca ativa nesta maquina. Repos governados: %s — cada um tem um ADAS.md na raiz. Principio-mestre: ADESAO > INVENCAO (reusar > inventar; consolidar > reescrever; nunca regredir o que funciona). Caminho de dinheiro = seguranca: nada mockado, nunca executa irreversivel sem confirmacao. Ao trabalhar em arquivos de um desses repos, LEIA o ADAS.md daquele repo antes de produzir qualquer coisa; a regra da faixa tambem sera injetada automaticamente no instante da edicao (hook PreToolUse). Esta regra permanece ATIVA em toda a sessao, inclusive apos compactacao de contexto.\n' "$names"
+}
+
+# adas_session_emit <cwd> → emissão COMPLETA do SessionStart cabendo em ADAS_EMIT_BUDGET
+# bytes: núcleo do repo (sempre, é a REGRA) + camada 0 no orçamento restante. É o único
+# lugar que monta a saída — o hook só decide o efeito colateral (.active). Sem efeito
+# colateral aqui, então o teste chama esta função direto contra dados reais.
+adas_session_emit() {
+  local cwd="$1" repo core budget
+  repo="$(adas_resolve "$cwd")"
+  if [ -n "$repo" ]; then
+    core="$(bash "$ADAS_LIB_DIR/adas-core.sh" "$repo" 2>/dev/null || true)"
+  elif adas_is_hub "$cwd"; then
+    core="$(adas_hub_header)"
+  fi
+  if [ -n "${core:-}" ]; then
+    printf '%s\n' "$core"
+    budget=$(( ${ADAS_EMIT_BUDGET:-9216} - $(adas_blen "$core") - 1 ))
+  else
+    budget=$(( ${ADAS_EMIT_BUDGET:-9216} ))
+  fi
+  [ "$budget" -lt 0 ] && budget=0
+  adas_da_layer0 "$cwd" "$budget" 2>/dev/null || true
 }

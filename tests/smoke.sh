@@ -387,6 +387,44 @@ printf -- '---\nname: so-dono\ndescription: "use SEMPRE que o dono disser: '"'"'
 out=$(cd "$AT" && bash scripts/check-adas.sh 2>/dev/null)
 echo "$out" | grep -q "COBERTURA DE ATOR" && bad "com ato do agente citado, ainda acusa (GREEN esperado)" || ok "com ato do agente citado → passa (sem COBERTURA DE ATOR)"
 
+echo "== 17) ORÇAMENTO da emissão do SessionStart (adas_session_emit) — teto de 10 KiB do harness"
+# CONTEXTO: o Claude Code PERSISTE stdout de hook > 10 KiB e entrega ao modelo só um
+# preview de 2 KiB. Medido nos transcripts (05/09): maior inline 10.215 B, menor
+# persistido 10.822 B → fronteira 10*1024. adas_session_emit orça 9.600 B e o que não
+# cabe vira PONTEIRO auditável [ADAS-CORTE]; prioridade DECLARADA: vigente (sagas) antes
+# de histórico (lições). Este assert FALHA se a emissão passar do orçamento — regressão
+# impossível de passar despercebida quando o diário crescer de novo.
+BR="$T/bud"; mkdir -p "$BR/scripts" "$BR/.claude/adas"
+echo "$BR" > "$BR/.claude/adas/repos.conf"
+printf '# ADAS teste\n<!-- adas-core-start -->\nNUCLEO-TESTE regra vigente do repo.\n<!-- adas-core-end -->\n' > "$BR/ADAS.md"
+touch "$BR/DECISIONS.md"
+cat > "$BR/scripts/da-index.sh" <<'STUB'
+#!/usr/bin/env bash
+head -c "${SAGAS_BYTES:-20000}" </dev/zero | tr '\0' 'S'
+STUB
+head -c 20000 </dev/zero | tr '\0' 'L' > "$BR/DECISIONS-LICOES.md"
+emit(){ HOME="$BR" ADAS_EMIT_BUDGET="$1" SAGAS_BYTES="$2" bash -c 'source "'"$ROOT"'/host/adas-lib.sh"; adas_session_emit "'"$BR"'"'; }
+blen(){ LC_ALL=C wc -c; }
+
+# A) sagas(20k)+lições(20k) NÃO cabem: emissão <= orçamento, < teto, com os dois ponteiros
+o="$(emit 9600 20000)"; b="$(printf '%s' "$o" | blen)"
+[ "$b" -le 9600 ] && ok "emissão ($b B) <= orçamento 9600" || bad "emissão ($b B) ESTOUROU o orçamento 9600"
+[ "$b" -lt 10240 ] && ok "emissão ($b B) < teto 10240 (entrega inline, não persiste)" || bad "emissão ($b B) >= teto 10240 (seria cortada a 2 KiB)"
+printf '%s' "$o" | grep -q "NUCLEO-TESTE" && ok "núcleo (a REGRA) chega inteiro" || bad "núcleo não chegou"
+printf '%s' "$o" | grep -q "\[ADAS-CORTE\] sagas" && ok "sagas que não coube → ponteiro [ADAS-CORTE]" || bad "sagas cortada em SILÊNCIO"
+printf '%s' "$o" | grep -q "\[ADAS-CORTE\] licoes" && ok "lições que não coube → ponteiro [ADAS-CORTE]" || bad "lições cortada em SILÊNCIO"
+printf '%s' "$o" | grep -q "leia com: cat ~/DECISIONS-LICOES.md" && ok "ponteiro DIZ como ler o resto" || bad "ponteiro sem comando de leitura"
+
+# B) DENTE: sem orçamento (teto gigante) a MESMA emissão estoura o teto — o defeito que o orçamento fecha
+o2="$(emit 99999999 20000)"; b2="$(printf '%s' "$o2" | blen)"
+[ "$b2" -gt 10240 ] && ok "sem orçamento a emissão ($b2 B) estoura o teto (RED que o orçamento evita)" || bad "fixture pequena: sem orçamento deu $b2 B, o teste não tem dente"
+
+# C) PRIORIDADE: sagas pequena (1k) CABE → vigente inline; histórico (lições) cede primeiro
+o3="$(emit 9600 1000)"; b3="$(printf '%s' "$o3" | blen)"
+[ "$b3" -le 9600 ] && ok "com sagas pequena, emissão ($b3 B) <= orçamento" || bad "emissão ($b3 B) estourou"
+printf '%s' "$o3" | grep -q "\[ADAS-CORTE\] sagas" && bad "sagas pequena foi cortada (deveria caber inline)" || ok "sagas vigente cabe → INLINE"
+printf '%s' "$o3" | grep -q "\[ADAS-CORTE\] licoes" && ok "histórico cede primeiro → ponteiro" || bad "lições não cedeu (prioridade invertida)"
+
 echo
 echo "RESULTADO: $pass ok, $fail falha(s)"
 [ "$fail" = 0 ]
