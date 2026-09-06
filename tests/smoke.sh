@@ -425,6 +425,58 @@ o3="$(emit 9600 1000)"; b3="$(printf '%s' "$o3" | blen)"
 printf '%s' "$o3" | grep -q "\[ADAS-CORTE\] sagas" && bad "sagas pequena foi cortada (deveria caber inline)" || ok "sagas vigente cabe → INLINE"
 printf '%s' "$o3" | grep -q "\[ADAS-CORTE\] licoes" && ok "histórico cede primeiro → ponteiro" || bad "lições não cedeu (prioridade invertida)"
 
+echo "== 18) da-index c12 (DA-234) — 3ª rodada sem consolida:/supersede: em <=7 dias avisa, MAS só se não resolver em exatamente 3"
+# DENTE de regressão pro caso real que motivou a DA-234: a saga cabecalho-de-task
+# (DA-146/158/159/160/207) levou 4 rodadas pra achar a raiz — o aviso tinha que ter soado na
+# 3ª (DA-159), antes da 4ª (DA-160). Contra-exemplo real: ultimo-scan-em-disco
+# (DA-114/115/116/225) resolveu EXATO na 3ª — não pode virar falso positivo.
+C12="$T/c12"; mkdir -p "$C12/scripts"
+cp "$ROOT/skeleton/scripts/da-index.sh" "$C12/scripts/"
+cat > "$C12/DECISIONS.md" <<'EOS'
+# T — Registro de Decisões
+
+## DA-101 — Fixture mau padrão, tentativa 1
+`escopo: produto` · `saga: fixture-c12-mau` · `data: 2026-01-01`
+**Regra:** tentativa 1, remenda um emissor.
+
+## DA-102 — Fixture mau padrão, tentativa 2
+`escopo: produto` · `saga: fixture-c12-mau` · `data: 2026-01-02`
+**Regra:** tentativa 2, remenda outro emissor.
+
+## DA-103 — Fixture mau padrão, tentativa 3 (aqui o aviso deveria soar)
+`escopo: produto` · `saga: fixture-c12-mau` · `data: 2026-01-02`
+**Regra:** tentativa 3, ainda não foi na raiz.
+
+## DA-104 — Fixture mau padrão, tentativa 4
+`escopo: produto` · `saga: fixture-c12-mau` · `data: 2026-01-03`
+**Regra:** tentativa 4, o padrão persiste.
+
+## DA-105 — Fixture mau padrão, cabeça tardia
+`escopo: produto` · `saga: fixture-c12-mau` · `data: 2026-01-10` · `consolida: DA-101, DA-102, DA-103, DA-104`
+**Regra:** achou a raiz na 5ª, tarde demais.
+
+## DA-201 — Fixture bom padrão, parte 1
+`escopo: produto` · `saga: fixture-c12-bom` · `data: 2026-02-01`
+**Regra:** parte 1 do desenho.
+
+## DA-202 — Fixture bom padrão, parte 2
+`escopo: produto` · `saga: fixture-c12-bom` · `data: 2026-02-01`
+**Regra:** parte 2 do desenho.
+
+## DA-203 — Fixture bom padrão, parte 3
+`escopo: produto` · `saga: fixture-c12-bom` · `data: 2026-02-01`
+**Regra:** parte 3, fecha o desenho.
+
+## DA-204 — Fixture bom padrão, cabeça no tempo certo
+`escopo: produto` · `saga: fixture-c12-bom` · `data: 2026-02-05` · `consolida: DA-201, DA-202, DA-203`
+**Regra:** cabeça natural — resolveu exatamente na 3ª, sem 4ª rodada.
+EOS
+out=$(bash "$C12/scripts/da-index.sh" update "$C12" 2>&1)
+echo "$out" | grep -q "^WARN c12: saga fixture-c12-mau — DA-103 " \
+  && ok "c12 acusa a 3ª rodada (DA-103) do padrão mau, antes da 4ª" || bad "c12 NÃO acusou o padrão mau (regressão do detector da DA-234)"
+echo "$out" | grep -q "^WARN c12:.*fixture-c12-bom" \
+  && bad "c12 disparou falso positivo no padrão bom (resolvido exato na 3ª)" || ok "c12 não dispara quando resolve exatamente na 3ª (sem falso positivo)"
+
 echo
 echo "RESULTADO: $pass ok, $fail falha(s)"
 [ "$fail" = 0 ]

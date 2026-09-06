@@ -609,9 +609,31 @@ all_escopos() {
 vigente_filename() { echo "DECISIONS-VIGENTE-$(printf '%s' "$1" | tr '/' '-').md"; }
 
 # ============================================================================
-# 5) CHECKS DE QUALIDADE c1..c11 (WARN — nenhum FAIL nesta fase; ver GRANDFATHER)
+# 5) CHECKS DE QUALIDADE c1..c12 (WARN — nenhum FAIL nesta fase; ver GRANDFATHER)
 # ============================================================================
 nv() { echo $((10#${1:-0})); }   # valor numérico seguro (evita "008" ser lido como octal)
+
+# dias entre duas datas ISO YYYY-MM-DD, SEM fork (nem `date`, nem subshell) — chamado em loop
+# de hook síncrono (c10 já registra que grep -r em ~1GB foi gargalo; aqui o gargalo seria
+# processo por saga). Resultado em $_DA234_DIAS; "" se alguma data não parsear.
+_da234_epoch_dias() {  # Howard Hinnant days_from_civil
+  local y=${1:0:4} m=${1:5:2} d=${1:8:2}
+  y=$((10#$y)); m=$((10#$m)); d=$((10#$d))
+  [ "$m" -le 2 ] && y=$((y-1))
+  local era=$(( (y >= 0 ? y : y-399) / 400 ))
+  local yoe=$((y - era*400)) mp=$(( (m + 9) % 12 ))
+  local doy=$(( (153*mp + 2)/5 + d - 1 ))
+  local doe=$(( yoe*365 + yoe/4 - yoe/100 + doy ))
+  _DA234_EPOCH=$(( era*146097 + doe ))
+}
+_da234_dias_entre() {
+  _DA234_DIAS=""
+  [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return
+  [[ "$2" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return
+  _da234_epoch_dias "$1"; local e1="$_DA234_EPOCH"
+  _da234_epoch_dias "$2"; local e2="$_DA234_EPOCH"
+  _DA234_DIAS=$((e2 - e1))
+}
 
 run_quality_checks() {
   local dir="$1" warn=0
@@ -715,6 +737,45 @@ run_quality_checks() {
     [ -z "${exists[$num]:-}" ] && unknown+="$cited "
   done
   [ -n "$unknown" ] && { echo "WARN c11: citações a número inexistente no diário: $unknown"; warn=1; }
+  # c12: 3ª rodada da mesma saga sem `supersede:`/`consolida:` PRÓPRIA em <=7 dias — aviso
+  # PREVENTIVO (DA-234). Irmão do c9, mesma matéria-prima (saga_members_sorted), mede OUTRA
+  # coisa: c9 vê a consolidação atrasada DEPOIS que a cabeça já existe; este vê o padrão ANTES
+  # dela existir. "3 rodadas e a 4ª já resolve (consolida/supersede)" é ritmo saudável — não
+  # avisa; "a 4ª rodada chega e ainda não resolveu" é o sintoma — avisa citando a 3ª, que é onde
+  # o aviso já deveria ter soado (DA-146/158/159/160 é o caso real: dispara em DA-159, não em
+  # DA-160). Não mexe em saga_rodadas_depois_da_cabeca nem no c9.
+  for slug in "${SAGA_SLUGS[@]}"; do
+    # atalho barato ANTES do sort (fork de sort/cut): saga com <3 membros nunca chega em tally=3.
+    local -a _c12_raw=(${SAGA_MEMBERS[$slug]:-})
+    [ "${#_c12_raw[@]}" -lt 3 ] && continue
+    local -a _c12_membros=($(saga_members_sorted "$slug"))
+    local tally=0 run_start="" trig="" trig_dias="" idx
+    for idx in "${_c12_membros[@]}"; do
+      if [ -n "${CONSOLIDA[idx]}" ] || [ -n "${SUPERSEDE[idx]}" ]; then
+        if [ -n "$trig" ] && [ "$tally" -gt 3 ]; then
+          echo "WARN c12: saga $slug — ${KEY[trig]} foi a 3ª rodada sem supersede:/consolida: em ${trig_dias}d (resolvida só em ${KEY[idx]}, $tally rodadas depois) — vá na raiz antes da 4ª"
+          warn=1
+        fi
+        tally=0; run_start=""; trig=""; trig_dias=""
+        continue
+      fi
+      [ "$tally" = 0 ] && run_start="$idx"
+      tally=$((tally+1))
+      if [ "$tally" = 3 ]; then
+        local dstart dend
+        dstart="${DATATAG[run_start]:-${BODYDATA[run_start]:-}}"
+        dend="${DATATAG[idx]:-${BODYDATA[idx]:-}}"
+        # ponytail: janela ancorada só no 1º membro do run; se ele cair fora de 7d mas um
+        # sub-trio mais recente dentro do mesmo run coubesse, não detecta — sem caso real hoje.
+        _da234_dias_entre "$dstart" "$dend"
+        if [ -n "$_DA234_DIAS" ] && [ "$_DA234_DIAS" -le 7 ]; then trig="$idx"; trig_dias="$_DA234_DIAS"; else trig=""; trig_dias=""; fi
+      fi
+    done
+    if [ -n "$trig" ]; then
+      echo "WARN c12: saga $slug — ${KEY[trig]} foi a 3ª rodada sem supersede:/consolida: em ${trig_dias}d (ainda sem resolver, $tally rodada(s)) — vá na raiz antes da 4ª"
+      warn=1
+    fi
+  done
   return 0
 }
 
