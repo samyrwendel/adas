@@ -12,6 +12,22 @@ LLMs reinventam: recriam um componente que já existe, mudam uma cor canônica, 
 repetem um bug já decidido. O ADAS troca "confiar que a LLM lembra" por uma **hierarquia de
 derivação + enforcement no momento da ação**.
 
+## Para quem é — e para quem NÃO é (ainda)
+
+**Serve:** um repo git, um produto, um dono presente numa sessão interativa (Claude Code, Cursor,
+Codex). Foi assim que nasceu (Holdge, jun/2026) e é assim que o autor usa nos projetos dele. Você lê
+o `ADAS.md` junto com a LLM no começo da sessão, ela fica na faixa enquanto você olha, e o
+`DECISIONS.md` guarda o que **você** decidiu.
+
+**Não serve, como está:** frota de agentes headless, hub multi-repo sem git na raiz, servidor/home,
+ou qualquer lugar onde não há humano no instante do ato. Nesses ambientes a regra escrita não é lida
+(medido: 5% das sessões invocaram uma decisão como veto; 0 de 28 sínteses foram aprovadas pelo dono)
+e o check de drift é cego sem git. O que funcionou nesses casos foi outra coisa: **gate que falha e
+frase no prompt no instante da ação**.
+
+**Os números deste README** foram medidos em UMA instalação, no servidor do autor, em setembro de
+2026, sem usuário externo. Trate como relato, não como propriedade do método.
+
 ## Arquitetura (4 camadas + 1 loop)
 ```
 .specs/  (CONSTITUIÇÃO: invariantes mais estáveis + valores crus; compartilhada entre repos)
@@ -33,7 +49,7 @@ distintos**, não um: **constituição/faixa = COMO se trabalha**; **`DA-NNN` = 
 (histórico imutável); **`NA-<saga>` = O QUE vale hoje** — a cabeça da saga, que se lê sem varrer o histórico.
 
 **Aposentar decisão são DOIS mecanismos, não um.** *Supersede* é substituição **pontual e declarada** de
-uma decisão específica — raro por natureza (medido: ~1 uso em ~200 decisões). O que resolve **acúmulo** é a
+uma decisão específica — raro por natureza (medido nesta instalação: 11 de 235 decisões aposentadas por supersede — 4 íntegras, 7 parciais). O que resolve **acúmulo** é a
 **consolidação na cabeça da saga**: a `NA-<saga>` reescreve o que vale e absorve a linhagem **sem apagar
 nenhuma** decisão — medido, **28 cabeças cobrindo ~150 decisões**, e a **leitura obrigatória caiu de ~200
 para ~78**. Nada some; muda só o que você **precisa** ler pra saber a regra atual.
