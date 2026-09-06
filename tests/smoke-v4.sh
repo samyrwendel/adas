@@ -149,5 +149,18 @@ bash scripts/check-da-refs.sh --all . 2>&1 | grep -q 'DA-140' && ok "--all inven
 bash scripts/adas-init.sh --modo doc --fonte "$ROOT" >/dev/null 2>&1
 [ "$(grep -c '^\.adas/snapshots/$' .gitignore)" = 1 ] && grep -q '^\.adas/da\.lock$' .gitignore && ok ".gitignore ganhou .adas/snapshots/ + da.lock UMA vez (2 inits)" || bad ".gitignore: $(grep -c '^\.adas/snapshots/$' .gitignore) ocorrência(s) de .adas/snapshots/ (esperado 1)"
 
+echo "== 12) adas-init: skeleton-version acompanha --fonte — o 1º init sem --fonte grava nao-registrada; o 2º COM --fonte substitui (não ignora); um 3º sem --fonte não apaga"
+adopt "$T/sv"; cd "$T/sv"
+bash scripts/adas-init.sh --modo doc >/dev/null 2>&1
+[ "$(cat .adas/skeleton-version)" = "nao-registrada" ] && ok "sem --fonte → nao-registrada" || bad "sem --fonte gravou '$(cat .adas/skeleton-version)'"
+want="$(git -C "$ROOT" rev-parse --short=7 HEAD)"
+o12="$(bash scripts/adas-init.sh --modo doc --fonte "$ROOT" 2>&1)"
+[ "$(cat .adas/skeleton-version)" = "$want" ] && ok "2º init com --fonte SUBSTITUI nao-registrada por $want (o bug: [ ! -s ] ignorava)" || bad "2º init com --fonte deixou '$(cat .adas/skeleton-version)' (esperado $want)"
+printf '%s\n' "$o12" | grep -q "nao-registrada → $want" && ok "a substituição é anunciada (antes → depois)" || bad "substituição silenciosa: $o12"
+bash scripts/adas-init.sh --modo doc >/dev/null 2>&1
+[ "$(cat .adas/skeleton-version)" = "$want" ] && ok "3º init sem --fonte mantém $want (não regride para nao-registrada)" || bad "3º init sem --fonte apagou a versão: '$(cat .adas/skeleton-version)'"
+o13="$(bash scripts/adas-init.sh --modo doc --fonte "$T/nao-e-git" 2>&1)"
+[ "$(cat .adas/skeleton-version)" = "$want" ] && printf '%s\n' "$o13" | grep -q 'não resolve' && ok "--fonte que não resolve: avisa e mantém $want" || bad "--fonte inválido: versão='$(cat .adas/skeleton-version)' saída: $o13"
+
 echo; echo "RESULTADO smoke-v4: $pass ok, $fail falha(s)"
 [ "$fail" = 0 ]

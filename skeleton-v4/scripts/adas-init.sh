@@ -9,7 +9,8 @@
 #   mecanismo — agente headless, ou repo commitado por agente. Invariante SEM gatilho
 #               (hook/check/gate registrado + teste) NÃO entra no ADAS.md: check-mecanismo FALHA.
 #
-# Idempotente: rodado de novo, não sobrescreve nada preenchido — só re-sela.
+# Idempotente: rodado de novo, não sobrescreve nada preenchido — só re-sela. Exceção declarada:
+# .adas/skeleton-version acompanha --fonte (ver passo 4), senão um erro do dia 0 ficaria para sempre.
 set -uo pipefail
 
 SELFDIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -55,11 +56,17 @@ if grep -q '<YYYY-MM-DD>' DECISIONS.md 2>/dev/null; then
   sed -i "s/<YYYY-MM-DD>/$(date +%F)/g" DECISIONS.md
 fi
 
-# 4) versão do esqueleto — de --fonte (clone do repo adas); senão fica registrado que não se sabe
-if [ ! -s .adas/skeleton-version ]; then
-  if [ -n "$FONTE" ] && v="$(git -C "$FONTE" rev-parse --short=7 HEAD 2>/dev/null)" && [ -n "$v" ]; then
-    echo "$v" > .adas/skeleton-version
-  else
+# 4) versão do esqueleto — de --fonte (clone do repo adas). Quando --fonte RESOLVE, grava SEMPRE
+#    (um "nao-registrada" de uma execução anterior sem --fonte é corrigido, não ignorado em silêncio);
+#    sem --fonte, só preenche o que está vazio e avisa — nunca apaga um valor já gravado.
+v=""; [ -n "$FONTE" ] && v="$(git -C "$FONTE" rev-parse --short=7 HEAD 2>/dev/null)"
+if [ -n "$v" ]; then
+  old="$(cat .adas/skeleton-version 2>/dev/null || true)"
+  echo "$v" > .adas/skeleton-version
+  [ -n "$old" ] && [ "$old" != "$v" ] && echo "• skeleton-version: $old → $v (substituído: --fonte resolveu)"
+else
+  [ -n "$FONTE" ] && echo "• --fonte '$FONTE' não resolve a um commit (não é clone git legível) — versão não gravada por ele"
+  if [ ! -s .adas/skeleton-version ]; then
     echo "nao-registrada" > .adas/skeleton-version
     echo "• skeleton-version não registrada (passe --fonte <clone do repo adas> para gravar o commit)"
   fi
