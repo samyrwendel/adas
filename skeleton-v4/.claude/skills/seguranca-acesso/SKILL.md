@@ -54,6 +54,8 @@ Ver `references/mandatory-readings.md` — confirmar `.gitignore` cobre `.env`/s
 | 6 | **Sem rate limit** | Nenhum teto de requisição em login (força-bruta viável) nem nas rotas caras (IA paga — custo sem controle). | Slot com prova: dispare N requisições seguidas em login e na rota cara e confirme recusa (429/backoff/CAPTCHA) depois de um teto; confirme que existe teto de gasto declarado no provedor de IA. Registre em `.adas/seguranca-app.json`. | Rate limit (token-bucket/janela) nas rotas de auth e nas custosas; teto de gasto configurado no provedor (ou no seu proxy de LLM). |
 
 **Enforcement:** `scripts/check-secrets.sh` (portas 1-2) + `scripts/check-app-security.sh`
+(fixture de teste que casa o padrão de chave — ex.: `Bearer test-…` — é isenta SÓ por `.adas/secrets-allowlist`,
+arquivo versionado `caminho | motivo | data`; nunca por exceção no script)
 (portas 3-6, lê `.adas/seguranca-app.json`) — os dois entram no gate junto dos demais
 `check-*.sh`. `check-adas.sh` resume as seis numa linha só, por projeto.
 

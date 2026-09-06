@@ -172,7 +172,10 @@ function flush(   ) {
 cur == "" { next }
 {
   line = $0; bl++
-  if (bl <= 3 && !tagline_seen && (index(line, "`escopo:") > 0 || index(line, "`saga:") > 0)) {
+  # tag line = linha que COMEÇA com `chave: ...` (escopo/saga/...). Prosa que só CITA "`escopo:" no meio
+  # ("DA-NNN passa a `escopo: instância`.") não é tag line — antes era engolida aqui e a heurística
+  # "passa a escopo" (½ parcial) nunca a via. Regressão medida na task 20260906-034; teste no smoke.
+  if (bl <= 3 && !tagline_seen && line ~ /^`[a-z-]+:/ && (index(line, "`escopo:") > 0 || index(line, "`saga:") > 0)) {
     tagline_seen = 1
     s = line
     while (match(s, /`[^`]+`/)) {

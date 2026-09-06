@@ -9,7 +9,15 @@ set -uo pipefail
 # --seal (DA-165): roda a auditoria E grava a PROVA de que ela rodou —
 # .adas/install-check (timestamp UTC · skeleton-version · veredito · contagem).
 # O selo é versionado (é prova, não cache). Sem ele, o check 11 acusa.
-SEAL=0; [ "${1:-}" = "--seal" ] && SEAL=1
+# Uso: bash scripts/check-adas.sh [--seal] [dir]
+#   [dir] ausente = a raiz do projeto DESTE script (scripts/..) — nunca o cwd. Antes o argumento era
+#   aceito e ignorado: `check-adas.sh /outro/repo` auditava o cwd em silêncio (achado da task
+#   20260906-017; o audit do servidor rodava numa cópia temporária e o check olhava para outro lugar).
+SELFDIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+SEAL=0; DIR=""
+for a in "$@"; do case "$a" in --seal) SEAL=1 ;; *) DIR="$a" ;; esac; done
+[ -z "$DIR" ] && DIR="$(cd "$SELFDIR/.." && pwd)"
+cd "$DIR" || { echo "✗ check-adas: diretório '$DIR' inacessível"; exit 2; }
 
 SKILLS_DIR="${SKILLS_DIR:-.claude/skills}"
 SPECS_DIR="${SPECS_DIR:-.specs}"

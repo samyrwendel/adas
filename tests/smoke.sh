@@ -36,6 +36,24 @@ mkdir -p "$T/s2"; (cd "$T/s2" && git init -q && git config user.email t@t && git
 expect_exit 0 "repo limpo, staged vazio → verde (sem falso positivo)" \
   bash -c "cd '$T/s2' && bash scripts/check-secrets.sh"
 
+# ── allowlist DECLARADA (task 20260906-041, bug 4): fixture com padrão de chave não é segredo — mas a isenção
+# mora num ARQUIVO versionado (caminho | motivo | data), nunca em regex no script; fixture NOVA continua pega.
+mkdir -p "$T/s3"; (cd "$T/s3" && git init -q && git config user.email t@t && git config user.name t \
+  && mkdir -p scripts tests .adas && cp "$ROOT/skeleton/scripts/check-secrets.sh" scripts/ \
+  && echo "hdr = 'Bearer test-$(printf 'x%.0s' $(seq 24))'" > tests/fixture.test.js && git add -A && git commit -qm fixture)
+expect_exit 1 "fixture 'Bearer test-…' no histórico, SEM allowlist → BLOCK (porta 2)" bash -c "cd '$T/s3' && bash scripts/check-secrets.sh --all"
+(cd "$T/s3" && printf 'tests/fixture.test.js | token de teste do handler, sem valor real\n' > .adas/secrets-allowlist)
+out=$(cd "$T/s3" && bash scripts/check-secrets.sh --all 2>&1); rc=$?
+[ "$rc" = 1 ] && echo "$out" | grep -q 'allowlist: entrada INVÁLIDA' && ok "entrada sem DATA é ignorada com aviso — isenção sem motivo+data não vale" || bad "entrada inválida foi honrada (rc=$rc)"
+(cd "$T/s3" && printf 'tests/fixture.test.js | token de teste do handler, sem valor real | 2026-09-06\n' > .adas/secrets-allowlist)
+out=$(cd "$T/s3" && bash scripts/check-secrets.sh --all 2>&1); rc=$?
+[ "$rc" = 0 ] && ok "allowlist (caminho | motivo | data) → PASSA no --all (árvore + porta 2)" || bad "allowlist não isentou a fixture (rc=$rc): $(echo "$out" | grep '✗' | head -2)"
+echo "$out" | grep -q 'ℹ allowlist.*1 caminho' && ok "isenção é VISÍVEL na saída (nunca silenciosa)" || bad "isenção silenciosa"
+(cd "$T/s3" && echo "k3='ghp_$(printf '3%.0s' $(seq 36))'" > n.js && git add n.js)
+expect_exit 1 "com allowlist, arquivo NOVO staged com segredo → BLOCK" bash -c "cd '$T/s3' && bash scripts/check-secrets.sh"
+(cd "$T/s3" && git rm -q --cached n.js && rm -f n.js && echo "tk='ghp_$(printf '2%.0s' $(seq 36))'" > tests/nova.test.js && git add -A && git commit -qm nova)
+expect_exit 1 "segredo REAL em fixture NOVA (fora da lista) commitada → BLOCK (o gate não foi desligado)" bash -c "cd '$T/s3' && bash scripts/check-secrets.sh --all"
+
 echo "== 2) check-_template — o exemplo não pode ser um check morto"
 mkdir -p "$T/t/src"; cp "$ROOT/skeleton/scripts/check-_template.sh" "$T/t/check.sh"
 echo "kb = [{ callback_data: 'orfao' }]" > "$T/t/src/bot.js"
@@ -160,10 +178,12 @@ Este texto supersede a DA-001.
 DA-002 passa a `escopo: instância`.
 EOS
 bash "$D/scripts/da-index.sh" update "$D" >/dev/null 2>&1
-grep -q '^- DA-001 · 🔄 SUPERSEDIDA por DA-002' "$D/DECISIONS-INDEX.md" \
+grep -q '^- DA-001 · .*🔄 por DA-002' "$D/DECISIONS-INDEX.md" \
   && ok "supersede pleno detectado por texto" || bad "supersede pleno não marcado"
-grep -q '^- DA-002 · escopo: produto · ½ alterada por DA-003' "$D/DECISIONS-INDEX.md" \
-  && ok "escopo + alteração parcial (passa a escopo)" || bad "escopo/parcial errado"
+# DENTE (task 20260906-034/041): a 1ª linha do corpo da DA-003 é PROSA com "`escopo:" no meio — o parser antigo
+# a engolia como tag line e o ½ da DA-002 sumia. Falha contra o da-index anterior; passa com o atual.
+grep -q '^- DA-002 · produto · .*½ por DA-003' "$D/DECISIONS-INDEX.md" \
+  && ok "escopo + alteração parcial (passa a escopo) — prosa com \`escopo:\` na 1ª linha NÃO é tag line" || bad "escopo/parcial errado (regressão do parser: prosa com \`escopo:\` engolida como tag line)"
 grep -q 'Fazemos X sempre' "$D/DECISIONS-INDEX.md" \
   && ok "linha 'o que decide' extraída do campo Decisão" || bad "decisão não extraída"
 expect_exit 0 "check: sincronizado → verde" bash "$D/scripts/da-index.sh" check "$D"
@@ -173,7 +193,7 @@ printf '{"tool_input":{"file_path":"%s/DECISIONS.md"}}' "$D" | bash "$D/.claude/
 grep -q '^- DA-004' "$D/DECISIONS-INDEX.md" \
   && ok "hook PostToolUse regenera no ato (a entrada nasceu com a DA)" || bad "hook não regenerou"
 expect_exit 0 "check volta a verde após o hook" bash "$D/scripts/da-index.sh" check "$D"
-sed -i 's/DA-004 — Anexada/DA-004 — EDITADA/' "$D/DECISIONS-INDEX.md"
+sed -i 's/Anexada por fora do hook/EDITADA/' "$D/DECISIONS-INDEX.md"   # a linha do índice é '- DA-004 · — · — — Anexada por fora do hook' (o sed antigo, 'DA-004 — Anexada', era no-op)
 expect_exit 1 "índice editado à mão → ACUSA" bash "$D/scripts/da-index.sh" check "$D"
 
 echo "== 10) propriedade governado × dependência — por SINAL, sem lista"
@@ -206,6 +226,15 @@ out=$(cd "$X" && bash scripts/check-adas.sh 2>/dev/null); rc=$?
 out=$(cd "$X" && bash scripts/check-adas.sh 2>/dev/null); rc=$?
 [ "$rc" = 1 ] && echo "$out" | grep -q "vendor-plano" \
   && ok "fork COMMITADO = adotado → audita (conflito cai no lado seguro)" || bad "tracked não virou governada"
+
+# check-adas [dir] (task 20260906-041, bug 3): de FORA, audita o alvo; sem argumento audita o repo do
+# script (scripts/..), nunca o cwd — antes o argumento era aceito e ignorado (achado da 017).
+mkdir -p "$T/fora"
+out=$(cd "$T/fora" && bash "$X/scripts/check-adas.sh" "$X" 2>/dev/null)
+echo "$out" | grep -q "vendor-plano" && ok "check-adas <dir> de outro cwd audita <dir> (achou a fork commitada de X)" || bad "check-adas <dir> auditou o cwd, não <dir>"
+out=$(cd "$T/fora" && bash "$X/scripts/check-adas.sh" 2>/dev/null)
+echo "$out" | grep -q "vendor-plano" && ok "sem [dir]: audita o repo do script (scripts/..), não o cwd" || bad "sem [dir] auditou o cwd"
+[ -z "$(ls -A "$T/fora")" ] && ok "cwd de fora ficou intocado" || bad "cwd de fora recebeu arquivos: $(ls -A "$T/fora")"
 
 echo "== 11) selo de instalação (DA-165) — a prova de que o check RODOU"
 S1="$T/selo"; mkdir -p "$S1/scripts" "$S1/.adas"

@@ -51,6 +51,33 @@ SERVED_DIR_RE='(^|/)(static|build|dist|public|templates)(/|$)'
 
 block=0; warn=0
 base="$dir"; [ "$mode" = "all" ] && base="."
+
+# ── ALLOWLIST DECLARADA — fixture conhecida, não segredo ─────────────────────────────────
+# .adas/secrets-allowlist (versionado): uma linha por CAMINHO isento, no formato
+#   <caminho relativo à raiz> | <motivo> | <AAAA-MM-DD>
+# Só o caminho listado é isento (árvore e histórico — porta 2). Linha sem motivo ou sem data
+# NÃO vale (avisa e ignora): isenção sem porquê é o gate desligado com outro nome. Caso real:
+# token de teste ("Bearer test-…") numa fixture commitada acusava porta 2 em todo commit e só
+# reescrever a história "resolveria". Teto declarado: um segredo REAL que entrar num arquivo já
+# listado passa — por isso a lista é de caminhos de teste, curta e revisada; arquivo novo nunca
+# está nela. Exceção no CÓDIGO (regex solta) é proibida: a isenção mora no arquivo, com motivo.
+ALLOWLIST_FILE="${SECRETS_ALLOWLIST:-.adas/secrets-allowlist}"
+allow_paths=""
+if [ -f "$ALLOWLIST_FILE" ]; then
+  while IFS= read -r _al; do
+    case "$_al" in ''|'#'*) continue ;; esac
+    _ap=$(printf '%s' "$_al" | cut -d'|' -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    _am=$(printf '%s' "$_al" | cut -d'|' -f2 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    _ad=$(printf '%s' "$_al" | cut -d'|' -f3 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    if [ -z "$_ap" ] || [ -z "$_am" ] || ! printf '%s' "$_ad" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+      echo "• allowlist: entrada INVÁLIDA ignorada (precisa de: caminho | motivo | AAAA-MM-DD): $_al"; warn=1; continue
+    fi
+    allow_paths="${allow_paths}${_ap}
+"
+  done < "$ALLOWLIST_FILE"
+  [ -n "$allow_paths" ] && echo "ℹ allowlist ($ALLOWLIST_FILE): $(printf '%s' "$allow_paths" | grep -c .) caminho(s) isento(s) por motivo declarado: $(printf '%s' "$allow_paths" | tr '\n' ' ')"
+fi
+is_allowed() { [ -n "$allow_paths" ] && printf '%s\n' "$allow_paths" | grep -qxF -- "${1#./}"; }
 # Exclusão por SUFIXO (.example/.sample/.template), não por "logo depois de .env":
 # ".env.enterprise.example" (achado real ao rodar isto contra um projeto de verdade,
 # num caso real) tem SEGMENTO A MAIS entre ".env" e ".example" e escapava da
@@ -71,7 +98,12 @@ if [ "$mode" = "staged" ] && [ -d .git ]; then
   if git diff --cached --name-only 2>/dev/null | env_tracked >/dev/null; then
     echo "✗ [BLOCK] .env sendo commitado — ponha no .gitignore (use .env.example SEM valores)"; block=1
   fi
-  added=$(git diff --cached -U0 2>/dev/null | grep '^+' | grep -v '^+++' || true)
+  _staged_files=$(git diff --cached --name-only 2>/dev/null || true)
+  _staged_chk=""; while IFS= read -r _sf; do [ -z "$_sf" ] && continue; is_allowed "$_sf" || _staged_chk="${_staged_chk}${_sf}
+"; done <<EOF
+$_staged_files
+EOF
+  added=$(printf '%s' "$_staged_chk" | xargs -d '\n' -r git diff --cached -U0 -- 2>/dev/null | grep '^+' | grep -v '^+++' || true)
   hits=$(printf '%s\n' "$added" | grep -nEi "$HI" || true)
   [ -n "$hits" ] && { echo "✗ [BLOCK] possível SEGREDO no conteúdo staged:"; printf '%s\n' "$hits" | sed 's/^/    /' | head -8; block=1; }
   warns=$(printf '%s\n' "$added" | grep -Ei "$LO" || true)
@@ -85,6 +117,7 @@ else
     [ -z "$f" ] && continue
     p="$base/$f"; [ -f "$p" ] || continue
     case "$f" in *node_modules/*|*.min.*|*.lock|*/.git/*) continue ;; esac
+    is_allowed "$f" && continue
     h=$(grep -nEi "$HI" "$p" 2>/dev/null || true)
     [ -n "$h" ] && { echo "✗ [BLOCK] possível SEGREDO em $f:"; printf '%s\n' "$h" | sed 's/^/    /' | head -4; block=1; }
   done <<EOF
@@ -108,6 +141,7 @@ served=$(printf '%s\n' "$porta1_files" | grep -E "$SERVED_DIR_RE" || true)
 if [ -n "$served" ]; then
   while IFS= read -r f; do
     [ -z "$f" ] && continue
+    is_allowed "$f" && continue
     h=$(_conteudo "$f" | grep -nEi "$FRONT_KEY" || true)
     [ -n "$h" ] && { echo "✗ [BLOCK] [porta 1 — chave no front] $f serve chave/token ao navegador:"; printf '%s\n' "$h" | sed 's/^/    /' | head -4; block=1; p1_hit=1; }
   done <<EOF
@@ -145,6 +179,10 @@ if [ "$mode" != "staged" ] && [ -d .git ]; then
   revs=$(git rev-list --all 2>/dev/null || true)
   if [ -n "$revs" ]; then
     hist_content=$(printf '%s\n' "$revs" | xargs git grep -lE "$FRONT_KEY" 2>/dev/null || true)
+    # allowlist: "rev:caminho" cujo caminho está isento sai da acusação (o resto fica)
+    if [ -n "$allow_paths" ] && [ -n "$hist_content" ]; then
+      hist_content=$(printf '%s\n' "$hist_content" | while IFS= read -r _hc; do is_allowed "${_hc#*:}" || printf '%s\n' "$_hc"; done)
+    fi
   fi
   if [ -n "$hist_names" ] || [ -n "$hist_content" ]; then
     echo "✗ [BLOCK] [porta 2 — .env no histórico] segredo/arquivo sensível JÁ ESTEVE no git:"
