@@ -494,6 +494,46 @@ echo "$out" | grep -q "^WARN c12:.*fixture-c12-bom" \
 echo "$out" | grep -q "^WARN c12:.*fixture-c12-mau" \
   && bad "c12 disparou alarme sobre saga JÁ RESOLVIDA (passado morto, não previne nada)" || ok "c12 não dispara para saga já resolvida, mesmo tardia (história não é alarme)"
 
+echo "== 19) item 2b — núcleo via @import do CLAUDE.md GLOBAL, com fallback e autocura"
+# CONTEXTO: ~/.claude/CLAUDE.md carrega inteiro em toda sessão desta máquina (medido:
+# @import não corta até 160 KB). O núcleo passa a chegar por lá; o hook só o reemite
+# inline (consumindo orçamento) quando NÃO há prova de que o import está entregando —
+# linha ausente, cache ausente, ou núcleo mudou e o cache ainda é o antigo.
+IM="$T/imp"; mkdir -p "$IM/scripts" "$IM/.claude/adas"
+echo "$IM" > "$IM/.claude/adas/repos.conf"
+printf '# ADAS teste import\n<!-- adas-core-start -->\nNUCLEO-TESTE-2B regra vigente v1.\n<!-- adas-core-end -->\n' > "$IM/ADAS.md"
+emit2(){ HOME="$IM" bash -c 'source "'"$ROOT"'/host/adas-lib.sh"; adas_session_emit "'"$IM"'"'; }
+
+# A) sem ~/.claude/CLAUDE.md nenhum → fallback: núcleo inline + cache autocurado
+rm -f "$IM/.claude/CLAUDE.md" "$IM/.claude/adas-core-import.md"
+o="$(emit2)"
+echo "$o" | grep -q "NUCLEO-TESTE-2B" && ok "sem CLAUDE.md → fallback emite o núcleo inline" \
+  || bad "sem CLAUDE.md: núcleo NÃO chegou por nenhum canal (o buraco que a DA-230 proíbe)"
+grep -q "NUCLEO-TESTE-2B" "$IM/.claude/adas-core-import.md" 2>/dev/null \
+  && ok "autocura: cache criado com o núcleo atual mesmo no fallback" || bad "cache não foi autocurado"
+
+# B) CLAUDE.md existe mas SEM a linha de import → ainda fallback
+printf 'algum CLAUDE.md sem a linha magica\n' > "$IM/.claude/CLAUDE.md"
+o="$(emit2)"
+echo "$o" | grep -q "NUCLEO-TESTE-2B" && ok "CLAUDE.md sem linha de import → fallback emite núcleo inline" \
+  || bad "CLAUDE.md sem linha de import: núcleo sumiu"
+
+# C) CLAUDE.md COM a linha + cache já sincronizado (item A/B deixaram o cache = v1) → SUPRIME
+printf '@adas-core-import.md\n' > "$IM/.claude/CLAUDE.md"
+o="$(emit2)"
+echo "$o" | grep -q "NUCLEO-TESTE-2B" && bad "sincronizado mas emitiu inline mesmo assim (orçamento não foi liberado)" \
+  || ok "import sincronizado → emissão inline SUPRIMIDA (orçamento inteiro livre pra camada 0)"
+
+# D) núcleo MUDA (edição real do ADAS.md) → cache antigo diverge → fallback reemite a versão NOVA
+printf '# ADAS teste import\n<!-- adas-core-start -->\nNUCLEO-TESTE-2B regra vigente v2 (mudou).\n<!-- adas-core-end -->\n' > "$IM/ADAS.md"
+o="$(emit2)"
+echo "$o" | grep -q "v2 (mudou)" && ok "núcleo mudou → cache desatualizado detectado, fallback reemite a versão NOVA" \
+  || bad "núcleo mudou e a versão nova não chegou (cache velho mascarou a mudança)"
+# self-heal: a chamada seguinte já deve vir suprimida com o cache atualizado pra v2
+o2="$(emit2)"
+echo "$o2" | grep -q "v2 (mudou)" && bad "cache autocurado mas 2ª chamada ainda emitiu inline" \
+  || ok "cache autocurado pra v2 → 2ª chamada já vem suprimida"
+
 echo
 echo "RESULTADO: $pass ok, $fail falha(s)"
 [ "$fail" = 0 ]
