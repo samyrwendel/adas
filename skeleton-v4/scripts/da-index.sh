@@ -358,7 +358,8 @@ run_quality_checks() {   # WARN, nunca FAIL: quem decide se é defeito é gente
   local dec="$dir/DECISIONS.md" cited unknown=""
   declare -A exists
   for ((i=0; i<N; i++)); do exists["$(nv "${RAWNUM[i]}")"]=1; done
-  for cited in $(grep -oE 'DA-[0-9]+' "$dec" 2>/dev/null | sort -u); do
+  # números dentro de `passa-a-limpo: …` apontam para um diário ANTERIOR (caderno congelado em DECISIONS-arquivo/), não para este — não são citação local
+  for cited in $(sed -E 's/`passa-a-limpo:[^`]*`//g' "$dec" 2>/dev/null | grep -oE 'DA-[0-9]+' | sort -u); do
     [ -z "${exists[$(nv "${cited#DA-}")]:-}" ] && unknown+="$cited "
   done
   [ -n "$unknown" ] && echo "WARN c11: citações a número inexistente no diário: $unknown"

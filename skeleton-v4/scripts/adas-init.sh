@@ -66,6 +66,8 @@ if [ ! -s .adas/skeleton-version ]; then
 fi
 
 # 5) índice de decisões nasce do diário
+if ! grep -qsE '^\.adas/snapshots/?$' .gitignore; then printf '.adas/snapshots/\n.adas/da.lock\n' >> .gitignore; fi
+
 bash scripts/da-index.sh update . >/dev/null || { echo "✗ adas-init: da-index update falhou"; exit 1; }
 
 # 6) pre-commit = o gate (se há git)

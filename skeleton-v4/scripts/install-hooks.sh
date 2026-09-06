@@ -60,10 +60,14 @@ if [ -f scripts/da-index.sh ] && [ -f DECISIONS.md ]; then
 fi
 
 # hook local pré-existente (preservado pelo install-hooks)
+if [ -f scripts/check-da-refs.sh ] && [ -f DECISIONS.md ]; then
+  bash scripts/check-da-refs.sh || { echo "✗ pre-commit: citação DA-NNN a decisão que o diário não tem (modo mecanismo)"; exit 1; }
+fi
+
 if [ -x "\$(git rev-parse --git-path hooks)/pre-commit.local" ]; then
   "\$(git rev-parse --git-path hooks)/pre-commit.local" || exit 1
 fi
 exit 0
 EOF
 chmod +x "$PC"
-echo "✓ pre-commit instalado em $PC (secrets→BLOCK · check-adas · da-index; --no-verify existe, o CI repete)"
+echo "✓ pre-commit instalado em $PC (secrets→BLOCK · check-adas · da-index · da-refs; --no-verify existe, o CI repete)"

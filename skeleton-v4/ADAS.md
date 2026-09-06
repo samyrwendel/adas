@@ -73,7 +73,8 @@
 Loop: decisão → `scripts/da-new.sh` → preenche a DA + atualiza a faixa + regenera este doc, **no mesmo
 commit**; **supersede, não delete**. Fix aprovado que representa uma **CLASSE** de erro → a regra dobra na
 **faixa sensível** que dispara no momento certo (`description`/hook/check) — aprendizado só em chat/doc
-morto NÃO conta como registrado.
+morto NÃO conta como registrado. Citação `DA-NNN` em código só a decisão que este diário TEM
+(`scripts/check-da-refs.sh`, no pre-commit); entrada do caderno anterior (`DECISIONS-arquivo/`) se cita `caderno NNN`.
 
 ### Índice de decisões (texto completo em `DECISIONS.md`, índice gerado em `DECISIONS-INDEX.md`)
 - **DA-001** — Este projeto adota o ADAS

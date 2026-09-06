@@ -117,5 +117,37 @@ bash scripts/check-adas.sh 2>&1 | grep -q '^• ATOR' && bad "1 commit humano no
 echo "== 10) o teste do gatilho de referência roda sozinho"
 bash "$SK/mecanismo/tests/check-secrets.test.sh" >/dev/null 2>&1 && ok "mecanismo/tests/check-secrets.test.sh exit 0" || bad "teste de referência falhou"
 
+echo "== 11) PASSAR A LIMPO — c11 ignora \`passa-a-limpo:\` (caderno anterior) e segue acusando refs:; check-da-refs no staged (doc avisa, mecanismo bloqueia); DECISIONS-arquivo/ fora; .gitignore ganha .adas/snapshots uma vez só"
+adopt "$T/pl"; cd "$T/pl"; bash scripts/adas-init.sh --modo doc --fonte "$ROOT" >/dev/null 2>&1
+cat >> DECISIONS.md <<'EOF'
+
+## DA-002 — Regra passada a limpo de um caderno anterior
+`escopo: produto` · `saga: —` · `data: 2026-01-01` · `refs: —` · `supersede: —` · `passa-a-limpo: DA-140, DA-207 (cabeça)`
+**Regra:** Uma regra qualquer, vinda do caderno 140, escrita para o teste do índice e do check.
+**Motivo:** —
+**Trade-off:** —
+**Lição:** —
+**Decidido por:** —
+EOF
+bash scripts/da-index.sh update . 2>&1 | grep -q 'WARN c11' && bad "c11 acusou os números da tag passa-a-limpo" || ok "c11 ignora os números em \`passa-a-limpo:\` (apontam para o caderno, não para este diário)"
+sed -i 's/`refs: —` · `supersede: —` · `passa-a-limpo: DA-140, DA-207 (cabeça)`/`refs: DA-140` · `supersede: —` · `passa-a-limpo: DA-207 (cabeça)`/' DECISIONS.md
+bash scripts/da-index.sh update . 2>&1 | grep -q 'WARN c11:.*DA-140' && ok "refs: DA-140 inexistente continua acusado pelo c11 (só a tag do caderno é isenta)" || bad "c11 deixou passar refs: a DA inexistente"
+sed -i 's/`refs: DA-140`/`refs: —`/' DECISIONS.md; bash scripts/da-index.sh update . >/dev/null 2>&1
+git add -A >/dev/null 2>&1; git commit -qm "adota" >/dev/null 2>&1 || bad "commit base da fixture 11 falhou (pre-commit?)"
+mkdir -p src DECISIONS-arquivo; printf '# ver DA-002 e caderno 140\n' > src/a.txt; printf '## DA-140 — entrada do caderno\nDA-140 DA-207\n' > DECISIONS-arquivo/caderno.md
+git add src/a.txt DECISIONS-arquivo/caderno.md
+o11="$(bash scripts/check-da-refs.sh 2>&1)"; rc=$?
+[ "$rc" = 0 ] && printf '%s\n' "$o11" | grep -q '^✓ check-da-refs' && ok "DA local existente + 'caderno 140' + DECISIONS-arquivo/ com DA-140 → passa limpo" || bad "check-da-refs falhou onde devia passar (rc=$rc): $o11"
+printf '# ver DA-140\n' > src/b.txt; git add src/b.txt
+o12="$(bash scripts/check-da-refs.sh 2>&1)"; rc=$?
+[ "$rc" = 0 ] && printf '%s\n' "$o12" | grep -q 'src/b.txt:1 .*DA-140' && printf '%s\n' "$o12" | grep -q 'não impede' && ok "modo doc: DA-140 inexistente → aviso com arquivo:linha, exit 0" || bad "modo doc não avisou como esperado (rc=$rc): $o12"
+git commit -qm "cita" >/dev/null 2>&1 && ok "pre-commit em modo doc deixa passar (o gate avisa, não impede)" || bad "pre-commit bloqueou em modo doc"
+jq '.modo="mecanismo"' .adas/profile.json > "$T/p.json" && mv "$T/p.json" .adas/profile.json
+printf '# ver DA-141\n' > src/c.txt; git add src/c.txt
+bash scripts/check-da-refs.sh >/dev/null 2>&1; [ $? = 1 ] && ok "modo mecanismo: DA-141 inexistente → exit 1 (o pre-commit bloqueia)" || bad "modo mecanismo não bloqueou"
+bash scripts/check-da-refs.sh --all . 2>&1 | grep -q 'DA-140' && ok "--all inventaria por número o que o working tree cita e o diário não tem" || bad "--all não listou DA-140"
+bash scripts/adas-init.sh --modo doc --fonte "$ROOT" >/dev/null 2>&1
+[ "$(grep -c '^\.adas/snapshots/$' .gitignore)" = 1 ] && grep -q '^\.adas/da\.lock$' .gitignore && ok ".gitignore ganhou .adas/snapshots/ + da.lock UMA vez (2 inits)" || bad ".gitignore: $(grep -c '^\.adas/snapshots/$' .gitignore) ocorrência(s) de .adas/snapshots/ (esperado 1)"
+
 echo; echo "RESULTADO smoke-v4: $pass ok, $fail falha(s)"
 [ "$fail" = 0 ]

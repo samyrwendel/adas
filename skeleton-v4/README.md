@@ -34,8 +34,14 @@ Sem modo declarado, o check audita como `doc` e diz o comando. Trocar de modo = 
 | `DECISIONS.md` | diário append-only; `scripts/da-new.sh` é a porta única; `da-index.sh` gera o índice e os checks |
 | `scripts/check-adas.sh` | higiene + modo; `--seal` grava a prova em `.adas/install-check` |
 | `scripts/check-secrets.sh`, `check-app-security.sh` | segredo (mecânico) + seis portas do app (com prova) |
-| `scripts/install-hooks.sh` | pre-commit: segredo BLOCK · check-adas · índice sincronizado |
+| `scripts/check-da-refs.sh` | citação `DA-NNN` nova (linha adicionada) só a decisão que o diário TEM — doc avisa, mecanismo bloqueia |
+| `scripts/install-hooks.sh` | pre-commit: segredo BLOCK · check-adas · índice sincronizado · da-refs |
 | `mecanismo/` | template e teste de referência do modo mecanismo |
+
+**Diário que nasce de um caderno anterior** (passar a limpo): o caderno vai VERBATIM e congelado para
+`DECISIONS-arquivo/<nome>.md` (números originais, nunca se edita); cada DA nova diz de onde veio em
+`` `passa-a-limpo: DA-a, DA-b` `` (o `check` não procura esses números aqui); no código, entrada do caderno
+se cita como `caderno NNN` — `DA-NNN` é sempre o diário deste repo (`scripts/check-da-refs.sh` cobra).
 
 Convenções: `check-adas.sh [--seal] [dir]`, `da-index.sh <cmd> [dir]`, `da-new.sh … [dir]` — sem `[dir]`,
 todos agem na raiz do projeto do script (nunca no cwd, nunca na sua home).

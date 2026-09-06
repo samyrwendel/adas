@@ -9,6 +9,10 @@
 > Índice: **`DECISIONS-INDEX.md`** — GERADO por `scripts/da-index.sh update` (o hook
 > `.claude/hooks/da-index-hook.sh` roda no ato de qualquer edição daqui). Não edite o índice à mão;
 > divergência é acusada por `da-index.sh check` e pelo pre-commit. Ler uma DA: `da-index.sh show DA-NNN`.
+>
+> Caderno anterior (diário que este passou a limpo): congelado em `DECISIONS-arquivo/`, números originais.
+> A DA nova cita a origem em `` `passa-a-limpo: DA-a, DA-b` `` — números do caderno, que o `check` não
+> procura aqui. Fora do diário, entrada do caderno se escreve `caderno NNN`; `DA-NNN` é sempre este arquivo.
 
 ---
 
