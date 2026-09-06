@@ -430,8 +430,12 @@ saga_estado() {  # viva|encerrada — heurística: título/regra da última DA m
 }
 
 # ============================================================================
-# 4) GERAÇÃO — DECISIONS-INDEX.md / DECISIONS-SAGAS.md / DECISIONS-LICOES.md /
-#    DECISIONS-VIGENTE-<escopo>.md
+# 4) GERAÇÃO — DECISIONS-INDEX.md / DECISIONS-LICOES.md (+ bloco de sagas do ADAS.md)
+#    DESLIGADO em 06/09/2026 (task 20260906-028, Samyr 02:29 "já era pra ter feito"): a
+#    maquinaria de saga/cabeça/NA — arquivos DECISIONS-SAGAS.md e DECISIONS-VIGENTE-*.md,
+#    checks c9 ("hora de nova cabeça") e c12 ("3ª rodada") — não é mais gerada nem cobrada.
+#    Os arquivos já escritos ficam onde estão (não se apaga); `show --saga` e `export-saga`
+#    continuam lendo a NA em memória; a CAMADA 0 (`sagas`) segue viva até a separação por repo.
 # ============================================================================
 saga_summary_line() {
   # item 2a: sem a lista "membros: DA-…" (já vive na NA; recupere com
@@ -454,7 +458,6 @@ saga_summary_line() {
     local hl="${LINE[$head]}"
     for idx in "${members[@]}"; do [ "${LINE[$idx]}" -gt "$hl" ] && extras+="${extras:+, }${KEY[$idx]}"; done
     aviso=" · ⚠ $rodadas rodada(s) depois da cabeça $cabeca — ler $extras"
-    [ "$rodadas" -ge 3 ] && aviso+=" (hora de nova cabeça)"
   fi
   printf -- "- %s · %s · cabeça: %s · %s DA%s · Regra: %s%s\n" \
     "$slug" "$escopo" "$cabeca" "$n_das" "$([ "$n_das" = 1 ] && echo "" || echo "s")" "$regra" "$aviso"
@@ -514,7 +517,7 @@ build_index() {
   return 0
 }
 
-build_sagas_md() {
+build_sagas_md() {   # só em memória, para `show --saga`: o ARQUIVO DECISIONS-SAGAS.md não é mais gerado (task 028)
   echo "# DECISIONS-SAGAS.md — NA-<slug>, GERADO de DECISIONS.md (NÃO EDITE À MÃO)"
   echo "# Regenerar: bash scripts/da-index.sh update · uma seção por saga com 2+ DAs. Ninguém escreve aqui — é awk."
   echo
@@ -554,7 +557,7 @@ build_sagas_md() {
     if [ -n "$head" ] && [ "$rodadas" -ge 1 ]; then
       local extras="" hl="${LINE[$head]}"
       for idx in "${members[@]}"; do [ "${LINE[$idx]}" -gt "$hl" ] && extras+="${extras:+, }${KEY[$idx]}"; done
-      echo "> ⚠ $rodadas rodada(s) depois da cabeça $cabeca — ler $extras$([ "$rodadas" -ge 3 ] && echo ' — hora de nova cabeça')"
+      echo "> ⚠ $rodadas rodada(s) depois da cabeça $cabeca — ler $extras"
     fi
     echo "- estado: $estado"
     echo
@@ -583,37 +586,9 @@ build_licoes() {
   done
 }
 
-build_vigente_for_escopo() {
-  local alvo="$1" i
-  echo "# DECISIONS-VIGENTE-$alvo.md — GERADO de DECISIONS.md (NÃO EDITE À MÃO). Cabeçalhos de DAs vigentes do escopo $alvo."
-  echo
-  for ((i=0; i<N; i++)); do
-    local match=0 ee
-    IFS=',' read -ra _ee <<< "${EFF_ESCOPO[i]}"
-    for ee in "${_ee[@]}"; do [ "$ee" = "$alvo" ] && match=1; done
-    [ "$match" = 0 ] && continue
-    local m; m="$(mark_of "$i")"
-    [ -n "$m" ] && [ "${m%%:*}" != "par" ] && continue   # 🔄 e 📚 não são vigentes; ½ continua valendo no que não foi alterado
-    echo "## ${KEY[i]} — ${TITLE[i]}"
-    [ -n "${REGRA[i]}" ] && [ "${REGRASRC[i]}" != "none" ] && echo "**Regra:** ${REGRA[i]}"
-    echo
-  done
-}
-
-all_escopos() {
-  local i ee
-  declare -A seen
-  for ((i=0; i<N; i++)); do
-    IFS=',' read -ra _ee <<< "${EFF_ESCOPO[i]}"
-    for ee in "${_ee[@]}"; do [ -n "$ee" ] && seen["$ee"]=1; done
-  done
-  printf '%s\n' "${!seen[@]}" | sort
-}
-
-vigente_filename() { echo "DECISIONS-VIGENTE-$(printf '%s' "$1" | tr '/' '-').md"; }
-
 # ============================================================================
-# 5) CHECKS DE QUALIDADE c1..c12 (WARN — nenhum FAIL nesta fase; ver GRANDFATHER)
+# 5) CHECKS DE QUALIDADE c1..c7, c10, c11 (WARN — nenhum FAIL nesta fase; ver GRANDFATHER)
+#    c9 e c12 (maquinaria de saga/cabeça) DESLIGADOS em 06/09/2026 — task 20260906-028.
 # ============================================================================
 nv() { echo $((10#${1:-0})); }   # valor numérico seguro (evita "008" ser lido como octal)
 
@@ -630,15 +605,6 @@ _da234_epoch_dias() {  # Howard Hinnant days_from_civil
   local doe=$(( yoe*365 + yoe/4 - yoe/100 + doy ))
   _DA234_EPOCH=$(( era*146097 + doe ))
 }
-_da234_dias_entre() {
-  _DA234_DIAS=""
-  [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return
-  [[ "$2" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return
-  _da234_epoch_dias "$1"; local e1="$_DA234_EPOCH"
-  _da234_epoch_dias "$2"; local e2="$_DA234_EPOCH"
-  _DA234_DIAS=$((e2 - e1))
-}
-
 run_quality_checks() {
   local dir="$1" warn=0
   local sagas_conf="${ADAS_SAGAS_CONF:-$HOME/.adas/sagas.conf}"
@@ -702,13 +668,8 @@ run_quality_checks() {
     done
     [ -n "$miss" ] && { echo "WARN c7: ${KEY[i]} (cabeça) tem consolida: sem linha correspondente no Histórico: $miss"; warn=1; }
   done
-  # c9: saga com >=3 rodadas após a cabeça
+  # c9 (saga com >=3 rodadas após a cabeça — "hora de nova cabeça"): DESLIGADO, task 20260906-028.
   local slug
-  for slug in "${SAGA_SLUGS[@]}"; do
-    [ -z "${SAGA_HEAD_IDX[$slug]:-}" ] && continue
-    local r; r="$(saga_rodadas_depois_da_cabeca "$slug")"
-    [ "$r" -ge 3 ] && { echo "WARN c9: saga $slug tem $r rodadas depois da cabeça — hora de nova cabeça"; warn=1; }
-  done
   # c10: NA-/slug citado fora do lugar (scripts, claude-tg-tmux, skills, axon) — UMA
   # passada só (alternação de todos os slugs) em vez de N greps recursivos (era o
   # gargalo: 37 sagas × grep -r em ~1GB deixava o hook (síncrono) lento demais).
@@ -741,43 +702,7 @@ run_quality_checks() {
     [ -z "${exists[$num]:-}" ] && unknown+="$cited "
   done
   [ -n "$unknown" ] && { echo "WARN c11: citações a número inexistente no diário: $unknown"; warn=1; }
-  # c12: 3ª rodada da mesma saga sem `supersede:`/`consolida:` PRÓPRIA em <=7 dias — aviso
-  # PREVENTIVO (DA-234). Irmão do c9, mesma matéria-prima (saga_members_sorted), mede OUTRA
-  # coisa: c9 vê a consolidação atrasada DEPOIS que a cabeça já existe; este vê o padrão ANTES
-  # dela existir. "3 rodadas e a 4ª já resolve (consolida/supersede)" é ritmo saudável — não
-  # avisa. SÓ avisa saga AINDA EM ABERTO (sem consolida:/supersede: própria até o fim do
-  # diário) — assim que a cabeça aparece, mesmo tarde, o run vira história e cala (o aviso
-  # preventivo não tem mais o que prevenir; sinalizar retroativamente é alarme sem ação
-  # possível, treina o operador a ignorar). Não mexe em saga_rodadas_depois_da_cabeca nem no c9.
-  for slug in "${SAGA_SLUGS[@]}"; do
-    # atalho barato ANTES do sort (fork de sort/cut): saga com <3 membros nunca chega em tally=3.
-    local -a _c12_raw=(${SAGA_MEMBERS[$slug]:-})
-    [ "${#_c12_raw[@]}" -lt 3 ] && continue
-    local -a _c12_membros=($(saga_members_sorted "$slug"))
-    local tally=0 run_start="" trig="" trig_dias="" idx
-    for idx in "${_c12_membros[@]}"; do
-      if [ -n "${CONSOLIDA[idx]}" ] || [ -n "${SUPERSEDE[idx]}" ]; then
-        # resolvida (mesmo que tardia) = história, não alarme — silencia e reseta o run.
-        tally=0; run_start=""; trig=""; trig_dias=""
-        continue
-      fi
-      [ "$tally" = 0 ] && run_start="$idx"
-      tally=$((tally+1))
-      if [ "$tally" = 3 ]; then
-        local dstart dend
-        dstart="${DATATAG[run_start]:-${BODYDATA[run_start]:-}}"
-        dend="${DATATAG[idx]:-${BODYDATA[idx]:-}}"
-        # ponytail: janela ancorada só no 1º membro do run; se ele cair fora de 7d mas um
-        # sub-trio mais recente dentro do mesmo run coubesse, não detecta — sem caso real hoje.
-        _da234_dias_entre "$dstart" "$dend"
-        if [ -n "$_DA234_DIAS" ] && [ "$_DA234_DIAS" -le 7 ]; then trig="$idx"; trig_dias="$_DA234_DIAS"; else trig=""; trig_dias=""; fi
-      fi
-    done
-    if [ -n "$trig" ]; then
-      echo "WARN c12: saga $slug — ${KEY[trig]} foi a 3ª rodada sem supersede:/consolida: em ${trig_dias}d (ainda sem resolver, $tally rodada(s)) — vá na raiz antes da 4ª"
-      warn=1
-    fi
-  done
+  # c12 (3ª rodada da mesma saga em <=7d, DA-234): DESLIGADO, task 20260906-028.
   return 0
 }
 
@@ -821,19 +746,15 @@ cmd_update() {
   load_records "$dir"; group_sagas
   local tmp; tmp="$(mktemp)"; build_index "$dir" > "$tmp" || { rm -f "$tmp"; echo "✗ da-index: geração do índice falhou"; exit 1; }
   mv "$tmp" "$dir/DECISIONS-INDEX.md"
-  tmp="$(mktemp)"; build_sagas_md > "$tmp"; mv "$tmp" "$dir/DECISIONS-SAGAS.md"
   tmp="$(mktemp)"; build_licoes > "$tmp"; mv "$tmp" "$dir/DECISIONS-LICOES.md"
-  local esc
-  for esc in $(all_escopos); do
-    tmp="$(mktemp)"; build_vigente_for_escopo "$esc" > "$tmp"; mv "$tmp" "$dir/$(vigente_filename "$esc")"
-  done
+  # DECISIONS-SAGAS.md e DECISIONS-VIGENTE-*.md: NÃO gerados mais (task 028); os existentes ficam intocados.
   if [ -f "$dir/ADAS.md" ] && grep -qF '<!-- da-sagas-start -->' "$dir/ADAS.md" 2>/dev/null; then
     local blk; blk="$(mktemp)"; build_sagas_block "" > "$blk"
     local spliced; spliced="$(splice_sagas_block "$dir/ADAS.md" "$blk")"
     if [ -n "$spliced" ] && [ -f "$spliced" ]; then mv "$spliced" "$dir/ADAS.md"; fi
     rm -f "$blk"
   fi
-  echo "✓ da-index: INDEX ($N DAs) · SAGAS (${#SAGA_SLUGS[@]} sagas, $(printf '%s\n' "${SAGA_SLUGS[@]}" | while read -r s; do [ "$(saga_members_sorted "$s" | wc -l)" -ge 2 ] && echo x; done | wc -l) com 2+ DAs) · LICOES · VIGENTE-*"
+  echo "✓ da-index: INDEX ($N DAs, ${#SAGA_SLUGS[@]} sagas no bloco) · LICOES  (SAGAS/VIGENTE não são mais gerados — task 20260906-028)"
   run_quality_checks "$dir"
 }
 
@@ -843,26 +764,16 @@ cmd_check() {
   load_records "$dir"; group_sagas
   local tmpdir; tmpdir="$(mktemp -d)"
   build_index "$dir" > "$tmpdir/INDEX"
-  build_sagas_md > "$tmpdir/SAGAS"
   build_licoes > "$tmpdir/LICOES"
-  local esc rc=0
-  for esc in $(all_escopos); do build_vigente_for_escopo "$esc" > "$tmpdir/VIGENTE-$(printf '%s' "$esc" | tr '/' '-')"; done
+  local rc=0
 
   if ! cmp -s "$tmpdir/INDEX" "$dir/DECISIONS-INDEX.md"; then
     echo "✗ da-index: DECISIONS-INDEX.md DIVERGE do DECISIONS.md"; diff "$dir/DECISIONS-INDEX.md" "$tmpdir/INDEX" 2>/dev/null | head -10; rc=1
   fi
-  if [ -f "$dir/DECISIONS-SAGAS.md" ] && ! cmp -s "$tmpdir/SAGAS" "$dir/DECISIONS-SAGAS.md"; then
-    echo "✗ da-index: DECISIONS-SAGAS.md DIVERGE"; diff "$dir/DECISIONS-SAGAS.md" "$tmpdir/SAGAS" 2>/dev/null | head -10; rc=1
-  elif [ ! -f "$dir/DECISIONS-SAGAS.md" ]; then echo "✗ da-index: DECISIONS-SAGAS.md NÃO EXISTE"; rc=1; fi
+  # DECISIONS-SAGAS.md / DECISIONS-VIGENTE-*.md: não conferidos (não são mais gerados — task 028); ficam como estão.
   if [ -f "$dir/DECISIONS-LICOES.md" ] && ! cmp -s "$tmpdir/LICOES" "$dir/DECISIONS-LICOES.md"; then
     echo "✗ da-index: DECISIONS-LICOES.md DIVERGE"; rc=1
   elif [ ! -f "$dir/DECISIONS-LICOES.md" ]; then echo "✗ da-index: DECISIONS-LICOES.md NÃO EXISTE"; rc=1; fi
-  for esc in $(all_escopos); do
-    local fn; fn="$(vigente_filename "$esc")"
-    if [ -f "$dir/$fn" ] && ! cmp -s "$tmpdir/VIGENTE-$(printf '%s' "$esc" | tr '/' '-')" "$dir/$fn"; then
-      echo "✗ da-index: $fn DIVERGE"; rc=1
-    elif [ ! -f "$dir/$fn" ]; then echo "✗ da-index: $fn NÃO EXISTE"; rc=1; fi
-  done
   if [ -f "$dir/ADAS.md" ] && grep -qF '<!-- da-sagas-start -->' "$dir/ADAS.md" 2>/dev/null; then
     build_sagas_block "" > "$tmpdir/ADASBLK"
     local spliced; spliced="$(splice_sagas_block "$dir/ADAS.md" "$tmpdir/ADASBLK")"

@@ -19,7 +19,8 @@ export DA_INDEX_GRANDFATHER=0
 out="$(bash "$DAIDX" update "$TMP" 2>&1)"
 echo "$out" | sed 's/^/  /'
 [ -f "$TMP/DECISIONS-INDEX.md" ] && pass "DECISIONS-INDEX.md gerado" || fail "DECISIONS-INDEX.md NÃO gerado"
-[ -f "$TMP/DECISIONS-SAGAS.md" ] && pass "DECISIONS-SAGAS.md gerado" || fail "DECISIONS-SAGAS.md NÃO gerado"
+[ -f "$TMP/DECISIONS-SAGAS.md" ] && fail "DECISIONS-SAGAS.md ainda é gerado (maquinaria de saga desligada — task 20260906-028)" || pass "DECISIONS-SAGAS.md NÃO é mais gerado (task 028)"
+echo "$out" | grep -qE "WARN c(9|12):" && fail "update ainda emite c9/c12 (desligados na task 028)" || pass "update não emite c9 nem c12"
 [ -f "$TMP/DECISIONS-LICOES.md" ] && pass "DECISIONS-LICOES.md gerado" || fail "DECISIONS-LICOES.md NÃO gerado"
 
 echo "== fixture 1: DA com Regra explícita =="
@@ -45,9 +46,7 @@ echo "== fixture 5: tags compostas + consolida (cabeça) =="
 grep -q 'saga-teste' "$TMP/DECISIONS-INDEX.md" && grep -q 'outra-saga' <<< "$(bash "$DAIDX" sagas "$TMP")" \
   && pass "saga composta (saga-teste, outra-saga) parseada" || fail "saga composta não parseada corretamente"
 grep -q '^- DA-001 .*📚 em DA-005' "$TMP/DECISIONS-INDEX.md" && pass "DA-001 marcada 📚 consolidada em DA-005 (tag consolida:)" || fail "marca 📚 de consolida: não aplicada"
-grep -q 'produto' "$TMP/DECISIONS-VIGENTE-instância.md" 2>/dev/null; # não é assert, só smoke
-[ -f "$TMP/DECISIONS-VIGENTE-produto,instância.md" ] || [ -f "$TMP/DECISIONS-VIGENTE-produto.md" ] \
-  && pass "VIGENTE-produto existe (escopo composto splitado)" || fail "VIGENTE-produto ausente"
+[ -z "$(ls "$TMP"/DECISIONS-VIGENTE-*.md 2>/dev/null)" ] && pass "nenhum DECISIONS-VIGENTE-*.md gerado (task 028)" || fail "DECISIONS-VIGENTE-*.md ainda é gerado (desligado na task 028)"
 
 echo "== fixture 6: membro sem tag, pertencimento via membros.tsv =="
 sagasout="$(bash "$DAIDX" sagas "$TMP")"
@@ -95,7 +94,7 @@ echo "$sagasout" | grep -qF -- '- regra-fallback-longa · produto · cabeça: �
   && pass "DA-012 (frase longa demais) cai em 'ver DA-012'" || fail "DA-012 não caiu no fallback por tamanho"
 
 echo "== fixture 13/14: fallback de data do Histórico (tag → **Data:** → data isolada no corpo → —) =="
-sagasmd="$(cat "$TMP/DECISIONS-SAGAS.md")"
+sagasmd="$(bash "$DAIDX" show --saga regra-fallback-datas "$TMP")"   # NA só em memória (task 028)
 echo "$sagasmd" | grep -qF -- '- 2026-03-15 · DA-013 ·' && pass "DA-013: data BR isolada '**15/03/2026**' virou 2026-03-15 no Histórico" || fail "DA-013 não converteu a data isolada do corpo"
 echo "$sagasmd" | grep -qF -- '- — · DA-014 ·' && pass "DA-014 (sem nenhuma data no corpo) mantém — no Histórico" || fail "DA-014 não deveria ter data nenhuma"
 
@@ -145,9 +144,9 @@ list_elsewhere="$(cd "$TMP/elsewhere" && HOME="$TMP" bash "$DAIDX" list)"
 # normaliza primeiro (da-new.sh dos testes anteriores anexou DA-015/016 sem passar pelo
 # hook PostToolUse que regeneraria os gerados — não é o que este teste mede)
 bash "$DAIDX" update "$TMP" >/dev/null 2>&1
-before_upd_sha="$(sha256sum "$TMP/DECISIONS-INDEX.md" "$TMP/DECISIONS-SAGAS.md" "$TMP/DECISIONS-LICOES.md")"
+before_upd_sha="$(sha256sum "$TMP/DECISIONS-INDEX.md" "$TMP/DECISIONS-LICOES.md")"
 ( cd "$TMP/elsewhere" && HOME="$TMP" bash "$DAIDX" update >/dev/null 2>&1 )
-after_upd_sha="$(sha256sum "$TMP/DECISIONS-INDEX.md" "$TMP/DECISIONS-SAGAS.md" "$TMP/DECISIONS-LICOES.md")"
+after_upd_sha="$(sha256sum "$TMP/DECISIONS-INDEX.md" "$TMP/DECISIONS-LICOES.md")"
 [ "$before_upd_sha" = "$after_upd_sha" ] && pass "update sem [dir] rodado de outro cwd: gerados byte-idênticos aos de \$HOME" || fail "update sem [dir] rodado de outro cwd mudou os gerados"
 [ -z "$(ls -A "$TMP/elsewhere" 2>/dev/null)" ] && pass "update sem [dir] escreveu em \$HOME, não vazou pro cwd (elsewhere continua vazio)" || fail "update sem [dir] escreveu no cwd errado"
 

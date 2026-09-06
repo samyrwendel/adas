@@ -425,14 +425,13 @@ o3="$(emit 9600 1000)"; b3="$(printf '%s' "$o3" | blen)"
 printf '%s' "$o3" | grep -q "\[ADAS-CORTE\] sagas" && bad "sagas pequena foi cortada (deveria caber inline)" || ok "sagas vigente cabe → INLINE"
 printf '%s' "$o3" | grep -q "\[ADAS-CORTE\] licoes" && ok "histórico cede primeiro → ponteiro" || bad "lições não cedeu (prioridade invertida)"
 
-echo "== 18) da-index c12 (DA-234) — avisa SÓ saga ainda EM ABERTO; resolvida (mesmo tarde) é história, não alarme"
-# DENTE de regressão: c12 é PREVENTIVO — só tem valor enquanto a saga ainda não achou a raiz.
-# fixture-c12-aberto: 3 rodadas em <=7d e NUNCA resolve até o fim do diário — é o caso real
-# (cabecalho-de-task DA-146/158/159/160, ver tests do da-index / regressão histórica da DA-234
-# no momento em que DA-159 foi escrita e a cabeça DA-207 ainda não existia) — tem que avisar.
-# fixture-c12-mau: mesmo padrão, mas ACHA a cabeça na 5ª (tardia) — já é passado morto, o
-# aviso não previne mais nada; silenciar é o próprio ponto desta correção.
-# fixture-c12-bom: resolve EXATO na 3ª (ritmo saudável) — nunca teve o que avisar.
+echo "== 18) da-index c9/c12 DESLIGADOS (task 20260906-028) — fixtures que ANTES acusavam agora ficam em silêncio; SAGAS/VIGENTE não nascem"
+# HISTÓRICO: esta seção era o dente do c12 (DA-234: acusar 3ª rodada de saga em aberto, calar em saga
+# resolvida). Em 06/09/2026 o Samyr mandou desligar a maquinaria de saga/cabeça/NA (task 20260906-028):
+# saem a geração de DECISIONS-SAGAS.md/DECISIONS-VIGENTE-*.md e os checks c9/c12; fica o conteúdo do
+# diário e a camada 0. As 3 asserções antigas testavam a maquinaria removida — foram substituídas pelo
+# dente inverso (não acusa mais) + a prova de que nada de conteúdo se perde. fixture-c12-mau ganhou
+# DA-106..108 (3 rodadas DEPOIS da cabeça DA-105) — antes disparava c9.
 C12="$T/c12"; mkdir -p "$C12/scripts"
 cp "$ROOT/skeleton/scripts/da-index.sh" "$C12/scripts/"
 cat > "$C12/DECISIONS.md" <<'EOS'
@@ -457,6 +456,18 @@ cat > "$C12/DECISIONS.md" <<'EOS'
 ## DA-105 — Fixture mau padrão, cabeça tardia
 `escopo: produto` · `saga: fixture-c12-mau` · `data: 2026-01-10` · `consolida: DA-101, DA-102, DA-103, DA-104`
 **Regra:** achou a raiz na 5ª, tarde demais — mas achou. É história agora.
+
+## DA-106 — Fixture mau padrão, rodada 1 depois da cabeça
+`escopo: produto` · `saga: fixture-c12-mau` · `data: 2026-01-11`
+**Regra:** remendo depois da cabeça, 1.
+
+## DA-107 — Fixture mau padrão, rodada 2 depois da cabeça
+`escopo: produto` · `saga: fixture-c12-mau` · `data: 2026-01-12`
+**Regra:** remendo depois da cabeça, 2.
+
+## DA-108 — Fixture mau padrão, rodada 3 depois da cabeça (antes: c9 "hora de nova cabeça")
+`escopo: produto` · `saga: fixture-c12-mau` · `data: 2026-01-13`
+**Regra:** remendo depois da cabeça, 3.
 
 ## DA-201 — Fixture bom padrão, parte 1
 `escopo: produto` · `saga: fixture-c12-bom` · `data: 2026-02-01`
@@ -486,13 +497,17 @@ cat > "$C12/DECISIONS.md" <<'EOS'
 `escopo: produto` · `saga: fixture-c12-aberto` · `data: 2026-03-02`
 **Regra:** tentativa 3, ainda não foi na raiz — e nunca mais aparece consolida:/supersede: desta saga.
 EOS
+sha_before="$(sha256sum "$C12/DECISIONS.md" | cut -d" " -f1)"
 out=$(bash "$C12/scripts/da-index.sh" update "$C12" 2>&1)
-echo "$out" | grep -q "^WARN c12: saga fixture-c12-aberto — DA-303 " \
-  && ok "c12 acusa a 3ª rodada (DA-303) de saga AINDA ABERTA, antes da 4ª" || bad "c12 NÃO acusou a saga ainda aberta (regressão do detector da DA-234)"
-echo "$out" | grep -q "^WARN c12:.*fixture-c12-bom" \
-  && bad "c12 disparou falso positivo no padrão bom (resolvido exato na 3ª)" || ok "c12 não dispara quando resolve exatamente na 3ª (sem falso positivo)"
-echo "$out" | grep -q "^WARN c12:.*fixture-c12-mau" \
-  && bad "c12 disparou alarme sobre saga JÁ RESOLVIDA (passado morto, não previne nada)" || ok "c12 não dispara para saga já resolvida, mesmo tardia (história não é alarme)"
+echo "$out" | grep -q "^WARN c12:" && bad "c12 ainda acusa (deveria estar DESLIGADO — task 028)" || ok "c12 desligado: fixture-c12-aberto (3ª rodada em aberto) não acusa mais"
+echo "$out" | grep -q "^WARN c9:" && bad "c9 ainda acusa (deveria estar DESLIGADO — task 028)" || ok "c9 desligado: fixture-c12-mau com 3 rodadas depois da cabeça não acusa mais"
+[ -f "$C12/DECISIONS-SAGAS.md" ] && bad "update ainda gera DECISIONS-SAGAS.md" || ok "update não gera DECISIONS-SAGAS.md"
+[ -z "$(ls "$C12"/DECISIONS-VIGENTE-*.md 2>/dev/null)" ] && ok "update não gera DECISIONS-VIGENTE-*.md" || bad "update ainda gera DECISIONS-VIGENTE-*.md"
+[ -f "$C12/DECISIONS-INDEX.md" ] && [ -f "$C12/DECISIONS-LICOES.md" ] && ok "INDEX e LICOES continuam sendo gerados" || bad "INDEX/LICOES sumiram junto (desligou demais)"
+[ "$sha_before" = "$(sha256sum "$C12/DECISIONS.md" | cut -d" " -f1)" ] && ok "DECISIONS.md byte a byte intocado pelo update" || bad "update alterou o DECISIONS.md"
+bash "$C12/scripts/da-index.sh" show DA-105 "$C12" | grep -q "cabeça tardia" && ok "cabeça DA-105 continua legível por show" || bad "show DA-105 falhou"
+printf 'x\n' > "$C12/DECISIONS-SAGAS.md"   # arquivo velho/estranho deixado no lugar NÃO faz o check falhar
+bash "$C12/scripts/da-index.sh" check "$C12" >/dev/null 2>&1 && ok "check ignora DECISIONS-SAGAS.md legado (não é mais conferido)" || bad "check ainda exige/confere DECISIONS-SAGAS.md"
 
 echo "== 19) item 2b — núcleo via @import do CLAUDE.md GLOBAL, com fallback e autocura"
 # CONTEXTO: ~/.claude/CLAUDE.md carrega inteiro em toda sessão desta máquina (medido:
