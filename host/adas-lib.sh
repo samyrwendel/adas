@@ -103,7 +103,7 @@ adas_da_layer0() {
       # no orçamento) — este rodapé é COMO recuperar a lista completa; sem ele
       # o corte vira o defeito que a DA-230 proíbe (dado sumido sem dizer onde)
       local hint hlen
-      hint="$(printf 'membros completos de uma saga: bash ~/scripts/da-index.sh list --saga <slug> ~\n')"
+      hint="$(printf '\nmembros completos de uma saga: bash ~/scripts/da-index.sh list --saga <slug> ~\n')"
       hlen="$(adas_blen "$hint")"
       [ $((used + hlen)) -le "$budget" ] && { out="${out}${hint}"; used=$((used + hlen)); }
     else
