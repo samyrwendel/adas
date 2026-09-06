@@ -25,3 +25,7 @@ jobs:
         run: cd skeleton && bash scripts/check-adas.sh
       - name: smoke — spec executável (comportamento, não só sintaxe)
         run: bash tests/smoke.sh
+      - name: skeleton-v4 — shellcheck + teste de adoção (dia 0 = 1 aviso em doc; FAIL esperado em mecanismo)
+        run: |
+          shellcheck -S error skeleton-v4/scripts/*.sh skeleton-v4/.claude/hooks/*.sh skeleton-v4/mecanismo/tests/*.sh tests/smoke-v4.sh
+          bash tests/smoke-v4.sh
