@@ -347,10 +347,12 @@ mark_render() {   # "🔄 por DA-x" | "½ por DA-y" | "📚 em DA-z" | ""
   esac
 }
 
-trunc() {  # trunc "$texto" N
-  local s="$1" n="$2"
+trunc() {  # trunc "$texto" N — corta na última palavra que cabe, nunca no meio (item 2a)
+  local s="$1" n="$2" cut
   if [ "${#s}" -le "$n" ]; then printf '%s' "$s"; return; fi
-  printf '%s...' "${s:0:$((n-3))}"
+  cut="${s:0:$((n-3))}"
+  case "$cut" in *' '*) cut="${cut% *}" ;; esac
+  printf '%s...' "$cut"
 }
 
 # ============================================================================
@@ -432,17 +434,19 @@ saga_estado() {  # viva|encerrada — heurística: título/regra da última DA m
 #    DECISIONS-VIGENTE-<escopo>.md
 # ============================================================================
 saga_summary_line() {
+  # item 2a: sem a lista "membros: DA-…" (já vive na NA; recupere com
+  # `da-index.sh list --saga <slug>`) e Regra em <=100 chars — as 34 sagas de
+  # produto+instância caem de ~9k pra ~5,7k B e passam a caber no orçamento da
+  # camada 0 na home/mainbot-dev/claude-tg-tmux (antes: 0 sagas inline ali).
   local slug="$1"
   local -a members=($(saga_members_sorted "$slug"))
   local escopo="${SAGA_ESCOPO[$slug]:-—}"
   local head="${SAGA_HEAD_IDX[$slug]:-}"
   local cabeca="—"; [ -n "$head" ] && cabeca="${KEY[$head]}"
   local n_das="${#members[@]}"
-  local memlist=""; local idx
-  for idx in "${members[@]}"; do memlist+="${memlist:+, }${KEY[$idx]}"; done
   local src; src="$(saga_regra_source_idx "$slug")"
   local regra="ver ${KEY[$src]}"
-  [ "${REGRASRC[$src]}" != "none" ] && regra="$(trunc "${REGRA[$src]}" 200)"
+  [ "${REGRASRC[$src]}" != "none" ] && regra="$(trunc "${REGRA[$src]}" 100)"
   local rodadas; rodadas="$(saga_rodadas_depois_da_cabeca "$slug")"
   local aviso=""
   if [ -n "$head" ] && [ "$rodadas" -ge 1 ]; then
@@ -452,8 +456,8 @@ saga_summary_line() {
     aviso=" · ⚠ $rodadas rodada(s) depois da cabeça $cabeca — ler $extras"
     [ "$rodadas" -ge 3 ] && aviso+=" (hora de nova cabeça)"
   fi
-  printf -- "- %s · %s · cabeça: %s · %s DA%s · membros: %s · Regra: %s%s\n" \
-    "$slug" "$escopo" "$cabeca" "$n_das" "$([ "$n_das" = 1 ] && echo "" || echo "s")" "$memlist" "$regra" "$aviso"
+  printf -- "- %s · %s · cabeça: %s · %s DA%s · Regra: %s%s\n" \
+    "$slug" "$escopo" "$cabeca" "$n_das" "$([ "$n_das" = 1 ] && echo "" || echo "s")" "$regra" "$aviso"
 }
 
 build_sagas_block() {   # usado tanto por 'sagas' quanto pelo bloco embutido do INDEX

@@ -99,6 +99,13 @@ adas_da_layer0() {
     part="$(printf '%s\n' "$sagas")"; plen="$(adas_blen "$part")"
     if [ $((used + plen)) -le "$budget" ]; then
       out="${out}${part}"; used=$((used + plen))
+      # a linha da saga não traz mais "membros: DA-…" (item 2a, cabe mais saga
+      # no orçamento) — este rodapé é COMO recuperar a lista completa; sem ele
+      # o corte vira o defeito que a DA-230 proíbe (dado sumido sem dizer onde)
+      local hint hlen
+      hint="$(printf 'membros completos de uma saga: bash ~/scripts/da-index.sh list --saga <slug> ~\n')"
+      hlen="$(adas_blen "$hint")"
+      [ $((used + hlen)) -le "$budget" ] && { out="${out}${hint}"; used=$((used + hlen)); }
     else
       ptr="$(printf '\n[ADAS-CORTE] sagas vigentes (%d bytes) nao couberam no orcamento de %d bytes — leia com: bash ~/scripts/da-index.sh sagas --escopo %s ~\n' "$plen" "$budget" "$escopo")"
       [ $((used + $(adas_blen "$ptr"))) -le "$budget" ] && { out="${out}${ptr}"; used=$((used + $(adas_blen "$ptr"))); }
