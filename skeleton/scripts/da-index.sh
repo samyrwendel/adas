@@ -741,9 +741,10 @@ run_quality_checks() {
   # PREVENTIVO (DA-234). Irmão do c9, mesma matéria-prima (saga_members_sorted), mede OUTRA
   # coisa: c9 vê a consolidação atrasada DEPOIS que a cabeça já existe; este vê o padrão ANTES
   # dela existir. "3 rodadas e a 4ª já resolve (consolida/supersede)" é ritmo saudável — não
-  # avisa; "a 4ª rodada chega e ainda não resolveu" é o sintoma — avisa citando a 3ª, que é onde
-  # o aviso já deveria ter soado (DA-146/158/159/160 é o caso real: dispara em DA-159, não em
-  # DA-160). Não mexe em saga_rodadas_depois_da_cabeca nem no c9.
+  # avisa. SÓ avisa saga AINDA EM ABERTO (sem consolida:/supersede: própria até o fim do
+  # diário) — assim que a cabeça aparece, mesmo tarde, o run vira história e cala (o aviso
+  # preventivo não tem mais o que prevenir; sinalizar retroativamente é alarme sem ação
+  # possível, treina o operador a ignorar). Não mexe em saga_rodadas_depois_da_cabeca nem no c9.
   for slug in "${SAGA_SLUGS[@]}"; do
     # atalho barato ANTES do sort (fork de sort/cut): saga com <3 membros nunca chega em tally=3.
     local -a _c12_raw=(${SAGA_MEMBERS[$slug]:-})
@@ -752,10 +753,7 @@ run_quality_checks() {
     local tally=0 run_start="" trig="" trig_dias="" idx
     for idx in "${_c12_membros[@]}"; do
       if [ -n "${CONSOLIDA[idx]}" ] || [ -n "${SUPERSEDE[idx]}" ]; then
-        if [ -n "$trig" ] && [ "$tally" -gt 3 ]; then
-          echo "WARN c12: saga $slug — ${KEY[trig]} foi a 3ª rodada sem supersede:/consolida: em ${trig_dias}d (resolvida só em ${KEY[idx]}, $tally rodadas depois) — vá na raiz antes da 4ª"
-          warn=1
-        fi
+        # resolvida (mesmo que tardia) = história, não alarme — silencia e reseta o run.
         tally=0; run_start=""; trig=""; trig_dias=""
         continue
       fi

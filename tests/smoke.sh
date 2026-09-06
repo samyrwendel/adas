@@ -425,11 +425,14 @@ o3="$(emit 9600 1000)"; b3="$(printf '%s' "$o3" | blen)"
 printf '%s' "$o3" | grep -q "\[ADAS-CORTE\] sagas" && bad "sagas pequena foi cortada (deveria caber inline)" || ok "sagas vigente cabe → INLINE"
 printf '%s' "$o3" | grep -q "\[ADAS-CORTE\] licoes" && ok "histórico cede primeiro → ponteiro" || bad "lições não cedeu (prioridade invertida)"
 
-echo "== 18) da-index c12 (DA-234) — 3ª rodada sem consolida:/supersede: em <=7 dias avisa, MAS só se não resolver em exatamente 3"
-# DENTE de regressão pro caso real que motivou a DA-234: a saga cabecalho-de-task
-# (DA-146/158/159/160/207) levou 4 rodadas pra achar a raiz — o aviso tinha que ter soado na
-# 3ª (DA-159), antes da 4ª (DA-160). Contra-exemplo real: ultimo-scan-em-disco
-# (DA-114/115/116/225) resolveu EXATO na 3ª — não pode virar falso positivo.
+echo "== 18) da-index c12 (DA-234) — avisa SÓ saga ainda EM ABERTO; resolvida (mesmo tarde) é história, não alarme"
+# DENTE de regressão: c12 é PREVENTIVO — só tem valor enquanto a saga ainda não achou a raiz.
+# fixture-c12-aberto: 3 rodadas em <=7d e NUNCA resolve até o fim do diário — é o caso real
+# (cabecalho-de-task DA-146/158/159/160, ver tests do da-index / regressão histórica da DA-234
+# no momento em que DA-159 foi escrita e a cabeça DA-207 ainda não existia) — tem que avisar.
+# fixture-c12-mau: mesmo padrão, mas ACHA a cabeça na 5ª (tardia) — já é passado morto, o
+# aviso não previne mais nada; silenciar é o próprio ponto desta correção.
+# fixture-c12-bom: resolve EXATO na 3ª (ritmo saudável) — nunca teve o que avisar.
 C12="$T/c12"; mkdir -p "$C12/scripts"
 cp "$ROOT/skeleton/scripts/da-index.sh" "$C12/scripts/"
 cat > "$C12/DECISIONS.md" <<'EOS'
@@ -443,7 +446,7 @@ cat > "$C12/DECISIONS.md" <<'EOS'
 `escopo: produto` · `saga: fixture-c12-mau` · `data: 2026-01-02`
 **Regra:** tentativa 2, remenda outro emissor.
 
-## DA-103 — Fixture mau padrão, tentativa 3 (aqui o aviso deveria soar)
+## DA-103 — Fixture mau padrão, tentativa 3 (aqui o aviso já deveria ter soado, na hora)
 `escopo: produto` · `saga: fixture-c12-mau` · `data: 2026-01-02`
 **Regra:** tentativa 3, ainda não foi na raiz.
 
@@ -453,7 +456,7 @@ cat > "$C12/DECISIONS.md" <<'EOS'
 
 ## DA-105 — Fixture mau padrão, cabeça tardia
 `escopo: produto` · `saga: fixture-c12-mau` · `data: 2026-01-10` · `consolida: DA-101, DA-102, DA-103, DA-104`
-**Regra:** achou a raiz na 5ª, tarde demais.
+**Regra:** achou a raiz na 5ª, tarde demais — mas achou. É história agora.
 
 ## DA-201 — Fixture bom padrão, parte 1
 `escopo: produto` · `saga: fixture-c12-bom` · `data: 2026-02-01`
@@ -470,12 +473,26 @@ cat > "$C12/DECISIONS.md" <<'EOS'
 ## DA-204 — Fixture bom padrão, cabeça no tempo certo
 `escopo: produto` · `saga: fixture-c12-bom` · `data: 2026-02-05` · `consolida: DA-201, DA-202, DA-203`
 **Regra:** cabeça natural — resolveu exatamente na 3ª, sem 4ª rodada.
+
+## DA-301 — Fixture aberta, tentativa 1
+`escopo: produto` · `saga: fixture-c12-aberto` · `data: 2026-03-01`
+**Regra:** tentativa 1, remenda um emissor.
+
+## DA-302 — Fixture aberta, tentativa 2
+`escopo: produto` · `saga: fixture-c12-aberto` · `data: 2026-03-01`
+**Regra:** tentativa 2, remenda outro emissor.
+
+## DA-303 — Fixture aberta, tentativa 3 (aqui o aviso deve soar e o diário acaba sem resolver)
+`escopo: produto` · `saga: fixture-c12-aberto` · `data: 2026-03-02`
+**Regra:** tentativa 3, ainda não foi na raiz — e nunca mais aparece consolida:/supersede: desta saga.
 EOS
 out=$(bash "$C12/scripts/da-index.sh" update "$C12" 2>&1)
-echo "$out" | grep -q "^WARN c12: saga fixture-c12-mau — DA-103 " \
-  && ok "c12 acusa a 3ª rodada (DA-103) do padrão mau, antes da 4ª" || bad "c12 NÃO acusou o padrão mau (regressão do detector da DA-234)"
+echo "$out" | grep -q "^WARN c12: saga fixture-c12-aberto — DA-303 " \
+  && ok "c12 acusa a 3ª rodada (DA-303) de saga AINDA ABERTA, antes da 4ª" || bad "c12 NÃO acusou a saga ainda aberta (regressão do detector da DA-234)"
 echo "$out" | grep -q "^WARN c12:.*fixture-c12-bom" \
   && bad "c12 disparou falso positivo no padrão bom (resolvido exato na 3ª)" || ok "c12 não dispara quando resolve exatamente na 3ª (sem falso positivo)"
+echo "$out" | grep -q "^WARN c12:.*fixture-c12-mau" \
+  && bad "c12 disparou alarme sobre saga JÁ RESOLVIDA (passado morto, não previne nada)" || ok "c12 não dispara para saga já resolvida, mesmo tardia (história não é alarme)"
 
 echo
 echo "RESULTADO: $pass ok, $fail falha(s)"
