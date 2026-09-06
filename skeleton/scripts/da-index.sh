@@ -224,7 +224,7 @@ cur == "" { next }
   if (!ptried["f"]) para_line("f", line)
   if (line ~ /^### Hist(ó|o)rico/) inhist = 1
   else if (inhist && line ~ /^(##|---)/) inhist = 0
-  else if (inhist && line ~ /^- DA-[0-9]/) historico_list = historico_list (historico_list=="" ? "" : ";") refs_in(line)
+  else if (inhist && line ~ /^- DA-[0-9]/) historico_list = historico_list (historico_list=="" ? "" : ",") refs_in(line)
   if (line ~ /^commit [0-9a-f]{40}$/) commitcount++
   if (index(line, "Efficiency meter") > 0) efficiency_seen = 1
   if (index(line,"────")>0 || index(line,"━━━━")>0 || index(line,"════")>0 || index(line,"░░░░")>0 || index(line,"▓▓▓▓")>0 || index(line,"█████")>0) tablelines++
