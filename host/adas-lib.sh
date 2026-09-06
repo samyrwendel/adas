@@ -88,6 +88,28 @@ adas_da_rotas() {
   printf '%s' "$best"
 }
 
+# adas_emit_block <out_var> <used_var> <budget> <content> — acrescenta <content> a <out>
+# (por nome — bash -n) garantindo EXATAMENTE um \n de separação do que já houver em <out>,
+# sem depender de trailing \n sobreviver a command substitution (ele NUNCA sobrevive — é
+# a causa-raiz dos 3 colapsos de fronteira já vistos aqui: rodapé colado na última saga
+# em 9c17511, cabeçalho colado na primeira saga na entrega seguinte). Todo ponto que monta
+# um bloco de adas_da_layer0 passa por AQUI — não existe outro lugar que concatene bloco
+# em bloco. Se <content> for vazio, no-op (retorna 0). Se não couber em <budget>, NÃO
+# altera <out>/<used> e retorna 1 — o chamador decide o que fazer (pular, ou emitir um
+# ponteiro [ADAS-CORTE], que por sua vez também passa por esta função).
+adas_emit_block() {
+  local -n _adas_out="$1" _adas_used="$2"
+  local budget="$3" content="$4"
+  [ -z "$content" ] && return 0
+  local piece="$content"
+  [ -n "$_adas_out" ] && piece=$'\n'"$content"
+  local plen; plen="$(adas_blen "$piece")"
+  [ $(( _adas_used + plen )) -le "$budget" ] || return 1
+  _adas_out="${_adas_out}${piece}"
+  _adas_used=$(( _adas_used + plen ))
+  return 0
+}
+
 # adas_da_layer0 <cwd> [budget_bytes] → camada 0 do diário (DA-181): 'sagas --escopo
 # <conjunto>' + DECISIONS-LICOES.md inteiro. Cabe em [budget_bytes] (default: sem teto,
 # p/ o caminho SubagentStart que usa additionalContext). PRIORIDADE DE CORTE DECLARADA:
@@ -115,35 +137,30 @@ adas_da_layer0() {
   [ -f "$HOME/DECISIONS-LICOES.md" ] && licoes="$(cat "$HOME/DECISIONS-LICOES.md" 2>/dev/null)"
   [ -z "$sagas" ] && [ -z "${licoes:-}" ] && return 0
 
-  local out used part plen ptr
-  out="$(printf '\n[DECISIONS camada 0 — escopo %s] sagas do diário de decisões (~/DECISIONS.md). "quem decidiu?" = DA-NNN, nunca a NA. Rodadas pendentes avisadas abaixo devem ser lidas (show DA-NNN) antes de decidir na saga.\n' "$escopo")"
-  used="$(adas_blen "$out")"
+  # out/used cruzam por nome (adas_emit_block -n) para todo bloco desta emissão — nenhum
+  # bloco é concatenado à mão. O \n líder do cabeçalho é o separador para os DOIS
+  # chamadores que fazem `ctx="${ctx}$(adas_da_layer0 ...)"` (adas-subagent.sh) — não é
+  # decoração; sem ele, este bloco cola direto no que o chamador já tinha em ctx.
+  local out="" used=0 header
+  header="$(printf '\n[DECISIONS camada 0 — escopo %s] sagas do diário de decisões (~/DECISIONS.md). "quem decidiu?" = DA-NNN, nunca a NA. Rodadas pendentes avisadas abaixo devem ser lidas (show DA-NNN) antes de decidir na saga.\n' "$escopo")"
+  adas_emit_block out used "$budget" "$header"
 
   # 1) sagas (VIGENTES) — prioridade máxima
   if [ -n "$sagas" ]; then
-    part="$(printf '%s\n' "$sagas")"; plen="$(adas_blen "$part")"
-    if [ $((used + plen)) -le "$budget" ]; then
-      out="${out}${part}"; used=$((used + plen))
+    if adas_emit_block out used "$budget" "$sagas"; then
       # a linha da saga não traz mais "membros: DA-…" (item 2a, cabe mais saga
       # no orçamento) — este rodapé é COMO recuperar a lista completa; sem ele
       # o corte vira o defeito que a DA-230 proíbe (dado sumido sem dizer onde)
-      local hint hlen
-      hint="$(printf '\nmembros completos de uma saga: bash ~/scripts/da-index.sh list --saga <slug> ~\n')"
-      hlen="$(adas_blen "$hint")"
-      [ $((used + hlen)) -le "$budget" ] && { out="${out}${hint}"; used=$((used + hlen)); }
+      adas_emit_block out used "$budget" \
+        "membros completos de uma saga: bash ~/scripts/da-index.sh list --saga <slug> ~"
     else
-      ptr="$(printf '\n[ADAS-CORTE] sagas vigentes (%d bytes) nao couberam no orcamento de %d bytes — leia com: bash ~/scripts/da-index.sh sagas --escopo %s ~\n' "$plen" "$budget" "$escopo")"
-      [ $((used + $(adas_blen "$ptr"))) -le "$budget" ] && { out="${out}${ptr}"; used=$((used + $(adas_blen "$ptr"))); }
+      adas_emit_block out used "$budget" "$(printf '[ADAS-CORTE] sagas vigentes (%d bytes) nao couberam no orcamento de %d bytes — leia com: bash ~/scripts/da-index.sh sagas --escopo %s ~' "$(adas_blen "$sagas")" "$budget" "$escopo")"
     fi
   fi
   # 2) lições (HISTÓRICO) — entra por último, cede primeiro
   if [ -n "${licoes:-}" ]; then
-    part="$(printf '\n%s\n' "$licoes")"; plen="$(adas_blen "$part")"
-    if [ $((used + plen)) -le "$budget" ]; then
-      out="${out}${part}"; used=$((used + plen))
-    else
-      ptr="$(printf '\n[ADAS-CORTE] licoes/historico (~/DECISIONS-LICOES.md, %d bytes) nao couberam no orcamento de %d bytes — leia com: cat ~/DECISIONS-LICOES.md\n' "$plen" "$budget")"
-      [ $((used + $(adas_blen "$ptr"))) -le "$budget" ] && { out="${out}${ptr}"; used=$((used + $(adas_blen "$ptr"))); }
+    if ! adas_emit_block out used "$budget" "$licoes"; then
+      adas_emit_block out used "$budget" "$(printf '[ADAS-CORTE] licoes/historico (~/DECISIONS-LICOES.md, %d bytes) nao couberam no orcamento de %d bytes — leia com: cat ~/DECISIONS-LICOES.md' "$(adas_blen "$licoes")" "$budget")"
     fi
   fi
   printf '%s' "$out"

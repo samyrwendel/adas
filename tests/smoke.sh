@@ -534,6 +534,72 @@ o2="$(emit2)"
 echo "$o2" | grep -q "v2 (mudou)" && bad "cache autocurado mas 2ª chamada ainda emitiu inline" \
   || ok "cache autocurado pra v2 → 2ª chamada já vem suprimida"
 
+echo "== 20) fronteira de bloco (adas_emit_block) — DENTE genérico, não só do cabeçalho (task 20260906-009)"
+# CONTEXTO: 3 colapsos de fronteira JÁ vistos aqui, um de cada vez — rodapé colado na
+# última saga (9c17511), cabeçalho colado na primeira saga (a viva quando esta task foi
+# aberta). Causa raiz: command substitution engole o \n final de QUALQUER "$(...)", e cada
+# ponto que montava um bloco à mão tratava (ou esquecia de tratar) isso sozinho. O fix
+# unifica em adas_emit_block; este teste usa fixtures REALISTAS multi-linha (a fixture do
+# teste 17 é um blob de 1 char sem \n interno — não pegaria NENHUM dos 3 colapsos) e
+# confere a fronteira de TODO bloco de uma vez, pra pegar a 4ª superfície antes dela existir.
+FRT="$T/frt"; mkdir -p "$FRT/scripts"
+touch "$FRT/DECISIONS.md"
+N_SAGAS=4
+cat > "$FRT/scripts/da-index.sh" <<'STUB'
+#!/usr/bin/env bash
+for i in 1 2 3 4; do
+  printf -- '- fixture-saga-%d · produto · cabeça: DA-10%d · 1 DA · Regra: linha de teste realista numero %d, prova que cada saga fica na sua propria linha, nunca colada na vizinha.\n' "$i" "$i" "$i"
+done
+STUB
+M_LICOES=3
+{
+  for i in 1 2 3; do
+    printf -- '- LICAO-%d — bullet de licao numero %d, texto suficiente pra simular o historico real e servir de ancora de fronteira.\n' "$i" "$i"
+  done
+} > "$FRT/DECISIONS-LICOES.md"
+frt_emit(){ local budget="$1"; HOME="$FRT" bash -c 'source "'"$ROOT"'/host/adas-lib.sh"; adas_da_layer0 "'"$FRT"'" "'"$budget"'"'; }
+
+# A) tudo cabe: cabeçalho, as 4 sagas, o rodapé e as 3 lições — cada um na SUA linha
+o="$(frt_emit 999999)"; printf '%s\n' "$o" > "$T/frt_full.txt"
+n_sagas=$(grep -c '^- fixture-saga-' "$T/frt_full.txt")
+n_licoes=$(grep -c '^- LICAO-' "$T/frt_full.txt")
+[ "$n_sagas" = "$N_SAGAS" ] && ok "as $N_SAGAS sagas chegam como $N_SAGAS itens de lista (não $((N_SAGAS-1)))" \
+  || bad "sagas: esperado $N_SAGAS itens, chegaram $n_sagas — alguma fronteira colou"
+[ "$n_licoes" = "$M_LICOES" ] && ok "as $M_LICOES lições chegam como $M_LICOES itens de lista" \
+  || bad "lições: esperado $M_LICOES itens, chegaram $n_licoes — alguma fronteira colou"
+# DENTE forte: total de linhas = 1 (branco líder) + 1 (cabeçalho) + sagas + 1 (rodapé) + lições.
+# QUALQUER colagem em QUALQUER fronteira reduz esta soma — pega a 4ª superfície sem saber
+# de antemão qual vai ser.
+esperado=$((1 + 1 + N_SAGAS + 1 + M_LICOES))
+total=$(wc -l < "$T/frt_full.txt")
+[ "$total" = "$esperado" ] && ok "total de linhas ($total) bate com a soma dos blocos — nenhuma fronteira colou" \
+  || bad "total de linhas ($total) != esperado ($esperado) — duas coisas grudaram numa linha só"
+grep -q '^\[DECISIONS camada 0.*fixture-saga' "$T/frt_full.txt" \
+  && bad "cabeçalho colado na 1ª saga" || ok "cabeçalho termina na própria linha (não gruda na 1ª saga)"
+grep -q '^- fixture-saga.*membros completos' "$T/frt_full.txt" \
+  && bad "última saga colada no rodapé" || ok "rodapé começa na própria linha (não gruda na última saga)"
+grep -q '^membros completos.*LICAO' "$T/frt_full.txt" \
+  && bad "rodapé colado na 1ª lição" || ok "1ª lição começa na própria linha (não gruda no rodapé)"
+
+# B) orçamento força corte das SAGAS → [ADAS-CORTE] próprio, sem colar no cabeçalho
+# (400: cabe o cabeçalho + o ponteiro; abaixo disso nem o ponteiro cabe e some em
+# silêncio — mesmo comportamento de antes do fix, não é regressão desta task)
+o="$(frt_emit 400)"; printf '%s\n' "$o" > "$T/frt_cut_sagas.txt"
+grep -q '^\[ADAS-CORTE\] sagas' "$T/frt_cut_sagas.txt" \
+  && ok "sagas cortadas (orçamento 400) → [ADAS-CORTE] na própria linha" || bad "corte de sagas não gerou ponteiro isolado"
+grep -q '^\[DECISIONS camada 0.*ADAS-CORTE' "$T/frt_cut_sagas.txt" \
+  && bad "cabeçalho colado no ponteiro [ADAS-CORTE] de sagas" || ok "cabeçalho não cola no ponteiro de corte de sagas"
+
+# C) orçamento cabe cabeçalho+sagas+rodapé mas força corte das LIÇÕES
+o="$(frt_emit 1150)"; printf '%s\n' "$o" > "$T/frt_cut_licoes.txt"
+n_sagas_c=$(grep -c '^- fixture-saga-' "$T/frt_cut_licoes.txt")
+[ "$n_sagas_c" = "$N_SAGAS" ] && ok "com orçamento 1150, as $N_SAGAS sagas ainda cabem inteiras" \
+  || bad "fixture do teste C não isola lições (sagas=$n_sagas_c, esperado $N_SAGAS) — ajustar orçamento"
+grep -q '^\[ADAS-CORTE\] licoes' "$T/frt_cut_licoes.txt" \
+  && ok "lições cortadas (orçamento 1150) → [ADAS-CORTE] na própria linha" || bad "corte de lições não gerou ponteiro isolado"
+grep -q 'membros completos.*ADAS-CORTE' "$T/frt_cut_licoes.txt" \
+  && bad "rodapé colado no ponteiro [ADAS-CORTE] de lições" || ok "rodapé não cola no ponteiro de corte de lições"
+
 echo
 echo "RESULTADO: $pass ok, $fail falha(s)"
 [ "$fail" = 0 ]
