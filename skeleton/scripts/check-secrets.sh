@@ -30,8 +30,11 @@ if [ "$mode" = "staged" ] && [ -z "$(git diff --cached --name-only 2>/dev/null)"
   mode="all"
 fi
 
-# alta confiança → BLOCK (token GitHub, chave privada, AWS, Slack, Google API)
-HI='ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,}|gh[osu]_[A-Za-z0-9]{36}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|xox[baprs]-[0-9A-Za-z-]{10,}|AIza[0-9A-Za-z_-]{35}'
+# alta confiança → BLOCK (token GitHub, chave privada, AWS, Slack, Google API, bot Telegram).
+# Bot Telegram = <id 8-10 dígitos>:AA<33 base64url>. Caso real: o token VIVO do bot de produção
+# ficou literal num .py solto e num .bak e o gate passou VERDE em --dir — não havia padrão
+# pra ele, e o LO só casa o NOME da variável (TELEGRAM_BOT_TOKEN=), não o formato.
+HI='ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,}|gh[osu]_[A-Za-z0-9]{36}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|xox[baprs]-[0-9A-Za-z-]{10,}|AIza[0-9A-Za-z_-]{35}|[0-9]{8,10}:AA[A-Za-z0-9_-]{33}'
 # heurística key=value → WARN (pode ser falso-positivo)
 LO='(api[_-]?key|secret|passwd|password|access[_-]?token|auth[_-]?token)["'"'"' ]*[:=]["'"'"' ]*[A-Za-z0-9/_+.-]{16,}'
 
@@ -40,7 +43,7 @@ LO='(api[_-]?key|secret|passwd|password|access[_-]?token|auth[_-]?token)["'"'"' 
 # (AWS), xox[abp]- (Slack), "Bearer <token literal>", e KEY=valor dos quatro provedores
 # citados por nome. Reusa o HI de cima (mesma classe) mais o que falta pra cobrir a
 # lista exata da DA.
-FRONT_KEY='sk-[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{35}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16}|xox[abp]-[0-9A-Za-z-]{10,}|[Bb]earer +[A-Za-z0-9._-]{16,}|(ELEVENLABS_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|TELEGRAM_BOT_TOKEN) *[:=] *[A-Za-z0-9]{8,}'
+FRONT_KEY='sk-[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{35}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16}|xox[abp]-[0-9A-Za-z-]{10,}|[Bb]earer +[A-Za-z0-9._-]{16,}|(ELEVENLABS_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|TELEGRAM_BOT_TOKEN) *[:=] *[A-Za-z0-9]{8,}|[0-9]{8,10}:AA[A-Za-z0-9_-]{33}'
 # NEXT_PUBLIC_/VITE_/REACT_APP_ resolvem em BUILD TIME — o valor vai pro bundle público
 # mesmo que o código "pareça" server-side. Proibido quando o NOME da variável contém
 # KEY/SECRET/TOKEN/PASS (case-insensitive): a intenção do nome já denuncia segredo.

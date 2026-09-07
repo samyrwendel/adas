@@ -12,6 +12,13 @@ tk="ghp_$(printf '0%.0s' $(seq 36))"
 mkdir -p "$T/sujo/scripts" && cd "$T/sujo" && git init -q && git config user.email t@t && git config user.name t \
   && cp "$CS" scripts/ && echo "tk='$tk'" > c.js && git add -A && git commit -qm x
 bash scripts/check-secrets.sh >/dev/null 2>&1 && { echo "✗ token commitado passou"; exit 1; }
+# token de bot Telegram (<id>:AA<33 base64url>), montado em runtime. Caso real 07/09: token VIVO do bot
+# ficou literal em .py solto e o gate passou VERDE em --dir (sem git) — o modo que varre a home.
+tg="$(printf '1%.0s' $(seq 10)):AA$(printf 'a%.0s' $(seq 33))"
+mkdir -p "$T/tg/scripts" && cd "$T/tg" && cp "$CS" scripts/ && echo "TELEGRAM_TOKEN = \"$tg\"" > bot.py
+bash scripts/check-secrets.sh --dir . >/dev/null 2>&1 && { echo "✗ token de bot Telegram em dir sem git (--dir) passou"; exit 1; }
+git init -q && git config user.email t@t && git config user.name t && git add -A && git commit -qm x
+bash scripts/check-secrets.sh >/dev/null 2>&1 && { echo "✗ token de bot Telegram commitado passou"; exit 1; }
 
 mkdir -p "$T/limpo/scripts" && cd "$T/limpo" && git init -q && git config user.email t@t && git config user.name t \
   && cp "$CS" scripts/ && echo ok > a.txt && git add -A && git commit -qm x
@@ -25,4 +32,4 @@ printf 'tests/fixture.test.js | token de teste, sem valor real | 2026-09-06\n' >
 bash scripts/check-secrets.sh >/dev/null 2>&1 || { echo "✗ allowlist declarada não isentou a fixture"; exit 1; }
 echo "tk='$tk'" > tests/nova.test.js && git add -A && git commit -qm nova
 bash scripts/check-secrets.sh >/dev/null 2>&1 && { echo "✗ segredo em fixture NOVA passou com allowlist (gate desligado)"; exit 1; }
-echo "✓ check-secrets bloqueia token, passa repo limpo, e a allowlist isenta só o caminho declarado"
+echo "✓ check-secrets bloqueia token (GitHub e bot Telegram, com e sem git), passa repo limpo, e a allowlist isenta só o caminho declarado"

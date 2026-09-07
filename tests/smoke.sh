@@ -35,6 +35,13 @@ mkdir -p "$T/s2"; (cd "$T/s2" && git init -q && git config user.email t@t && git
   && echo ok > a.txt && git add -A && git commit -qm x)
 expect_exit 0 "repo limpo, staged vazio → verde (sem falso positivo)" \
   bash -c "cd '$T/s2' && bash scripts/check-secrets.sh"
+# ── token de bot Telegram (<id>:AA<33>) — caso real 07/09 (tasks 20260907-002/003): o token VIVO do bot do
+# mainbot literal num .py solto e num .bak passou VERDE em `--dir` (sem git). Fixture montada em runtime.
+tg="$(printf '1%.0s' $(seq 10)):AA$(printf 'a%.0s' $(seq 33))"
+mkdir -p "$T/s1tg/scripts"; cp "$ROOT/skeleton/scripts/check-secrets.sh" "$T/s1tg/scripts/"; echo "TELEGRAM_TOKEN = \"$tg\"" > "$T/s1tg/bot.py"
+expect_exit 1 "token de bot Telegram em dir SEM git (--dir .) → BLOCK" bash -c "cd '$T/s1tg' && bash scripts/check-secrets.sh --dir ."
+(cd "$T/s1tg" && git init -q && git config user.email t@t && git config user.name t && git add -A && git commit -qm x)
+expect_exit 1 "token de bot Telegram commitado → BLOCK (fallback --all)" bash -c "cd '$T/s1tg' && bash scripts/check-secrets.sh"
 
 # ── allowlist DECLARADA (task 20260906-041, bug 4): fixture com padrão de chave não é segredo — mas a isenção
 # mora num ARQUIVO versionado (caminho | motivo | data), nunca em regex no script; fixture NOVA continua pega.
