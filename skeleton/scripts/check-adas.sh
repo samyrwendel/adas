@@ -105,6 +105,31 @@ thin_issue() {  # trigger magro (piso mecânico do description)
   [ -n "$thin" ] && echo "TRIGGER MAGRO: ${thin}— engordar (sinônimos+sintomas+vocabulário real do usuário)"
   return 0
 }
+coringa_issue() {  # trigger CORINGA (teto do gatilho — complementa thin_issue, o piso)
+  # Gatilho entre aspas é a convenção ADAS pra fala-do-dono; o TETO reprova o token que
+  # casa QUALQUER mensagem (semanticamente vazio): (1) só pontuação '????' '!!!'; (2) ack
+  # puro 'ok' 'aprovado' 'pode fazer' — match EXATO do token, sem colidir com sigla de
+  # domínio (DA/HF/OI). Mecânico e portável, sem blocklist de frase. Pergunta genérica
+  # sem substantivo de domínio ('tá seguro?') fica pra revisão humana (exigiria NLP).
+  local fm desc coringa tok low
+  fm="$(awk '/^---[[:space:]]*$/{c++; next} c==1{print} c>=2{exit}' "$1" 2>/dev/null)"
+  desc="$(printf '%s\n' "$fm" | awk '/^description:/{flag=1} flag && /^[a-z_]+:/ && !/^description:/{flag=0} flag{print}' | tr -d '\n')"
+  [ -z "$desc" ] && return 0
+  coringa=""
+  while IFS= read -r tok; do
+    tok="${tok#\'}"; tok="${tok%\'}"
+    [ -z "$tok" ] && continue
+    low="$(printf '%s' "$tok" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    if printf '%s' "$low" | grep -qE '^[[:punct:][:space:]]+$'; then
+      coringa="${coringa}'${tok}'(pontuação) "; continue; fi
+    case "$low" in
+      ok|okay|"ok?"|sim|"sim?"|isso|blz|beleza|aprovado|"pode fazer"|"pode?"|"tá bom"|"ta bom"|feito)
+        coringa="${coringa}'${tok}'(ack vazio) " ;;
+    esac
+  done < <(printf '%s' "$desc" | grep -oE "'[^']+'")
+  [ -n "$coringa" ] && echo "TRIGGER CORINGA: ${coringa}— casa QUALQUER msg; remover, manter só o específico do domínio"
+  return 0
+}
 prov_issue() {  # procedência (invariante sem origem = chute)
   grep -qiE "extra(í|i)do de|\.specs/|DA-[0-9]" "$1" \
     || echo "sem procedência (cite .specs/ ou DA-NNN)"
@@ -121,6 +146,12 @@ done
 # Heurística, não censo: passar no piso ≠ trigger bom, mas reprovar = certeza de magro.
 for f in ${GOV[@]+"${GOV[@]}"}; do
   m="$(thin_issue "$f")"; [ -n "$m" ] && { note "$m em $f"; warn=1; }
+done
+
+# 2c) TRIGGER CORINGA (só GOVERNADAS) → WARN. O TETO do 2b: gatilho que casa QUALQUER
+# msg (só pontuação, ack vazio) faz a faixa acordar no ruído — o piso engorda, o teto poda.
+for f in ${GOV[@]+"${GOV[@]}"}; do
+  m="$(coringa_issue "$f")"; [ -n "$m" ] && { note "$m em $f"; warn=1; }
 done
 
 # 3) faixa GOVERNADA sem PROCEDÊNCIA (invariante sem origem = chute) → WARN

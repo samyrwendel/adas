@@ -85,3 +85,36 @@ SubagentStart).
 `test_adas_hermes.py`, `README.md`), `tests/smoke.sh` (+2 seções, 10 checks), `README.md` (PASSO 11
 + seção "Instalação por harness"), `host/README.md` (título + pointer), `.gitignore` (novo —
 `node_modules/`, `dist/`, `__pycache__/`).
+
+---
+
+## Decisão Arquitetural DA-002 — check-adas ganha TETO de gatilho (trigger-coringa), par do piso (trigger-magro)
+
+**Status:** ✅ Aceita · **Data:** 2026-09-13
+
+### Contexto
+O `check-adas.sh` já tinha `thin_issue` — o PISO do gatilho: faixa com description curta / poucos
+gatilhos = WARN "engorde". Faltava o TETO. Uma auditoria da instância clawd (aplicando o prompt
+público de auditoria de agentes da OpenAI) achou o modo de falha oposto: descriptions com gatilhos
+CORINGA — tokens semanticamente vazios (`'????'`, `'ok'`, `'aprovado'`, `'pode fazer'`, `'posso
+apagar?'`) que casam QUALQUER mensagem. O roteador acorda a faixa no ruído: contexto queimado,
+governança injetada em "ok". (Origem na instância: DA-276 do diário do servidor.)
+
+### Decisão
+Adicionar `coringa_issue` — o TETO, par de `thin_issue`. Reprova, como WARN, duas classes MECÂNICAS
+e portáveis de token entre aspas: (1) só pontuação (`'????'`, `'!!!'`); (2) ack vazio por match
+EXATO do token (`ok`, `aprovado`, `pode fazer`, …) — exato pra NÃO colidir com sigla de domínio
+(`DA`, `HF`, `OI`). Sem blocklist de frase (não generalizaria). A classe "pergunta genérica sem
+substantivo de domínio" (`'tá seguro?'`) fica fora do escopo mecânico — exigiria NLP; vai pra
+revisão humana. Piso engorda, teto poda: juntos definem o gatilho equilibrado.
+
+### Consequências
+- `check-adas.sh` (skeleton) +31 linhas: função `coringa_issue` + loop 2c (WARN, só GOVERNADAS).
+- Teste `scripts/tests/check-coringa.test.sh` (6 casos, dois lados): dispara em coringa; limpo em
+  gatilho de domínio, sigla curta e pergunta-genérica. Zero falso-positivo (a regra crua "token
+  <=2 chars" foi descartada por colidir com `DA`).
+- Retroativo na instância: as 3 faixas do clawd foram podadas antes (DA-276) e passam limpas.
+
+### Implementação
+`skeleton/scripts/check-adas.sh` (função + loop 2c), `skeleton/scripts/tests/check-coringa.test.sh`
+(novo). Espelhado na cópia de instância `~/scripts/check-adas.sh` (fora deste repo).
