@@ -609,18 +609,19 @@ _da234_epoch_dias() {  # Howard Hinnant days_from_civil
   _DA234_EPOCH=$(( era*146097 + doe ))
 }
 run_quality_checks() {
-  local dir="$1" warn=0
+  local dir="$1" warn=0 fail=0
+  local c6gf="${DA_INDEX_C6_GRANDFATHER:-276}"  # emenda DA-278: c6 vira FAIL só pra DA > 276 (grandfather); DA<=276 (imutável) segue só WARN
   local sagas_conf="${ADAS_SAGAS_CONF:-$HOME/.adas/sagas.conf}"
   local i
   # c1: teto de corpo (120 WARN / 300 seria FAIL — ainda não ligado)
   for ((i=0; i<N; i++)); do
     [ "$(nv "${RAWNUM[i]}")" -le "$GRANDFATHER" ] && continue
-    [ "${CORPOLINES[i]}" -gt 120 ] && { echo "WARN c1: ${KEY[i]} corpo com ${CORPOLINES[i]} linhas (teto 120)"; warn=1; }
+    [ "${CORPOLINES[i]}" -gt 120 ] && { echo "FAIL c1: ${KEY[i]} corpo com ${CORPOLINES[i]} linhas (teto 120)"; fail=1; }
   done
   # c2: paste de terminal
   for ((i=0; i<N; i++)); do
     [ "$(nv "${RAWNUM[i]}")" -le "$GRANDFATHER" ] && continue
-    [ "${HASPASTE[i]}" = "1" ] && { echo "WARN c2: ${KEY[i]} parece ter paste de terminal — evidência vai pro anexo"; warn=1; }
+    [ "${HASPASTE[i]}" = "1" ] && { echo "FAIL c2: ${KEY[i]} parece ter paste de terminal — evidência vai pro anexo"; fail=1; }
   done
   # c3: slug fora do sagas.conf sem prefixo nova/
   if [ -f "$sagas_conf" ]; then
@@ -630,7 +631,7 @@ run_quality_checks() {
       local sgv
       for sgv in "${_sg[@]}"; do
         [[ "$sgv" == nova/* ]] && continue
-        grep -qE "^${sgv}\||[|,]${sgv}(,|\$)" "$sagas_conf" 2>/dev/null || { echo "WARN c3: ${KEY[i]} usa saga '$sgv' fora do sagas.conf (use 'nova/$sgv' se for nova)"; warn=1; }
+        grep -qE "^${sgv}\||[|,]${sgv}(,|\$)" "$sagas_conf" 2>/dev/null || { echo "FAIL c3: ${KEY[i]} usa saga '$sgv' fora do sagas.conf (use 'nova/$sgv' se for nova)"; fail=1; }
       done
     done
   fi
@@ -639,7 +640,7 @@ run_quality_checks() {
   for ((i=0; i<N; i++)); do cnt["${RAWNUM[i]}"]=$(( ${cnt["${RAWNUM[i]}"]:-0} + 1 )); done
   local k
   for k in "${!cnt[@]}"; do
-    [ "${cnt[$k]}" -gt 1 ] && [ "$(nv "$k")" -gt "$GRANDFATHER" ] && { echo "WARN c4: DA-$k duplicada (número novo, não é o caso grandfathered DA-012)"; warn=1; }
+    [ "${cnt[$k]}" -gt 1 ] && [ "$(nv "$k")" -gt "$GRANDFATHER" ] && { echo "FAIL c4: DA-$k duplicada (número novo, não é o caso grandfathered DA-012)"; fail=1; }
   done
   # c5: tags obrigatórias (escopo, saga, Regra) — só DA nova
   for ((i=0; i<N; i++)); do
@@ -648,16 +649,17 @@ run_quality_checks() {
     [ -z "${ESCOPO[i]}" ] && falt+="escopo "
     [ -z "${SAGA[i]}" ] && falt+="saga "
     [ "${REGRASRC[i]}" != "regra" ] && falt+="Regra "
-    [ -n "$falt" ] && { echo "WARN c5: ${KEY[i]} sem tag(s) obrigatória(s): $falt"; warn=1; }
+    [ -n "$falt" ] && { echo "FAIL c5: ${KEY[i]} sem tag(s) obrigatória(s): $falt"; fail=1; }
   done
   # c6: lição com caminho ou nome próprio
   local nomes="$HOME/.adas/nomes-proprios.txt"
   for ((i=0; i<N; i++)); do
     local l="${LICAO[i]}"; [ -z "$l" ] && continue
+    local _sev6=WARN; [ "$(nv "${RAWNUM[i]}")" -gt "$c6gf" ] && _sev6=FAIL
     if [[ "$l" == *"~/"* || "$l" == *"/home/"* || "$l" == *".sh"* || "$l" == *".py"* || "$l" == *"scripts/"* ]]; then
-      echo "WARN c6: ${KEY[i]} Lição parece regra disfarçada (caminho/extensão): ${l:0:80}"; warn=1
+      echo "$_sev6 c6: ${KEY[i]} Lição parece regra disfarçada (caminho/extensão): ${l:0:80}"; [ "$_sev6" = FAIL ] && fail=1 || warn=1
     elif [ -f "$nomes" ] && grep -qFf "$nomes" <<< "$l" 2>/dev/null; then
-      echo "WARN c6: ${KEY[i]} Lição cita nome próprio: ${l:0:80}"; warn=1
+      echo "$_sev6 c6: ${KEY[i]} Lição cita nome próprio: ${l:0:80}"; [ "$_sev6" = FAIL ] && fail=1 || warn=1
     fi
   done
   # c7: cabeça com Histórico incompleto vs consolida:
@@ -669,7 +671,7 @@ run_quality_checks() {
       c="$(printf '%s' "$c" | sed 's/^[ \t]*//;s/[ \t]*$//;s/^DA-//')"
       [[ ",${HISTORICO[i]}," == *",DA-$c,"* ]] || miss+="DA-$c "
     done
-    [ -n "$miss" ] && { echo "WARN c7: ${KEY[i]} (cabeça) tem consolida: sem linha correspondente no Histórico: $miss"; warn=1; }
+    [ -n "$miss" ] && { echo "FAIL c7: ${KEY[i]} (cabeça) tem consolida: sem linha correspondente no Histórico: $miss"; fail=1; }
   done
   # c9 (saga com >=3 rodadas após a cabeça — "hora de nova cabeça"): DESLIGADO, task 20260906-028.
   local slug
@@ -706,7 +708,7 @@ run_quality_checks() {
   done
   [ -n "$unknown" ] && { echo "WARN c11: citações a número inexistente no diário: $unknown"; warn=1; }
   # c12 (3ª rodada da mesma saga em <=7d, DA-234): DESLIGADO, task 20260906-028.
-  return 0
+  return $fail
 }
 
 # ============================================================================
@@ -787,7 +789,7 @@ cmd_check() {
   fi
   rm -rf "$tmpdir"
 
-  run_quality_checks "$dir"
+  run_quality_checks "$dir" || rc=1
   if [ "$rc" = 0 ]; then echo "✓ da-index: todos os gerados sincronizados com DECISIONS.md"; fi
   exit "$rc"
 }

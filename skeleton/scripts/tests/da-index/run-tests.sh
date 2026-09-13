@@ -36,7 +36,7 @@ grep -q '^- DA-003a .*primeira versão' "$TMP/DECISIONS-INDEX.md" && pass "DA-00
 grep -q '^- DA-003b .*segunda versão' "$TMP/DECISIONS-INDEX.md" && pass "DA-003b = segunda ocorrência" || fail "DA-003b ausente/errada"
 
 echo "== fixture 4: paste de terminal =="
-grep -q 'WARN c2: DA-004' <<< "$out" && pass "c2 acusa paste em DA-004 (WARN, não FAIL)" || fail "c2 não acusou paste em DA-004"
+grep -q 'FAIL c2: DA-004' <<< "$out" && pass "c2 acusa paste em DA-004 (FAIL — emenda DA-278)" || fail "c2 não acusou paste (FAIL) em DA-004"
 showout="$(bash "$DAIDX" show DA-004 "$TMP")"
 echo "$showout" | grep -q 'bloco de paste omitido' && pass "show DA-004 colapsa o paste" || fail "show DA-004 não colapsou o paste"
 echo "$showout" | grep -qF 'commit aaaaaaaa' && fail "show DA-004 vazou linha de commit" || pass "show DA-004 não vaza linha de commit"
@@ -54,7 +54,34 @@ echo "$sagasout" | grep -q 'saga-tsv .*instância' && pass "saga-tsv (DA-006, vi
 
 echo "== check: gerados sincronizados (idempotência) =="
 bash "$DAIDX" check "$TMP" >/tmp/da-index-test-check.out 2>&1
-if [ $? -eq 0 ]; then pass "check exit 0 (sincronizado)"; else fail "check divergiu logo após update"; cat /tmp/da-index-test-check.out | sed 's/^/    /'; fi
+# emenda DA-278: check agora sai !=0 quando um fixture "ruim" (paste/dup) vira FAIL de qualidade;
+# a idempotência aqui é sobre SINCRONIA dos gerados — logo a asserção é a AUSÊNCIA de DIVERGE.
+if grep -q 'DIVERGE' /tmp/da-index-test-check.out; then fail "check divergiu logo após update"; sed 's/^/    /' /tmp/da-index-test-check.out; else pass "gerados sincronizados (sem DIVERGE)"; fi
+
+echo "== emenda DA-278: c1-c7 viram FAIL; c6 com grandfather (corte prospectivo) =="
+grep -q 'FAIL c4: DA-003' <<< "$out" && pass "c4 (número duplicado) agora FAIL" || fail "c4 não virou FAIL"
+CT="$(mktemp -d)"
+cat > "$CT/DECISIONS.md" <<'FIX'
+# fixture c6 grandfather
+
+---
+
+## DA-400 — acima do corte (deve FAIL)
+`escopo: instância` · `saga: nova/t` · `data: 2026-09-13`
+**Regra:** regra
+**Lição:** sempre rodar scripts/foo antes de agir
+
+## DA-200 — abaixo do corte (deve WARN)
+`escopo: instância` · `saga: nova/t` · `data: 2026-09-13`
+**Regra:** regra
+**Lição:** sempre rodar scripts/foo antes de agir
+FIX
+DA_INDEX_C6_GRANDFATHER=300 bash "$DAIDX" update "$CT" >/dev/null 2>&1
+c6out="$(DA_INDEX_C6_GRANDFATHER=300 bash "$DAIDX" check "$CT" 2>&1)"; c6rc=$?
+grep -q 'FAIL c6: DA-400' <<< "$c6out" && pass "c6 DA-400 (>300) → FAIL" || fail "c6 DA-400 devia FAIL"
+grep -q 'WARN c6: DA-200' <<< "$c6out" && pass "c6 DA-200 (<=300) → WARN (grandfather)" || fail "c6 DA-200 devia WARN"
+[ "$c6rc" -ne 0 ] && pass "check com c6 FAIL → exit != 0 (pre-commit bloqueia)" || fail "check devia falhar com c6 FAIL"
+rm -rf "$CT"
 
 echo "== show --saga =="
 bash "$DAIDX" show --saga saga-teste "$TMP" | grep -q '## NA-saga-teste' && pass "show --saga imprime a seção certa" || fail "show --saga não achou NA-saga-teste"

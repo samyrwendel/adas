@@ -118,3 +118,23 @@ revisão humana. Piso engorda, teto poda: juntos definem o gatilho equilibrado.
 ### Implementação
 `skeleton/scripts/check-adas.sh` (função + loop 2c), `skeleton/scripts/tests/check-coringa.test.sh`
 (novo). Espelhado na cópia de instância `~/scripts/check-adas.sh` (fora deste repo).
+
+---
+
+## Decisão Arquitetural DA-003 — checks de qualidade do da-index sobem de WARN→FAIL (gate real), com grandfather prospectivo no c6
+
+**Status:** ✅ Aceita · **Data:** 2026-09-13
+
+### Contexto
+O `da-index.sh` tinha c1..c7 como checks de qualidade WARN (advisório puro: imprimiam, mas `run_quality_checks` sempre fazia `return 0` e `cmd_check` ignorava o retorno). O comentário do c1 já previa o flip ("300 seria FAIL — ainda não ligado"). A DA-181 §2.6g exige o harness de fixtures passando ANTES de ligar qualquer FAIL.
+
+### Decisão
+c1-c5 e c7 passam a FAIL (setam `fail=1`; `run_quality_checks` faz `return $fail`; `cmd_check` faz `|| rc=1`) → bloqueiam commit pelo pre-commit. O c6 (lição cita nome próprio/caminho) vira FAIL só para DA > `DA_INDEX_C6_GRANDFATHER` (default 276), porque o corpo das DA antigas é imutável (append-only) e não se rasura — abaixo do corte segue WARN. c10/c11 seguem WARN.
+
+### Consequências
+- `skeleton/scripts/da-index.sh`: `fail` + const c6gf + flip c1-c5,c7 + severidade por número no c6 + `return $fail` + `cmd_check … || rc=1`.
+- `skeleton/scripts/tests/da-index/run-tests.sh`: c2/c4 do fixture agora asseridos como FAIL; a idempotência passa a checar AUSÊNCIA de DIVERGE (o exit passou a refletir FAIL de qualidade); nova seção prova o c6 grandfather (>corte FAIL, ≤corte WARN, check exit≠0). 52 asserções verdes; as 2 falhas restantes (DA-008/DA-012, geração de índice) são ANTERIORES a esta mudança e ficam para correção separada.
+- Origem/autorização: emenda constitucional autorizada pelo dono (protocolo de decisão + supersede/grandfather).
+
+### Implementação
+`skeleton/scripts/da-index.sh`, `skeleton/scripts/tests/da-index/run-tests.sh`. Espelhado nas cópias de instância `~/scripts/da-index.sh` e `claude-tg-tmux/scripts/da-index.sh` (fora deste repo).
