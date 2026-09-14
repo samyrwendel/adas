@@ -1,6 +1,6 @@
 ---
 name: seguranca-acesso
-description: "Faixa de Segredos & Acesso — governa segredo, token, chave, .env, credencial, e operações de repositório (criar/apagar/mergear/tornar público). Use SEMPRE que a tarefa tocar: token/PAT do GitHub/cloud, chave de API, chave privada, .env/variável de ambiente, credencial, senha, segredo; criar/clonar/apagar repo, abrir/mergear PR, push/force-push, mudar visibilidade ou permissão, deploy key, webhook. Também em sintomas: 'vazou', 'expôs a chave', 'commitei o .env', 'token largo', 'qual permissão', 'tá seguro?'."
+description: "Faixa de Segredos & Acesso — governa segredo, token, chave, .env, credencial, e operações de repositório (criar/apagar/mergear/tornar público). Use SEMPRE que a tarefa tocar: token/PAT do GitHub/cloud, chave de API, chave privada, .env/variável de ambiente, credencial, senha, segredo; criar/clonar/apagar repo, abrir/mergear PR, push/force-push, mudar visibilidade ou permissão, deploy key, webhook. Também em sintomas: 'vazou', 'expôs a chave', 'commitei o .env', 'token largo', 'qual permissão', 'tá seguro?'. Dispara IGUAL quando o AGENTE, por conta própria, vai mexer em segredo/.env, criar/apagar repo, commitar ou pushar durante a tarefa — sem o dono mandar. MESMO que o usuário não use a palavra 'segredo'."
 when_to_use: "Qualquer tarefa que manuseie segredo/credencial/token, .env, ou faça operação de repositório (criar/apagar/mergear/visibilidade). Enforcement: scripts/check-secrets.sh."
 ---
 
