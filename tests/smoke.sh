@@ -183,14 +183,24 @@ Este texto supersede a DA-001.
 
 ## DA-003 — Terceira decisão
 DA-002 passa a `escopo: instância`.
+DA-001 passa a `escopo: projeto/x`, conforme a DA-002.
+DA-001 passa a `escopo: produto`.
 EOS
 bash "$D/scripts/da-index.sh" update "$D" >/dev/null 2>&1
 grep -q '^- DA-001 · .*🔄 por DA-002' "$D/DECISIONS-INDEX.md" \
   && ok "supersede pleno detectado por texto" || bad "supersede pleno não marcado"
 # DENTE (task 20260906-034/041): a 1ª linha do corpo da DA-003 é PROSA com "`escopo:" no meio — o parser antigo
 # a engolia como tag line e o ½ da DA-002 sumia. Falha contra o da-index anterior; passa com o atual.
-grep -q '^- DA-002 · produto · .*½ por DA-003' "$D/DECISIONS-INDEX.md" \
+grep -q '^- DA-002 · instância · .*½ por DA-003' "$D/DECISIONS-INDEX.md" \
   && ok "escopo + alteração parcial (passa a escopo) — prosa com \`escopo:\` na 1ª linha NÃO é tag line" || bad "escopo/parcial errado (regressão do parser: prosa com \`escopo:\` engolida como tag line)"
+# task 20260925-008: "DA-NNN passa a `escopo: X`" vale como escopo EFETIVO (continua ½); a ÚLTIMA vence; DA citada
+# DEPOIS do "passa a" ("conforme a DA-002") não é alvo.
+grep -q '^- DA-001 · produto · ' "$D/DECISIONS-INDEX.md" \
+  && ok "reclassificação de escopo: a última 'passa a escopo' vence" || bad "escopo efetivo não aplicado (ou não venceu a última)"
+[ -z "$(bash "$D/scripts/da-index.sh" list --escopo projeto/x "$D")" ] \
+  && ok "reclassificação intermediária não fica no filtro --escopo" || bad "escopo intermediário vazou no --escopo"
+bash "$D/scripts/da-index.sh" list --escopo instância "$D" | grep -q '^- DA-002 ' \
+  && ok "list --escopo filtra pelo escopo efetivo" || bad "list --escopo ignora a reclassificação"
 grep -q 'Fazemos X sempre' "$D/DECISIONS-INDEX.md" \
   && ok "linha 'o que decide' extraída do campo Decisão" || bad "decisão não extraída"
 expect_exit 0 "check: sincronizado → verde" bash "$D/scripts/da-index.sh" check "$D"

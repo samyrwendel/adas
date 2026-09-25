@@ -56,6 +56,16 @@ function mark_targets(map_name, targets, by,    k, a, i, key) {
   }
 }
 
+function reclass_targets(targets, novo, by,    k, a, i, key) {   # a ÚLTIMA reclassificação vence
+  k = split(targets, a, ",")
+  for (i=1; i<=k; i++) {
+    key = trim(a[i]); if (key == "") continue
+    sub(/^DA-/, "", key)
+    if (key == by) continue
+    reesc[key] = novo; reescby[key] = by
+  }
+}
+
 # ---- Regra fallback (b), consciente de PARÁGRAFO (DA-181 fix pós-teste 03/09) --------------
 # Um parágrafo pode vir hard-wrapped em várias linhas físicas. A linha ORIGINAL só olhava a
 # 1a linha física pra decidir "é metadado?" — uma continuação como "por:** devbot. **Escopo:**"
@@ -248,8 +258,18 @@ cur == "" { next }
     }
     next
   }
-  if (match(line, /corrige o escopo[a-z ]* d[aeo][a-z]* DA-[0-9]+/) || (line ~ /passam? a `?escopo:/ && line ~ /DA-[0-9]+/)) {
+  if (match(line, /corrige o escopo[a-z ]* d[aeo][a-z]* DA-[0-9]+/)) {
     mark_targets("par", refs_in_plain(line), curraw)
+  } else if (match(line, /passam? a `?escopo: *[^` ]+/)) {
+    # Reclassificação de ESCOPO por DA posterior ("DA-280 passa a `escopo: projeto/x`"): continua ½
+    # (o texto da DA antiga é append-only) e agora também vale como escopo EFETIVO (task 20260925-008).
+    # Alvo = só as DAs citadas ANTES do "passa a": uma DA citada depois dele ("… desde a DA-X") não é reclassificada.
+    novo = substr(line, RSTART, RLENGTH); sub(/^passam? a `?escopo: */, "", novo); sub(/[.;:]+$/, "", novo)
+    alvo = refs_in_plain(substr(line, 1, RSTART-1))   # (refs_in_plain usa match(): RSTART já foi lido acima)
+    if (alvo != "") {
+      mark_targets("par", alvo, curraw)
+      reclass_targets(alvo, novo, curraw)
+    }
   }
 }
 END {
@@ -264,12 +284,14 @@ END {
     ms = (ksuf in supby) ? supby[ksuf] : ((rawnum[i] in supby) ? supby[rawnum[i]] : "")
     mp = (ksuf in parby) ? parby[ksuf] : ((rawnum[i] in parby) ? parby[rawnum[i]] : "")
     mc = (ksuf in conby) ? conby[ksuf] : ((rawnum[i] in conby) ? conby[rawnum[i]] : "")
+    re = (ksuf in reesc) ? reesc[ksuf] : ((rawnum[i] in reesc) ? reesc[rawnum[i]] : "")
+    rb = (ksuf in reescby) ? reescby[ksuf] : ((rawnum[i] in reescby) ? reescby[rawnum[i]] : "")
     out = key_a[i] SEP rawnum[i] SEP lineno[i] SEP title_a[i] SEP \
           escopo_a[i] SEP saga_a[i] SEP data_a[i] SEP refs_a[i] SEP \
           consolida_a[i] SEP supersede_a[i] SEP medido_a[i] SEP \
           regra_a[i] SEP regrasrc_a[i] SEP motivo_a[i] SEP tradeoff_a[i] SEP \
           licao_a[i] SEP bodydata_a[i] SEP corpolines_a[i] SEP haspaste_a[i] SEP \
-          historico_a[i] SEP ms SEP mp SEP mc
+          historico_a[i] SEP ms SEP mp SEP mc SEP re SEP rb
     print out
   }
 }
@@ -281,7 +303,7 @@ AWKEOF
 #    Campos (0-based, array KEY/RAWNUM/.../MCON), N = total de registros.
 # ============================================================================
 declare -a KEY RAWNUM LINE TITLE ESCOPO SAGA DATATAG REFS CONSOLIDA SUPERSEDE MEDIDO
-declare -a REGRA REGRASRC MOTIVO TRADEOFF LICAO BODYDATA CORPOLINES HASPASTE HISTORICO MSUP MPAR MCON
+declare -a REGRA REGRASRC MOTIVO TRADEOFF LICAO BODYDATA CORPOLINES HASPASTE HISTORICO MSUP MPAR MCON RECLASS RECLASS_BY
 declare -A MTSV_SAGA MTSV_ESCOPO
 declare -a EFF_SAGA EFF_ESCOPO   # indexado 0..N-1 (NÃO associativo — subscrito é aritmético)
 N=0
@@ -301,12 +323,13 @@ load_records() {
   fi
   KEY=(); RAWNUM=(); LINE=(); TITLE=(); ESCOPO=(); SAGA=(); DATATAG=(); REFS=(); CONSOLIDA=(); SUPERSEDE=(); MEDIDO=()
   REGRA=(); REGRASRC=(); MOTIVO=(); TRADEOFF=(); LICAO=(); BODYDATA=(); CORPOLINES=(); HASPASTE=(); HISTORICO=(); MSUP=(); MPAR=(); MCON=()
+  RECLASS=(); RECLASS_BY=()
   local i=0
-  while IFS="$SEP" read -r f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12 f13 f14 f15 f16 f17 f18 f19 f20 f21 f22 f23; do
+  while IFS="$SEP" read -r f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12 f13 f14 f15 f16 f17 f18 f19 f20 f21 f22 f23 f24 f25; do
     KEY[i]="$f1"; RAWNUM[i]="$f2"; LINE[i]="$f3"; TITLE[i]="$f4"; ESCOPO[i]="$f5"; SAGA[i]="$f6"; DATATAG[i]="$f7"
     REFS[i]="$f8"; CONSOLIDA[i]="$f9"; SUPERSEDE[i]="$f10"; MEDIDO[i]="$f11"; REGRA[i]="$f12"; REGRASRC[i]="$f13"
     MOTIVO[i]="$f14"; TRADEOFF[i]="$f15"; LICAO[i]="$f16"; BODYDATA[i]="$f17"; CORPOLINES[i]="$f18"; HASPASTE[i]="$f19"
-    HISTORICO[i]="$f20"; MSUP[i]="$f21"; MPAR[i]="$f22"; MCON[i]="$f23"
+    HISTORICO[i]="$f20"; MSUP[i]="$f21"; MPAR[i]="$f22"; MCON[i]="$f23"; RECLASS[i]="$f24"; RECLASS_BY[i]="$f25"
     i=$((i+1))
   done < <(awk "$(_parse_awk)" "$dec")
   N=$i
@@ -327,6 +350,7 @@ load_records() {
   for ((idx=0; idx<N; idx++)); do
     local es="${SAGA[idx]}"; [ -z "$es" ] && es="${MTSV_SAGA[${KEY[idx]}]:-}"
     local ee="${ESCOPO[idx]}"; [ -z "$ee" ] && ee="${MTSV_ESCOPO[${KEY[idx]}]:-}"
+    [ -n "${RECLASS[idx]}" ] && ee="${RECLASS[idx]}"   # reclassificada por DA posterior: vale o escopo NOVO
     EFF_SAGA[idx]="$es"; EFF_ESCOPO[idx]="$ee"
   done
 }
