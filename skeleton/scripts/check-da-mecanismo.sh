@@ -4,7 +4,8 @@
 #
 # Uma DA cuja linha **Regra:** (o parágrafo inteiro, não o corpo da DA) contenha
 # proibição ou exclusividade — nunca · proibido · não pode · jamais · somente · só —
-# tem que trazer uma linha **Mecanismo:** (ou **Mecanismo (…):**) citando pelo menos UM caminho (arquivo,
+# tem que trazer uma linha **Mecanismo:** (ou **Mecanismo (…):**, ou um adendo numa DA posterior:
+# "**Mecanismo da DA-NNN:** <caminho>", uma linha — o diário é append-only) citando pelo menos UM caminho (arquivo,
 # diretório ou unit systemd) que EXISTE no disco. Sem isso:
 #   FAIL  se a DA tem data >= DA_MECANISMO_DESDE (padrão 2026-09-26) — DA nova não entra;
 #   WARN  se é anterior — vira fila (levantamento retroativo), não bloqueia.
@@ -39,6 +40,13 @@ extrai() {
       dt = ""; regra = ""; mec = ""; em = ""; next
     }
     id == "" { next }
+    # adendo (o diário é append-only): "**Mecanismo da DA-NNN:** <caminho…>" numa DA NOVA dá à DA-NNN
+    # o mecanismo que ela não trazia — uma linha por DA referida
+    /^\*\*Mecanismo da DA-[0-9]+:\*\*/ {
+      t = $0; match(t, /DA-[0-9]+/); ref = substr(t, RSTART, RLENGTH)
+      sub(/^\*\*Mecanismo da DA-[0-9]+:\*\*[ \t]*/, "", t)
+      printf "%s\037ADENDO\037\037%s\n", ref, t; em = ""; next
+    }
     /^#/ || /^---[[:space:]]*$/ || /^[[:space:]]*$/ { em = ""; }
     dt == "" && match($0, /`data: [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]`/) { dt = substr($0, RSTART + 7, 10) }
     dt == "" && /\*\*Data:\*\*/ && match($0, /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/) { dt = substr($0, RSTART, 10) }
@@ -79,7 +87,14 @@ caminho_existe() {
 }
 
 nfail=0; nwarn=0; nproib=0; nok=0
+declare -A ADENDO=()
+REGS=()
 while IFS=$'\037' read -r id dt regra mec; do
+  if [ "$dt" = ADENDO ]; then ADENDO[$id]="${ADENDO[$id]:-} $mec"; else REGS+=("$id"$'\037'"$dt"$'\037'"$regra"$'\037'"$mec"); fi
+done < <(extrai "$DEC")
+for reg in ${REGS[@]+"${REGS[@]}"}; do
+  IFS=$'\037' read -r id dt regra mec <<< "$reg"
+  mec="$mec ${ADENDO[$id]:-}"
   printf '%s\n' "$regra" | grep -qiE "$PROIBE" || continue
   nproib=$((nproib + 1))
   motivo=""
@@ -98,7 +113,7 @@ while IFS=$'\037' read -r id dt regra mec; do
     [ "$LIST" = 1 ] && echo "WARN $id (${dt:-sem data}) — $motivo"
     nwarn=$((nwarn + 1))
   fi
-done < <(extrai "$DEC")
+done
 
 echo "check-da-mecanismo: $nproib DA(s) com proibição na Regra · $nok com mecanismo existente · $nfail FAIL (>= $DESDE) · $nwarn WARN (antigas, fila)"
 [ "$nfail" -eq 0 ]

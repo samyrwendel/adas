@@ -71,6 +71,18 @@ echo 900 > "$T/.adas/da-mecanismo-corte"
 caso WARN "DA sem data no corte (<=) segue fila" "**Regra:** Nunca publicar sem o gate."
 rm -rf "$T/.adas"
 
+# adendo (append-only): uma DA POSTERIOR dá o mecanismo à antiga com "**Mecanismo da DA-NNN:**"
+adendo() { # <OK|WARN> <rótulo> <linha de adendo>
+  printf '# diário\n\n## DA-900 — antiga\n%s\n**Regra:** Nunca publicar sem o gate.\n\n## DA-901 — adendo\n%s\n**Regra:** Declara mecanismos.\n%s\n' \
+    "$META_VELHA" "$META_VELHA" "$3" > "$T/DECISIONS.md"
+  local out got; out="$(bash "$CHK" --list "$T/DECISIONS.md" "$T")"
+  printf '%s\n' "$out" | grep -q '^WARN DA-900' && got=WARN || got=OK
+  [ "$got" = "$1" ] && echo "✓ $2 → $got" || { echo "✗ $2: esperava $1, veio $got"; fail=1; }
+}
+adendo OK   "adendo com caminho real tira a DA antiga da fila" '**Mecanismo da DA-900:** `scripts/trava-real.sh` reprova a publicação sem gate.'
+adendo WARN "adendo com caminho inventado não conta"            '**Mecanismo da DA-900:** `scripts/trava-inventada.sh`.'
+adendo WARN "adendo pra OUTRA DA não vale pra esta"             '**Mecanismo da DA-899:** `scripts/trava-real.sh`.'
+
 # ponta a ponta: o check-adas.sh (ao lado) BLOQUEIA (exit 1) com a mesma DA nova sem trava
 ADAS_CHK="$(dirname "$CHK")/check-adas.sh"
 if [ -f "$ADAS_CHK" ]; then
