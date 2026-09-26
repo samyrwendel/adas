@@ -159,3 +159,22 @@ Na instância de origem, em 21–25/09, o dono pegou 2–3 furos do mesmo tipo: 
 - Registrar decisão com proibição fica mais lento (a trava tem que existir ou nascer junto). DA de preferência (sem proibição) não muda.
 - Existência do caminho não prova que ele reprova — o check fecha a porta de DA sem trava nenhuma; a qualidade da trava continua sendo revisão.
 - Complementa o `check-mecanismo.sh` do skeleton-v4 (que cobra os invariantes do núcleo do ADAS.md): aquele governa o ADAS.md, este governa o diário.
+
+## Decisão Arquitetural DA-005 — check-secrets --dominio: credencial de um domínio não entra em arquivo nem job de outro
+
+**Status:** ✅ Aceita · **Data:** 2026-09-25
+
+**Regra:** Arquivo ou job agendado (unit systemd --user, crontab) de um domínio declarado em `~/.adas/credencial-dominio.conf` que cite ou herde a credencial proibida para ele reprova o `check-secrets.sh --dominio`; só comentário e `unset VAR` não contam, e crontab ilegível é avisado, nunca dado como limpo.
+**Mecanismo:** `skeleton/scripts/check-secrets.sh` (modo `--dominio`; espelho em `skeleton-v4/scripts/check-secrets.sh`), teste `skeleton/scripts/tests/check-secrets-dominio.test.sh`.
+
+### Contexto
+Na instância de origem, um aviso de conta saiu pelo bot principal com a regra "financeiro nunca fala pelo bot principal" em vigor: o script do domínio lia o `.env` do bot principal e um runner fazia `source` dele. O gate de commit não via nada, porque são scripts soltos na home, fora de repo.
+
+### Decisão
+- As regras são da INSTÂNCIA (caminho | regex | motivo, separador ` | `). O produto não carrega caminho de ninguém; sem arquivo de regras, o modo passa.
+- Varre os arquivos (glob, `~`, `/**`) e os JOBS que executam esses arquivos: `Environment=`/`EnvironmentFile=` da unit e a linha do cron, porque a credencial entra pelo ambiente e `/proc/<pid>/environ` não pega job de vida curta.
+- Log, backup, `.md` e `.json` ficam fora: não executam.
+
+### Consequências
+- Roda no audit semanal da instância, não no pre-commit: o alvo é justamente o que está fora do repo.
+- Teto: regex por texto. Credencial montada por concatenação ou lida por outro nome passa; a regra do domínio tem que nomear o arquivo/variável real.

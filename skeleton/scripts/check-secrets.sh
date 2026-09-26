@@ -4,6 +4,7 @@
 #   bash scripts/check-secrets.sh            # staged (pré-commit)
 #   bash scripts/check-secrets.sh --all      # toda a árvore tracked + porta 2 (histórico do git)
 #   bash scripts/check-secrets.sh --dir src  # um diretório
+#   bash scripts/check-secrets.sh --dominio  # credencial fora do domínio dono (regras em ~/.adas/credencial-dominio.conf)
 # Gate: "precommit": "bash scripts/check-secrets.sh"  ·  no deploy junto dos outros check-*.
 #
 # PORTAS 1 e 2 das "seis portas do app" (DA-189, faixa seguranca-acesso — ver SKILL.md
@@ -17,9 +18,82 @@ mode="staged"; dir="."
 while [ $# -gt 0 ]; do
   case "$1" in
     --all) mode="all" ;;
+    --dominio) mode="dominio" ;;
     --dir) mode="dir"; dir="${2:-.}"; shift ;;
   esac; shift
 done
+
+# ── MODO --dominio — credencial fora do DOMÍNIO dono (DA-005 do repo adas) ─────────────────
+# Arquivo de um domínio (ex.: scripts financeiros) que cita/lê a credencial de OUTRO domínio
+# (ex.: o token do bot principal) é violação, esteja ou não num repo git — o gate de commit
+# não vê script solto na home, por isso este modo roda no audit. As regras são da INSTÂNCIA:
+#   ${CREDENCIAL_DOMINIO_CONF:-$HOME/.adas/credencial-dominio.conf}, uma linha por regra:
+#   <caminho ou glob; ~ e /** aceitos> | <regex ERE proibida> | <motivo/DA>   (separador " | ")
+# Não contam: linha de comentário (# no início) e `unset <VAR>` — tirar a credencial do
+# ambiente é justamente o conserto. Saída aponta arquivo:linha, nunca valor.
+if [ "$mode" = "dominio" ]; then
+  CONF="${CREDENCIAL_DOMINIO_CONF:-$HOME/.adas/credencial-dominio.conf}"
+  [ -f "$CONF" ] || { echo "✓ [domínio] sem $CONF — nenhuma regra de domínio declarada"; exit 0; }
+  dblock=0; nreg=0; narq=0; declare -A _re_de=()
+  while IFS= read -r _l; do
+    case "$_l" in ''|'#'*) continue ;; esac
+    # separador é " | " (com espaços): a regex pode ter alternância a|b sem espaço
+    case "$_l" in *' | '*' | '*) ;; *) echo "• [domínio] regra inválida ignorada (formato: caminho | regex | motivo): $_l"; continue ;; esac
+    _g="${_l%% | *}"; _rest="${_l#* | }"; _re="${_rest%% | *}"; _mo="${_rest#* | }"
+    _g="$(printf '%s' "$_g" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    nreg=$((nreg + 1))
+    case "$_g" in "~/"*) _g="$HOME/${_g#\~/}" ;; esac
+    if [[ "$_g" == *'/**' ]]; then
+      mapfile -t _fs < <(find "${_g%'/**'}" -type f 2>/dev/null)
+    else
+      mapfile -t _fs < <(compgen -G "$_g" 2>/dev/null)
+    fi
+    for _f in "${_fs[@]}"; do
+      [ -f "$_f" ] || continue
+      case "$_f" in *.log|*.bak*|*.md|*.json|*.pyc) continue ;; esac  # dado/log/backup não executa
+      narq=$((narq + 1)); _re_de["$_f"]="$_re"
+      _h=$(grep -nE -- "$_re" "$_f" 2>/dev/null | grep -vE '^[0-9]+:[[:space:]]*(#|unset[[:space:]])' || true)
+      if [ -n "$_h" ]; then
+        echo "✗ [BLOCK] [domínio] ${_f/#$HOME/\~} cita credencial fora do domínio ($_mo):"
+        printf '%s\n' "$_h" | cut -d: -f1 | sed 's/^/    linha /' | head -5
+        dblock=1
+      fi
+    done
+  done < "$CONF"
+  # Jobs agendados (unit systemd --user e crontab) que EXECUTAM um arquivo de domínio: a
+  # credencial também entra pelo AMBIENTE do job (Environment=/EnvironmentFile=/source no
+  # cron), que o script não mostra — e /proc/<pid>/environ não pega cron de vida curta.
+  njob=0; _jobs=""
+  _job() {  # $1 = nome do job, $2 = texto do job (unit inteira ou linha do cron)
+    local f; for f in "${!_re_de[@]}"; do
+      printf '%s\n' "$2" | grep -qF -- "$f" || continue
+      njob=$((njob + 1)); _jobs="${_jobs} $1"
+      if printf '%s\n' "$2" | grep -vE '^[[:space:]]*(#|unset[[:space:]])' | grep -qE -- "${_re_de[$f]}"; then
+        echo "✗ [BLOCK] [domínio] job $1 executa ${f/#$HOME/\~} com a credencial proibida no ambiente/comando"; dblock=1
+      fi
+      return
+    done
+  }
+  for _u in "$HOME"/.config/systemd/user/*.service; do
+    [ -f "$_u" ] || continue
+    _t="$(cat "$_u" 2>/dev/null)"
+    _ef="$(printf '%s\n' "$_t" | sed -n 's/^EnvironmentFile=-\{0,1\}//p' | sed "s|%h|$HOME|g")"
+    _job "$(basename "$_u")" "$_t
+EnvironmentFile-aponta:$_ef"
+  done
+  if _ct="$(crontab -l 2>&1)"; then
+    while IFS= read -r _c; do
+      case "$_c" in ''|'#'*) continue ;; esac
+      _job "cron:$(printf '%s' "$_c" | cut -c1-40)…" "$_c"
+    done <<< "$_ct"
+  elif ! printf '%s' "$_ct" | grep -qi "no crontab"; then
+    echo "• [domínio] crontab ILEGÍVEL aqui ($(printf '%s' "$_ct" | head -1)) — jobs de cron NÃO verificados"
+  fi
+  echo "• [domínio] $njob job(s) agendado(s) executam arquivo de domínio:${_jobs:- nenhum}"
+  if [ "$dblock" -ne 0 ]; then echo "✗ check-secrets --dominio: credencial fora do domínio dono — tire a leitura/citação (unset é permitido)"; exit 1; fi
+  echo "✓ [domínio] $nreg regra(s), $narq arquivo(s) examinado(s): nenhuma credencial fora do domínio"
+  exit 0
+fi
 
 # Deploy/pós-commit: nada staged → o modo staged seria um no-op VERDE (falsa garantia
 # na última barreira). Cai pra varredura completa em vez de aprovar sem examinar nada.
