@@ -58,6 +58,17 @@ if [ -f scripts/check-adas.sh ]; then
   bash scripts/check-adas.sh || { echo "✗ pre-commit: check-adas reprovou (faixa quebrada)"; exit 1; }
 fi
 
+# 2b) DA que proíbe tem **Mecanismo:** (DA-004 do repo adas). Com scripts/check-adas.sh ele já roda
+# lá dentro; aqui cobre o repo que só tem o esqueleto (o próprio repo adas).
+if [ ! -f scripts/check-adas.sh ] && [ -f DECISIONS.md ]; then
+  for cm in scripts/check-da-mecanismo.sh skeleton/scripts/check-da-mecanismo.sh; do
+    if [ -f "\$cm" ]; then
+      bash "\$cm" DECISIONS.md . || { echo "✗ pre-commit: DA nova proíbe sem **Mecanismo:** que exista"; exit 1; }
+      break
+    fi
+  done
+fi
+
 # 3) índice de DAs sincronizado (DA-164)
 if [ -f scripts/da-index.sh ] && [ -f DECISIONS.md ]; then
   bash scripts/da-index.sh check . \\
@@ -71,4 +82,4 @@ fi
 exit 0
 EOF
 chmod +x "$PC"
-echo "✓ pre-commit instalado em $PC (secrets→BLOCK · check-adas · da-index; --no-verify existe, o CI repete)"
+echo "✓ pre-commit instalado em $PC (secrets→BLOCK · check-adas · DA com mecanismo · da-index; --no-verify existe, o CI repete)"

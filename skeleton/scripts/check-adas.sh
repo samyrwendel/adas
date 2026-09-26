@@ -274,6 +274,21 @@ if [ -f "$DECISIONS" ] && [ -f scripts/da-index.sh ]; then
   fi
 fi
 
+# 10b) DA QUE PROÍBE TEM MECANISMO (DA-004 do repo adas). Regra com
+# nunca/proibido/não pode/jamais/somente/só exige **Mecanismo:** citando caminho que existe.
+# DA nova (>= DA_MECANISMO_DESDE) sem isso = BLOCK; antiga = WARN com a contagem (fila).
+# A lógica mora em check-da-mecanismo.sh (ao lado deste script) — aqui só o veredito.
+mec_block=0
+if [ -f "$DECISIONS" ] && [ -f "$SELFDIR/check-da-mecanismo.sh" ]; then
+  mec_out="$(bash "$SELFDIR/check-da-mecanismo.sh" "$DECISIONS" "$DIR" 2>&1)"; mec_rc=$?
+  while IFS= read -r l; do note "$l"; done < <(printf '%s\n' "$mec_out" | grep '^FAIL ')
+  [ "$mec_rc" -ne 0 ] && { block=1; mec_block=1; }
+  mec_warn="$(printf '%s\n' "$mec_out" | sed -n 's/.* \([0-9][0-9]*\) WARN .*/\1/p')"
+  if [ "${mec_warn:-0}" -gt 0 ]; then
+    note "$mec_warn DA(s) antigas proíbem sem **Mecanismo:** existente — fila; liste com: bash $SELFDIR/check-da-mecanismo.sh --list $DECISIONS"; warn=1
+  fi
+fi
+
 # 11) SELO DE INSTALAÇÃO (DA-165): o check tem que ter RODADO alguma vez e deixado prova.
 # "Rode o check e finalize limpo" era exortação em prompt — classe que a DA-017 já julgou.
 # Custo: ler UM arquivo; nada re-executa por sessão. Selo obsoleto (esqueleto atualizou
@@ -349,6 +364,7 @@ if [ "$SEAL" = "1" ]; then
   } > .adas/install-check
   echo "🔏 selo gravado em .adas/install-check (veredito: $v, $notes aviso(s)) — versione-o: é a prova, não cache"
 fi
+if [ "$mec_block" -ne 0 ]; then echo "✗ check-adas: DA nova proíbe sem **Mecanismo:** que exista (DA-004 do repo adas) — corrija antes de seguir"; exit 1; fi
 if [ "$block" -ne 0 ]; then echo "✗ check-adas: faixa quebrada (frontmatter) — corrija antes de seguir"; exit 1; fi
 if [ "$warn" -ne 0 ]; then echo "⚠ check-adas: avisos de higiene do ADAS (acima) — não bloqueia"; exit 0; fi
 echo "✓ check-adas: ADAS íntegro (faixas com trigger+procedência, sem drift, DAs resolvidas)"

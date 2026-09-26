@@ -138,3 +138,24 @@ c1-c5 e c7 passam a FAIL (setam `fail=1`; `run_quality_checks` faz `return $fail
 
 ### Implementação
 `skeleton/scripts/da-index.sh`, `skeleton/scripts/tests/da-index/run-tests.sh`. Espelhado nas cópias de instância `~/scripts/da-index.sh` e `claude-tg-tmux/scripts/da-index.sh` (fora deste repo).
+
+## Decisão Arquitetural DA-004 — DA que proíbe só vale com MECANISMO que reprova a violação (check-da-mecanismo)
+
+**Status:** ✅ Aceita · **Data:** 2026-09-25
+
+**Regra:** DA cuja linha Regra contenha proibição ou exclusividade (nunca, proibido, não pode, jamais, somente, só) só entra com uma linha `**Mecanismo:**` citando caminho de arquivo/unit que EXISTE; DA nova sem isso reprova o `check-adas.sh` (BLOCK) e o pre-commit; DA anterior ao corte vira fila (WARN com contagem).
+**Mecanismo:** `skeleton/scripts/check-da-mecanismo.sh` (e o espelho `skeleton-v4/scripts/check-da-mecanismo.sh`), chamado pelo `skeleton/scripts/check-adas.sh` (check 10b) e pelo pre-commit gerado por `skeleton/scripts/install-hooks.sh` (gate 2b); teste `skeleton/scripts/tests/check-da-mecanismo.test.sh`.
+
+### Contexto
+Na instância de origem, em 21–25/09, o dono pegou 2–3 furos do mesmo tipo: a DA dizia "nunca X" e nada barrava X (testes escrevendo no estado real de um robô; aviso de conta saindo pelo bot proibido). Uma DA anterior já pedia "regra + mecanismo" na formalização, mas nada checava. A checagem tinha que ser do mesmo tipo que ela exige: automática.
+
+### Decisão
+- Proibição detectada só no PARÁGRAFO da Regra (não no corpo da DA: "só" descritivo no Motivo não dispara). Falso positivo dentro da Regra se resolve reescrevendo a Regra, não isentando.
+- Mecanismo vale se pelo menos um caminho citado existe: `~/…`, absoluto, relativo à raiz, nome solto em `scripts/`, ou unit systemd (`systemctl [--user] cat`).
+- DA nova = `data:` ≥ `DA_MECANISMO_DESDE` (padrão 2026-09-26). Diário sem data usa corte por NÚMERO em `.adas/da-mecanismo-corte` (a maior DA na adoção); sem esse arquivo, DA sem data fica na fila.
+- O template do skeleton-v4 (DA-001, "nunca é apagada") ganhou o próprio `**Mecanismo:**` — senão todo projeto novo nasceria reprovado.
+
+### Consequências
+- Registrar decisão com proibição fica mais lento (a trava tem que existir ou nascer junto). DA de preferência (sem proibição) não muda.
+- Existência do caminho não prova que ele reprova — o check fecha a porta de DA sem trava nenhuma; a qualidade da trava continua sendo revisão.
+- Complementa o `check-mecanismo.sh` do skeleton-v4 (que cobra os invariantes do núcleo do ADAS.md): aquele governa o ADAS.md, este governa o diário.

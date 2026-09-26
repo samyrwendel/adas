@@ -32,6 +32,7 @@
 ## DA-001 — Este projeto adota o ADAS
 `escopo: produto` · `saga: —` · `data: <YYYY-MM-DD>` · `refs: —` · `supersede: —`
 **Regra:** Toda decisão estrutural deste projeto vira uma entrada DA-NNN neste arquivo, criada por `scripts/da-new.sh`, e nunca é apagada — muda por supersede; o modo declarado em `.adas/profile.json` diz quem aplica a regra (doc: o dono na sessão; mecanismo: só gatilho registrado e testado).
+**Mecanismo:** `scripts/da-new.sh` (porta única de escrita: só anexa no fim) e `scripts/da-index.sh` (`check` acusa DA que sumiu ou mudou por fora), chamados no pre-commit gerado por `scripts/install-hooks.sh`.
 **Motivo:** <PLACEHOLDER: o erro ou a repetição que motivou adotar um diário de decisões agora, neste projeto>
 **Trade-off:** Registrar custa minutos por decisão; aceito porque redecidir sem memória custa mais. <PLACEHOLDER: o caso concreto daqui, se houver>
 **Lição:** —
