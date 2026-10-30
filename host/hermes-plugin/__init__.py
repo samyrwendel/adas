@@ -92,7 +92,9 @@ def _on_subagent_start(**kwargs: Any) -> None:
 
 
 def _on_pre_tool_call(tool_name: str = "", args: Any = None, **_: Any) -> Optional[dict]:
-    if tool_name not in ("exec", "bash", "shell", "run_command"):
+    # "terminal" e o shell tool REAL do Hermes (tools/terminal_tool.py); os demais ficam
+    # por compatibilidade com outros harnesses/forks.
+    if tool_name not in ("terminal", "exec", "bash", "shell", "run_command"):
         return None
     if not isinstance(args, dict):
         return None

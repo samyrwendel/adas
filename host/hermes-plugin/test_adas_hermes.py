@@ -89,10 +89,12 @@ def test_pre_tool_call_blocks_env_read():
     ctx = _FakeCtx()
     adas_hermes.register(ctx)
     handler = ctx.hooks["pre_tool_call"][0]
-    result = handler(tool_name="exec", args={"command": "cat .env"})
-    assert result is not None
-    assert result["action"] == "block"
-    assert "seguranca-acesso" in result["message"]
+    # "terminal" = nome do shell tool real do Hermes (dogfood: com so "exec" o guard nunca disparava)
+    for tool in ("terminal", "exec"):
+        result = handler(tool_name=tool, args={"command": "cat .env"})
+        assert result is not None, tool
+        assert result["action"] == "block"
+        assert "seguranca-acesso" in result["message"]
 
 
 def test_pre_tool_call_allows_safe_command():
