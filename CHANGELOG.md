@@ -3,6 +3,12 @@
 Cada versão diz o que muda para quem usa, não a lista de commits. A primeira linha `Resumo:` de cada
 versão é a que aparece no aviso de versão nova da sessão.
 
+## 1.0.1 — 2026-10-31
+
+Resumo: o aviso de versão nova sai sempre na própria linha.
+
+- Correção: quando o começo da sessão terminava sem quebra de linha, o aviso de versão grudava no texto anterior.
+
 ## 1.0.0 — 2026-10-31
 
 Resumo: primeira versão numerada; a regra certa chega no instante da ação (ADAS-JIT), com aviso de versão nova e atualização segura.

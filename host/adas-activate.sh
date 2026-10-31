@@ -22,5 +22,7 @@ fi
 # emissão (núcleo + camada 0) dentro do orçamento de bytes — o que não couber vira ponteiro [ADAS-CORTE]
 adas_session_emit "$cwd" 2>/dev/null || true
 # aviso de versão nova: 1×/dia, mudo sem rede (host/adas-version.sh)
-[ -f "$DIR/adas-version.sh" ] && bash "$DIR/adas-version.sh" 2>/dev/null || true
+# (linha própria: a camada 0 pode terminar sem \n e o aviso grudaria nela)
+v="$([ -f "$DIR/adas-version.sh" ] && bash "$DIR/adas-version.sh" 2>/dev/null)"
+[ -n "$v" ] && printf '\n%s\n' "$v"
 exit 0

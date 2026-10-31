@@ -696,6 +696,9 @@ o="$(vrun env ADAS_VERSION_URL="file://$T/cl.md")"
 echo 1.0.0 > "$VH/.claude/adas/VERSION"; rm -f "$VH/vc"
 o="$(vrun env ADAS_VERSION_URL="file://$T/cl.md" ADAS_VERSION_CHECK=off)"
 [ -z "$o" ] && ok "ADAS_VERSION_CHECK=off desliga" || bad "off não desligou"
+o="$(printf '{"cwd":"%s","session_id":"t"}' "$T" | HOME="$VH" ADAS_VERSION_URL="file://$T/cl.md" ADAS_VERSION_CACHE="$VH/vc2" bash "$ROOT/host/adas-activate.sh" 2>/dev/null)"
+printf '%s\n' "$o" | grep -q '^ADAS 1.1.0 disponível' && ok "no SessionStart o aviso sai em linha PRÓPRIA" || bad "aviso grudado ou ausente no activate: $(printf '%s' "$o" | tail -c 200)"
+BV="$(cat "$ROOT/VERSION")"
 # update: remoto bare com a árvore de trabalho atual (1.0.0) + um commit 1.1.0 por cima
 UB="$T/ub"; git clone -q "$ROOT" "$UB" 2>/dev/null
 cp "$ROOT"/host/*.sh "$UB/host/"; cp "$ROOT/VERSION" "$ROOT/CHANGELOG.md" "$UB/"
@@ -706,9 +709,9 @@ git clone -q "$T/rem.git" "$T/inst" 2>/dev/null
   && echo '# novo' >> host/adas-core.sh && git -c user.name=t -c user.email=t@t commit -qam v110 && git push -q origin HEAD) >/dev/null 2>&1
 UH="$T/uh"; mkdir -p "$UH"; echo "MEU DIÁRIO" > "$UH/DECISIONS.md"; mkdir -p "$UH/.specs"; echo spec > "$UH/.specs/x.md"
 o="$(HOME="$UH" bash "$T/inst/host/update.sh" --check 2>&1)"
-[ "$(cat "$T/inst/VERSION")" = 1.0.0 ] && printf '%s' "$o" | grep -q '1.0.0 → 1.1.0' && ok "update --check mostra 1.0.0 → 1.1.0 e não muda nada" || bad "update --check: $o"
+[ "$(cat "$T/inst/VERSION")" = "$BV" ] && printf '%s' "$o" | grep -q "$BV → 1.1.0" && ok "update --check mostra $BV → 1.1.0 e não muda nada" || bad "update --check: $o"
 o="$(printf 'n\n' | HOME="$UH" bash "$T/inst/host/update.sh" 2>&1)"
-[ "$(cat "$T/inst/VERSION")" = 1.0.0 ] && printf '%s' "$o" | grep -q 'cancelado' && ok "update sem 'sim' cancela sem mexer" || bad "update sem confirmação mexeu: $o"
+[ "$(cat "$T/inst/VERSION")" = "$BV" ] && printf '%s' "$o" | grep -q 'cancelado' && ok "update sem 'sim' cancela sem mexer" || bad "update sem confirmação mexeu: $o"
 o="$(HOME="$UH" bash "$T/inst/host/update.sh" --yes 2>&1)"
 [ "$(cat "$T/inst/VERSION")" = 1.1.0 ] && [ "$(cat "$UH/.claude/adas/VERSION")" = 1.1.0 ] && ok "update --yes: clone e versão instalada em 1.1.0" || bad "update --yes falhou: $(printf '%s' "$o" | tail -3)"
 [ "$(cat "$UH/DECISIONS.md")" = "MEU DIÁRIO" ] && [ "$(cat "$UH/.specs/x.md")" = spec ] && ok "update não toca DECISIONS.md nem .specs" || bad "update mexeu no diário/.specs"
