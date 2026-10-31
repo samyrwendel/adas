@@ -55,6 +55,26 @@ Requisitos: `jq` e `bash` no PATH. Cada repo governado precisa de `ADAS.md` na r
 reinjetado é a seção entre `<!-- adas-core-start -->` e `<!-- adas-core-end -->`; sem marcadores,
 cai no topo do arquivo) e, para o JIT via roteador, `.claude/hooks/adas-inject.sh` (PASSO 6).
 
+## ADAS-JIT (níveis 1–3)
+O motor fica em `host/jit/` e roda direto do clone (link simbólico, sem cópia).
+```bash
+mkdir -p ~/.adas/jit && for f in da-cards.py regra-jit.py regra-search juiz-reply.py adas-jit-stats.py; do
+  ln -sf "$PWD/host/jit/$f" ~/.adas/jit/$f; done
+python3 ~/.adas/jit/da-cards.py              # compila ~/DECISIONS.md + ~/CONDUCT.md → cards.json, regras.db, grafo.json
+python3 ~/.adas/jit/da-cards.py --no-vec     # nível 1 (sem Ollama)
+```
+Registre os hooks no `~/.claude/settings.json`, de preferência por script com backup:
+- `python3 ~/.adas/jit/regra-jit.py` em **UserPromptSubmit**, **PreToolUse** (`Bash` e `Edit|Write|MultiEdit`) e **PostToolBatch** (este fecha o par de adesão);
+- no nível 3, `python3 ~/.adas/jit/juiz-reply.py` em **PreToolUse** com o matcher da ferramenta que manda mensagem a pessoas.
+
+Variáveis:
+- nível: `ADAS_JIT_NIVEL` (1, 2 ou 3), ver o README;
+- chave do juiz: `OPENROUTER_API_KEY` ou `EXPERIENTIALLABS_API_KEY`, ou `JUIZ_REPLY_CRED=<script provedor value>`;
+- sombra (grava o ledger, não injeta): `ADAS_JIT=log`.
+
+Ledgers: `~/.claude/bus/regra-jit.log` e `juiz-reply.log`. Resumo semanal: `python3 ~/.adas/jit/adas-jit-stats.py`.
+Teste: `bash host/jit/adas-jit-test.sh` (fixtures em `~/.adas/fixtures/DA-NNN.jsonl` provam que cada gatilho dispara).
+
 ## Teste rápido (sem abrir sessão)
 
 ```bash

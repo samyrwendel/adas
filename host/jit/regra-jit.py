@@ -17,7 +17,7 @@ Motores, nesta ordem (k≤3 no total, silêncio é o default):
         prompt: L2 ≤ 0,65, ou bm25 ≤ -25 só se o corpo < 300 chars (bm25 é absoluto e infla com o tamanho)
         bash:   DESLIGADO por padrão (ADAS_JIT_BASH_VEC=1 liga: L2 ≤ 0,65 e comando > 8 palavras). Medido em
                 135 comandos reais: léxico dispara em 60–90% (ruído); vetor custa ~1 s/comando em CPU e
-                disparou 3/135, todos autorreferentes; o positivo do nanogo ficou em L2 0,74. Bash = evento.
+                disparou 3/135, todos autorreferentes; o positivo real (backup de um servidor) ficou em L2 0,74. Bash = evento.
         edit:   L2 ≤ 0,60; ledgers (DECISIONS*/CONDUCT) ficam só com o motor de evento
 Saída: additionalContext (nunca bloqueia; deny é papel dos guards `hook=`). Cartão cujo id já está no
 payload é omitido (o agente já está nele); cartão já mostrado na sessão nos últimos 60 min também.
@@ -26,7 +26,8 @@ adas_da_rotas); o motor de EVENTO não filtra (o predicado de caminho/comando j�
 Regra-mãe: cartão-mecanismo mostrado traz a regra que ele mecaniza (grafo.json, aresta mecanismo-de).
 Ledger: ~/.claude/bus/regra-jit.log (JSONL: ts, sid, superfície, nível, vetor ok|off|<erro>, escopo, cartões
 com l2/bm25, decisão, ms). Par (PostToolBatch): leu_da + adesao {id: aplicou|ignorou|n/a} pelo `viola=/re/`.
-Env: ADAS_JIT=off (desliga) | log (sombra: grava o ledger, não injeta). Fail-open em tudo."""
+Env: ADAS_JIT=off (desliga) | log (sombra: grava o ledger, não injeta). ADAS_JIT_NIVEL=1 tira o vetor (só
+evento + léxico); 2/3 (default) usa o vetor; o juiz (nível 3) é o hook juiz-reply.py. Fail-open em tudo."""
 import hashlib, json, os, re, subprocess, sys, time
 
 HOME = os.path.expanduser("~")
@@ -151,7 +152,8 @@ def motor_tema(sup, texto, alvo, esc):
     if sup == "bash" and (os.environ.get("ADAS_JIT_BASH_VEC") != "1" or len(texto.split()) <= lim.get("min_palavras", 0)):
         return [], 0, "-"
     os.environ.setdefault("ADAS_EMBED_TIMEOUT", "1.5")
-    idx = rs().Index(path=os.path.join(D, "regras.db"), vec=True)
+    # DA-468: nível 1 = travas + gatilho + busca por palavra (sem vetor); 2 = + vetor; 3 = + juiz (hook à parte)
+    idx = rs().Index(path=os.path.join(D, "regras.db"), vec=os.environ.get("ADAS_JIT_NIVEL", "2") not in ("0", "1"))
     res = [r for r in idx.search(texto, n=12) if rs().no_escopo(r.get("escopo"), esc)][:8]
     bm_ok = "bm25" in lim and len(texto) < lim.get("bm25_max_chars", 0)
     out = []

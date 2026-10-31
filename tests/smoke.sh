@@ -552,8 +552,12 @@ echo "$out" | grep -q "^WARN c9:" && bad "c9 ainda acusa (deveria estar DESLIGAD
 [ -f "$C12/DECISIONS-INDEX.md" ] && [ -f "$C12/DECISIONS-LICOES.md" ] && ok "INDEX e LICOES continuam sendo gerados" || bad "INDEX/LICOES sumiram junto (desligou demais)"
 [ "$sha_before" = "$(sha256sum "$C12/DECISIONS.md" | cut -d" " -f1)" ] && ok "DECISIONS.md byte a byte intocado pelo update" || bad "update alterou o DECISIONS.md"
 bash "$C12/scripts/da-index.sh" show DA-105 "$C12" | grep -q "cabeça tardia" && ok "cabeça DA-105 continua legível por show" || bad "show DA-105 falhou"
-printf 'x\n' > "$C12/DECISIONS-SAGAS.md"   # arquivo velho/estranho deixado no lugar NÃO faz o check falhar
-bash "$C12/scripts/da-index.sh" check "$C12" >/dev/null 2>&1 && ok "check ignora DECISIONS-SAGAS.md legado (não é mais conferido)" || bad "check ainda exige/confere DECISIONS-SAGAS.md"
+# arquivo velho/estranho deixado no lugar NÃO muda o check. A fixture reprova por outros motivos (c3 saga fora
+# do sagas.conf, c7 cabeça sem Histórico), então o teste compara o check COM e SEM o arquivo, não o exit.
+rm -f "$C12/DECISIONS-SAGAS.md"; c12a="$(bash "$C12/scripts/da-index.sh" check "$C12" 2>&1)"; c12ra=$?
+printf 'x\n' > "$C12/DECISIONS-SAGAS.md"; c12b="$(bash "$C12/scripts/da-index.sh" check "$C12" 2>&1)"; c12rb=$?
+[ "$c12ra" = "$c12rb" ] && [ "$c12a" = "$c12b" ] && ! printf '%s' "$c12b" | grep -q 'DECISIONS-SAGAS' \
+  && ok "check ignora DECISIONS-SAGAS.md legado (não é mais conferido)" || bad "check ainda exige/confere DECISIONS-SAGAS.md"
 
 echo "== 19) item 2b — núcleo via @import do CLAUDE.md GLOBAL, com fallback e autocura"
 # CONTEXTO: ~/.claude/CLAUDE.md carrega inteiro em toda sessão desta máquina (medido:
@@ -674,6 +678,51 @@ done
 gl_cl=$(python3 -c "import re;s=open('$ROOT/host/jit/da-cards.py').read();print(' '.join(sorted(set(re.findall(r'\"(explícita|pertencimento|semântica|aprendida)\"', s)))))")
 gl_cf=""; for c in $gl_cl; do grep -q -- "\*\*$c\*\*" "$ROOT/GLOSSARIO.md" || gl_cf="$gl_cf $c"; done
 [ -n "$gl_cl" ] && [ -z "$gl_cf" ] && ok "toda classe de sinapse do da-cards.py está no glossário ($gl_cl)" || bad "classe sem glossário:$gl_cf (achadas: $gl_cl)"
+
+echo "== aviso de versão + update (host/adas-version.sh, host/update.sh)"
+VH="$T/vh"; mkdir -p "$VH/.claude/adas"; echo 1.0.0 > "$VH/.claude/adas/VERSION"
+printf '# x\n\n## 1.1.0 — 2026-11-01\n\nResumo: coisa nova boa.\n\n- item\n\n## 1.0.0\n\nResumo: velha.\n' > "$T/cl.md"
+vrun(){ HOME="$VH" ADAS_VERSION_CACHE="$VH/vc" "$@" bash "$ROOT/host/adas-version.sh" 2>&1; }
+o="$(vrun env ADAS_VERSION_URL="file://$T/cl.md")"
+case "$o" in "ADAS 1.1.0 disponível (instalado 1.0.0): coisa nova boa. Atualizar: bash "*"/host/update.sh") ok "versão nova → UMA linha com resumo e comando";; *) bad "aviso de versão errado: $o";; esac
+[ "$(printf '%s\n' "$o" | wc -l)" = 1 ] && ok "aviso tem exatamente 1 linha" || bad "aviso com mais de 1 linha"
+o="$(vrun env ADAS_VERSION_URL="file://$T/nao-existe.md")"
+[ -n "$o" ] && ok "dentro de 24h usa o cache (não consulta a rede de novo)" || bad "cache de 1×/dia não foi usado"
+o="$(vrun env ADAS_VERSION_URL="file://$T/nao-existe.md" ADAS_VERSION_TTL=0)"; rc=$?
+[ -z "$o" ] && [ "$rc" = 0 ] && ok "sem rede e cache vencido: mudo, exit 0" || bad "sem rede não ficou mudo (rc=$rc): $o"
+echo 1.1.0 > "$VH/.claude/adas/VERSION"; rm -f "$VH/vc"
+o="$(vrun env ADAS_VERSION_URL="file://$T/cl.md")"
+[ -z "$o" ] && ok "versão igual à publicada → silêncio" || bad "avisou com versão igual: $o"
+echo 1.0.0 > "$VH/.claude/adas/VERSION"; rm -f "$VH/vc"
+o="$(vrun env ADAS_VERSION_URL="file://$T/cl.md" ADAS_VERSION_CHECK=off)"
+[ -z "$o" ] && ok "ADAS_VERSION_CHECK=off desliga" || bad "off não desligou"
+# update: remoto bare com a árvore de trabalho atual (1.0.0) + um commit 1.1.0 por cima
+UB="$T/ub"; git clone -q "$ROOT" "$UB" 2>/dev/null
+cp "$ROOT"/host/*.sh "$UB/host/"; cp "$ROOT/VERSION" "$ROOT/CHANGELOG.md" "$UB/"
+(cd "$UB" && git -c user.name=t -c user.email=t@t add -A && git -c user.name=t -c user.email=t@t commit -qm base) >/dev/null 2>&1
+git clone -q --bare "$UB" "$T/rem.git" 2>/dev/null
+git clone -q "$T/rem.git" "$T/inst" 2>/dev/null
+(cd "$UB" && git remote set-url origin "$T/rem.git" && echo 1.1.0 > VERSION && printf '\n## 1.1.0\n\nResumo: teste.\n' >> CHANGELOG.md \
+  && echo '# novo' >> host/adas-core.sh && git -c user.name=t -c user.email=t@t commit -qam v110 && git push -q origin HEAD) >/dev/null 2>&1
+UH="$T/uh"; mkdir -p "$UH"; echo "MEU DIÁRIO" > "$UH/DECISIONS.md"; mkdir -p "$UH/.specs"; echo spec > "$UH/.specs/x.md"
+o="$(HOME="$UH" bash "$T/inst/host/update.sh" --check 2>&1)"
+[ "$(cat "$T/inst/VERSION")" = 1.0.0 ] && printf '%s' "$o" | grep -q '1.0.0 → 1.1.0' && ok "update --check mostra 1.0.0 → 1.1.0 e não muda nada" || bad "update --check: $o"
+o="$(printf 'n\n' | HOME="$UH" bash "$T/inst/host/update.sh" 2>&1)"
+[ "$(cat "$T/inst/VERSION")" = 1.0.0 ] && printf '%s' "$o" | grep -q 'cancelado' && ok "update sem 'sim' cancela sem mexer" || bad "update sem confirmação mexeu: $o"
+o="$(HOME="$UH" bash "$T/inst/host/update.sh" --yes 2>&1)"
+[ "$(cat "$T/inst/VERSION")" = 1.1.0 ] && [ "$(cat "$UH/.claude/adas/VERSION")" = 1.1.0 ] && ok "update --yes: clone e versão instalada em 1.1.0" || bad "update --yes falhou: $(printf '%s' "$o" | tail -3)"
+[ "$(cat "$UH/DECISIONS.md")" = "MEU DIÁRIO" ] && [ "$(cat "$UH/.specs/x.md")" = spec ] && ok "update não toca DECISIONS.md nem .specs" || bad "update mexeu no diário/.specs"
+[ -f "$UH/.claude/settings.json.bak-adas" ] && ok "update fez backup do settings.json antes do merge" || bad "update sem backup do settings.json"
+echo "# local" >> "$T/inst/host/adas-lib.sh"; h0="$(git -C "$T/inst" rev-parse HEAD)"
+o="$(HOME="$UH" bash "$T/inst/host/update.sh" --yes 2>&1)"; rc=$?
+[ "$rc" != 0 ] && [ "$(git -C "$T/inst" rev-parse HEAD)" = "$h0" ] && ok "clone com mudança local → aborta sem mexer" || bad "update com mudança local não abortou (rc=$rc)"
+echo "== juiz-reply do produto (host/jit/juiz-reply.py)"
+JR='{"hook_event_name":"PreToolUse","tool_name":"mcp__plugin_telegram_telegram__reply","tool_input":{"chat_id":"1","text":"o backup segue de pé","format":"text"}}'
+printf '{"cartoes":[{"id":"DC-037","pergunta":"afirma sem prova?","regra_curta":"x","conserto":"y","limiar":0.9,"modo":"deny"}],"hooks":[]}' > "$T/rub.json"
+o="$(printf '%s' "$JR" | HOME="$T" ADAS_JIT_NIVEL=2 JUIZ_REPLY_RUBRICA="$T/rub.json" JUIZ_REPLY_LEDGER="$T/jl.log" python3 "$ROOT/host/jit/juiz-reply.py")"
+[ -z "$o" ] && [ ! -s "$T/jl.log" ] && ok "juiz: nível < 3 não roda (nem ledger)" || bad "juiz rodou no nível 2"
+o="$(printf '%s' "$JR" | env -u OPENROUTER_API_KEY -u EXPERIENTIALLABS_API_KEY HOME="$T" JUIZ_REPLY_CRED="$T/nao-existe.sh" JUIZ_REPLY_RUBRICA="$T/rub.json" JUIZ_REPLY_LEDGER="$T/jl.log" JUIZ_REPLY_CACHE="$T/jc.json" python3 "$ROOT/host/jit/juiz-reply.py")"; rc=$?
+[ -z "$o" ] && [ "$rc" = 0 ] && grep -q '"decisao": "erro"' "$T/jl.log" && ok "juiz sem chave: fail-open (mensagem sai) e ledger registra o erro" || bad "juiz sem chave não fez fail-open (rc=$rc): $o"
 
 echo
 echo "RESULTADO: $pass ok, $fail falha(s)"

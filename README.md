@@ -148,6 +148,40 @@ regra. A forma muda por harness (ver a tabela abaixo) — nos dois, um plugin na
 hoje). Detalhe completo, o que cada harness cobre e o que NÃO cobre, e como testar: ver
 [`Instalação por harness`](#instalação-por-harness) mais abaixo.
 
+### ADAS-JIT — a regra do diário chega no ATO, em 3 níveis ([`host/jit/`](host/jit/))
+O diário cresce sem parar; um pacote fixo no começo da sessão perde dele, e a regra certa não está no contexto
+quando a ação acontece. O ADAS-JIT compila o diário em **cartões** (`da-cards.py`) e, num hook por ação
+(`regra-jit.py`), mostra **até 3 cartões** que tocam ESTA ação (mensagem do dono, comando, edição, delegação).
+Abaixo do limiar fica em silêncio; nunca bloqueia (bloquear é papel dos guards). Cada regra diz como acende na
+linha `**Gatilho:**`:
+- `evento`: predicado no comando ou no caminho (ms, zero token);
+- `tema`: busca por palavra e por parecença, com limiar por superfície;
+- `forma`: o juiz ou um guard leem a mensagem antes de ela sair.
+
+Os cartões ligados formam uma rede (`grafo.json`, sinapses com `classe`, ver [`GLOSSARIO.md`](GLOSSARIO.md)):
+o cartão de um mecanismo traz junto a regra-mãe.
+
+| Nível (`ADAS_JIT_NIVEL`) | O que liga | Custo |
+|---|---|---|
+| **1** | travas (guards) + gatilho de evento + busca por palavra (FTS5) | zero; stdlib |
+| **2** (padrão) | + busca por parecença (vetor `nomic-embed-text` via Ollama + `sqlite-vec`) | ~1 s de CPU por consulta |
+| **3** | + juiz de forma (`juiz-reply.py`: perguntas do diário numa chamada; OpenRouter/ExperientialLabs; teto diário; falha = passa) | centavos por dia |
+
+Escolha o nível pelo risco: agente que fala com gente ou mexe em dinheiro → 3; agente de código calado → 1 ou 2.
+O termostato que sobe e desce o nível sozinho (por tamanho do diário, risco e violação medida) **ainda não
+existe**: hoje o nível é fixado por variável de ambiente e pelos hooks que você registra.
+Instalação e teste: [`host/README.md`](host/README.md#adas-jit-níveis-1-3). Medição: com o cartão certo no
+contexto, modelos baratos chegaram à adesão de um modelo de ponta em casos reais; o gargalo medido é **achar** a
+regra, não o tamanho do modelo.
+
+## Versão e atualização
+A versão instalada está em [`VERSION`](VERSION) e o que muda em cada uma está em [`CHANGELOG.md`](CHANGELOG.md),
+em português simples. No começo da sessão, no máximo uma vez por dia, o hook confere se saiu versão nova e
+avisa numa linha, com o comando de atualizar. Sem rede, fica mudo; para desligar, `ADAS_VERSION_CHECK=off`.
+Para atualizar, rode `bash host/update.sh`. Ele mostra o que muda e pede confirmação, troca só o motor (o clone
+e os hooks, com backup do `settings.json`) e nunca mexe em `DECISIONS.md`, `CONDUCT.md`, `.specs/` nem nos
+repos governados.
+
 ## Instalação por harness
 
 | | **Claude Code** (referência) | **OpenClaw** | **Hermes** |

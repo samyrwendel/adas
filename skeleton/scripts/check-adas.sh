@@ -31,7 +31,7 @@ note(){ echo "• $*"; notes=$((notes+1)); }
 # engine adas-check/*.js (que tem "check-<faixa>.js" no help, não é placeholder a preencher); --exclude-dir=_template
 # exclui o template (placeholder POR DESIGN — modelo p/ faixas novas vindo do repo canônico; o local é removido no
 # fim do bootstrap, ver AGENTS.md item 7). Coerente com a varredura 4 (md+css, -not _template).
-if grep -rqlE --include="*.md" --include="*.css" --exclude-dir=_template "<PLACEHOLDER>|<faixa>|<NNN>|<PROJETO>|<nome>" "$SPECS_DIR" "$SKILLS_DIR" "$ADAS" "$DECISIONS" AGENTS.md 2>/dev/null; then
+if grep -rqlE --include="*.md" --include="*.css" --exclude-dir=_template "<PLACEHOLDER>|<faixa>|<NNN>|<PROJETO>" "$SPECS_DIR" "$SKILLS_DIR" "$ADAS" "$DECISIONS" AGENTS.md 2>/dev/null; then
   note "PLACEHOLDER ainda presente — bootstrap incompleto (preencha)"; warn=1
 fi
 
@@ -269,7 +269,7 @@ fi
 if [ -f "$DECISIONS" ] && [ -f scripts/da-index.sh ]; then
   if [ ! -f DECISIONS-INDEX.md ]; then
     note "sem DECISIONS-INDEX.md — o índice não nasceu; rode: bash scripts/da-index.sh update"; warn=1
-  elif ! bash scripts/da-index.sh check . >/dev/null 2>&1; then
+  elif bash scripts/da-index.sh check . 2>&1 | grep -q 'DIVERGE'; then  # só DIVERGÊNCIA real; lint c6 (Lição) não derruba o exit (DA-434)
     note "DECISIONS-INDEX.md DIVERGE do $DECISIONS (DA anexada por fora do hook?) — rode: bash scripts/da-index.sh update"; warn=1
   fi
 fi

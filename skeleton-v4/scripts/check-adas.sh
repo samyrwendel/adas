@@ -173,7 +173,8 @@ fi
 # 10) índice de decisões nasceu e está sincronizado
 if [ -f "$DECISIONS" ] && [ -f scripts/da-index.sh ]; then
   if [ ! -f DECISIONS-INDEX.md ]; then note "sem DECISIONS-INDEX.md — o índice não nasceu; rode: bash scripts/da-index.sh update"; warn=1
-  elif ! bash scripts/da-index.sh check . >/dev/null 2>&1; then note "DECISIONS-INDEX.md DIVERGE do $DECISIONS — rode: bash scripts/da-index.sh update"; warn=1; fi
+  elif bash scripts/da-index.sh check . 2>&1 | grep -q 'DIVERGE'; then  # só DIVERGÊNCIA real; lint de Lição não derruba
+   note "DECISIONS-INDEX.md DIVERGE do $DECISIONS — rode: bash scripts/da-index.sh update"; warn=1; fi
 fi
 
 # 10b) DA que proíbe (nunca/proibido/não pode/jamais/somente/só na Regra) tem **Mecanismo:** com

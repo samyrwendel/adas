@@ -16,9 +16,13 @@ mkdir -p "$H" "$A"
 
 # 1) hooks — fonte única é o repo adas; instalar = copiar
 cp "$DIR/adas-lib.sh" "$DIR/adas-core.sh" "$DIR/adas-activate.sh" \
-   "$DIR/adas-subagent.sh" "$DIR/adas-route.sh" "$H/"
+   "$DIR/adas-subagent.sh" "$DIR/adas-route.sh" "$DIR/adas-version.sh" "$H/"
 chmod +x "$H"/adas-*.sh
 echo "✓ hooks copiados para $H"
+# versão instalada + de onde veio (aviso de versão nova no SessionStart: host/adas-version.sh)
+cp "$DIR/../VERSION" "$A/VERSION"
+(cd "$DIR/.." && pwd) > "$A/source"
+echo "✓ ADAS $(cat "$A/VERSION") (fonte: $(cat "$A/source"))"
 
 # 2) repos.conf — um caminho ABSOLUTO por linha
 if [ "$#" -gt 0 ]; then
