@@ -120,6 +120,14 @@ adas_emit_block() {
 adas_da_layer0() {
   [ "${DA_LOAD:-index}" = "off" ] && return 0
   local cwd="$1" budget="${2:-1000000000}"
+  # ADAS-JIT (DA-468, task 20261031-028): com o índice de cartões presente, sagas e lições SAEM do
+  # pacote fixo — orçamento O(N) perde pro diário que só cresce (estourava e cortava 100%). As regras
+  # chegam por AÇÃO (regra-jit.py no prompt/bash/edit, pré-voo do bus-inject); aqui fica UMA linha.
+  # ADAS_JIT=off volta ao comportamento antigo (camada 0 orçada).
+  if [ "${ADAS_JIT:-inline}" != "off" ] && [ -f "${ADAS_JIT_DIR:-$HOME/.adas/jit}/regras.db" ]; then
+    printf '\n[ADAS-JIT ativo] Regras do diário (~/DECISIONS.md, ~/CONDUCT.md) chegam POR AÇÃO: no prompt do dono, no comando, na edição e na delegação aparecem até 3 cartões com a Regra e "da-index.sh show DA-NNN". Sob demanda: bash ~/scripts/da-index.sh sagas ~ · bash ~/adas/host/jit/regra-search "<assunto>"'
+    return 0
+  fi
   local dec="$HOME/DECISIONS.md" idx="$HOME/scripts/da-index.sh"
   [ -f "$dec" ] && [ -f "$idx" ] || return 0
 

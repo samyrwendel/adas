@@ -114,7 +114,7 @@ def compila_juiz(cards, out):
         g = c.get("gatilho") or {}
         if g.get("tipo") != "forma" or g.get("superficie") != "reply":
             continue
-        if g.get("hook"):
+        if g.get("hook") and g.get("antes") != "nao":  # antes=nao: guard com estado próprio (deny-once) não roda 2x
             hp = hook_path(g["hook"])
             if hp not in hooks: hooks.append(hp)
         if not g.get("juiz"):
@@ -135,6 +135,16 @@ def compila_juiz(cards, out):
     json.dump(corpo, open(tmp, "w"), ensure_ascii=False, indent=1); os.replace(tmp, os.path.join(out, "juiz-reply.json"))
     print(f"juiz-reply: {len(rub)} pergunta(s) ({sum(r['modo']=='deny' for r in rub)} deny), {len(hooks)} guard(s) antes")
 
+def compila_gatilhos(cards, out):
+    """gatilhos.json: só cartões com gatilho declarado (≠ tema puro) — o que o regra-jit avalia por predicado
+    (evento · <superfície> · quando=/re/ [salvo=/re/]) e o que o adas-jit-test.sh roda por hook= (fixtures)."""
+    gs = [{"id": c["id"], "titulo": c["titulo"], "regra_curta": c["regra_curta"], "gatilho": c["gatilho"]}
+          for c in cards if (c.get("gatilho") or {}).get("tipo", "tema") != "tema"]
+    tmp = os.path.join(out, "gatilhos.json.tmp")
+    json.dump(gs, open(tmp, "w"), ensure_ascii=False, indent=1); os.replace(tmp, os.path.join(out, "gatilhos.json"))
+    print(f"gatilhos: {len(gs)} declarado(s) ({sum(1 for g in gs if g['gatilho'].get('quando'))} predicado, "
+          f"{sum(1 for g in gs if g['gatilho'].get('hook'))} hook=)")
+
 def main():
     a = sys.argv[1:]
     home = a[a.index("--home") + 1] if "--home" in a else HOME
@@ -145,6 +155,7 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     cards = extract(home)
     compila_juiz(cards, OUT)
+    compila_gatilhos(cards, OUT)
     if "--so-juiz" in a:
         return
     cache_p = os.path.join(OUT, "emb-cache.json")

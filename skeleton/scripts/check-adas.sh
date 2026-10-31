@@ -353,6 +353,20 @@ for pv in "$p1" "$p2" "$p3" "$p4" "$p5" "$p6"; do
   case "$pv" in PASSA|*"justificado"*) ;; *) warn=1 ;; esac
 done
 
+# 13) GATILHO (ADAS-JIT F2, DA-468): DA normativa vigente sem **Gatilho:** só existe no papel → WARN com o
+#     DEGRAU (doc < ponteiro < gate); gatilho de máquina (hook=/quando=) sem fixture → WARN. Lógica em
+#     check-da-gatilho.py (ao lado); a fila sai com --list. Nunca bloqueia: a revisão semanal propõe os gatilhos.
+if [ -f "$DECISIONS" ] && [ -f "$SELFDIR/check-da-gatilho.py" ]; then
+  gat_out="$(python3 "$SELFDIR/check-da-gatilho.py" "$(cd "$(dirname "$DECISIONS")" && pwd)" 2>/dev/null | tail -1)"
+  if [ -n "$gat_out" ]; then
+    case "$gat_out" in
+      *" doc 0 "*) ;;
+      *) note "GATILHO (check 13): $gat_out — fila: python3 $SELFDIR/check-da-gatilho.py --list $(dirname "$DECISIONS")"; warn=1 ;;
+    esac
+    case "$gat_out" in *"sem fixture"*) warn=1 ;; esac
+  fi
+fi
+
 # veredito
 v="ok"; [ "$warn" -ne 0 ] && v="warn"; [ "$block" -ne 0 ] && v="block"
 if [ "$SEAL" = "1" ]; then

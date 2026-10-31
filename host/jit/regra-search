@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""regra-search — consulta o índice de cartões de regra (ADAS-JIT F0, task 20261031-018).
+
+  regra-search "<payload da ação>" [--superficie prompt|reply|edit|bash|bus] [-k 3] [--json]
+               [--l2 0.65] [--bm25 -25] [--no-vec] [--all]
+
+Híbrido: vetor (L2, nomic-embed-text via Ollama) + lexical (bm25 FTS5), fusão RRF. O RRF só ORDENA; quem decide
+mostrar é o LIMIAR: l2 <= --l2  OU  bm25 <= --bm25 (RRF não discrimina: ~0,032 em positivo e em ruído).
+Degrada sem aviso de erro: sem sqlite-vec/Ollama cai no nível 1 (só bm25). Saída: só cartões acima do limiar
+(silêncio é o default); --all lista o top-k mesmo abaixo. --json: lista de objetos."""
+import json, os, re, sqlite3, struct, sys, time, urllib.request
+
+HOME = os.path.expanduser("~")
+D = os.path.join(HOME, ".adas", "jit")
+OLL = os.environ.get("ADAS_OLLAMA", "http://127.0.0.1:11434/api/embed")
+MODEL = os.environ.get("ADAS_EMBED_MODEL", "nomic-embed-text")
+L2_MAX, BM25_MAX = 0.65, -25.0
+EMBED_Q = int(os.environ.get("ADAS_EMBED_Q", "400"))  # só o começo do payload vai pro vetor (CPU: ~0,9 s a 400 chars vs ~2,6 s a 2000)
+
+def f32(v): return struct.pack("%df" % len(v), *v)
+
+class Index:
+    def __init__(self, path=None, vec=True):
+        self.db = sqlite3.connect(path or os.path.join(D, "regras.db"))
+        self.vec = False
+        if vec and self.db.execute("select v from meta where k='vec'").fetchone()[0] == "1":
+            try:
+                sys.path.insert(0, D); import importlib.util  # noqa
+                spec = importlib.util.spec_from_file_location("dacards", os.path.join(D, "da-cards.py"))
+                m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+                self.vec = m.load_vec(self.db)
+            except Exception:
+                self.vec = False
+
+    @staticmethod
+    def fts_q(q):
+        terms = list(dict.fromkeys(t.lower() for t in re.findall(r"\w{3,}", q)))[:60]
+        return " OR ".join('"%s"' % t for t in terms)
+
+    def embed(self, q):
+        req = urllib.request.Request(OLL, data=json.dumps({"model": MODEL, "input": [q[:EMBED_Q]]}).encode(),
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=float(os.environ.get("ADAS_EMBED_TIMEOUT", "3"))) as r:
+            return json.loads(r.read())["embeddings"][0]
+
+    def search(self, q, n=15, qvec=None):
+        """→ lista de dicts ordenada por RRF, com l2/bm25 de cada lado (None se ausente)."""
+        l2 = {}; bm = {}
+        if self.vec:
+            try:
+                qv = qvec or self.embed(q)
+                for rid, d in self.db.execute("select rowid, distance from docs_vec where embedding match ? and k=? order by distance", (f32(qv), n)):
+                    l2[rid] = d
+            except Exception:
+                pass  # Ollama fora: nível 1
+        fq = self.fts_q(q)
+        if fq:
+            try:
+                for rid, s in self.db.execute("select rowid, bm25(docs_fts) from docs_fts where docs_fts match ? order by bm25(docs_fts) limit ?", (fq, n)):
+                    bm[rid] = s
+            except sqlite3.OperationalError:
+                pass
+        sc = {}
+        for lst in (sorted(l2, key=l2.get), sorted(bm, key=bm.get)):
+            for rank, rid in enumerate(lst, 1): sc[rid] = sc.get(rid, 0) + 1 / (60 + rank)
+        out = []
+        for rank, (rid, s) in enumerate(sorted(sc.items(), key=lambda x: -x[1]), 1):
+            key, titulo, curta = self.db.execute("select key,titulo,regra_curta from docs where id=?", (rid,)).fetchone()
+            out.append({"id": key, "titulo": titulo, "regra_curta": curta, "rank": rank, "rrf": round(s, 4),
+                        "l2": round(l2[rid], 3) if rid in l2 else None, "bm25": round(bm[rid], 1) if rid in bm else None})
+        return out
+
+def acima(r, l2max=L2_MAX, bmmax=BM25_MAX):
+    if r["l2"] is not None and r["l2"] <= l2max: return "vetor"
+    if r["bm25"] is not None and r["bm25"] <= bmmax: return "lexical"
+    return None
+
+def main():
+    a = sys.argv[1:]
+    def opt(n, d, t=str):
+        return t(a[a.index(n) + 1]) if n in a else d
+    k, l2m, bmm, sup = opt("-k", 3, int), opt("--l2", L2_MAX, float), opt("--bm25", BM25_MAX, float), opt("--superficie", "")
+    skip = {a[i + 1] for i, x in enumerate(a[:-1]) if x in ("-k", "--l2", "--bm25", "--superficie")}
+    pos = [x for x in a if not x.startswith("-") and x not in skip] if True else []
+    q = " ".join(pos) if pos else sys.stdin.read()
+    if not q.strip(): sys.exit(0)
+    t0 = time.time()
+    idx = Index(vec="--no-vec" not in a)
+    res = idx.search(q)
+    for r in res: r["acima"] = acima(r, l2m, bmm)
+    shown = res[:k] if "--all" in a else [r for r in res if r["acima"]][:k]
+    ms = round((time.time() - t0) * 1000)
+    if "--json" in a:
+        print(json.dumps({"superficie": sup, "nivel": 2 if idx.vec else 1, "ms": ms, "cartoes": shown}, ensure_ascii=False))
+    else:
+        for r in shown:
+            print(f'{r["id"]} [{r["acima"] or "abaixo"} l2={r["l2"]} bm25={r["bm25"]}] {r["regra_curta"]}  → da-index.sh show {r["id"]}')
+
+if __name__ == "__main__":
+    main()
