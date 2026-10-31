@@ -192,7 +192,10 @@ if os.environ.get("JUIZ") == "1":
         for l in open(a, encoding="utf-8"):
             if not l.strip(): continue
             c = json.loads(l); jd = os.path.join(T, "j7"); os.makedirs(jd, exist_ok=True)
-            e7 = dict(os.environ, JUIZ_REPLY_LEDGER=os.path.join(jd, "l.log"), JUIZ_REPLY_CACHE=os.path.join(jd, "c.json"))
+            r7 = os.path.join(jd, "rub.json")  # rubrica real SEM os guards: o guard grava no log real (HOME real é
+            if not os.path.exists(r7):        # preciso pra credencial do juiz) e não é o assunto do T7
+                rb = json.load(open(os.path.join(RH, ".adas/jit/juiz-reply.json"))); rb["hooks"] = []; json.dump(rb, open(r7, "w"))
+            e7 = dict(os.environ, JUIZ_REPLY_RUBRICA=r7, JUIZ_REPLY_LEDGER=os.path.join(jd, "l.log"), JUIZ_REPLY_CACHE=os.path.join(jd, "c.json"))
             pl7 = json.dumps({"hook_event_name": "PreToolUse", "tool_name": "mcp__plugin_telegram_telegram__reply",
                               "tool_input": {"chat_id": "1", "text": c["text"], "format": c.get("format", "text")}}, ensure_ascii=False)
             o = subprocess.run(["python3", os.path.join(RH, ".claude/hooks/juiz-reply.py")], input=pl7, capture_output=True, text=True, env=e7, timeout=30).stdout
