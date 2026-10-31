@@ -74,7 +74,7 @@ function reclass_targets(targets, novo, by,    k, a, i, key) {   # a ÚLTIMA rec
 # virava a Regra. Agora classifica o PARÁGRAFO inteiro (até linha em branco/heading/---) pela
 # 1a linha, e só then extrai a 1a FRASE (até .!?) do parágrafo de conteúdo real.
 function is_metadata_start(l) {
-  if (l ~ /^\*\*(Data|Status|Autor|Decidido por|Implementado por|Gatilho|Pedido do|Escopo)[:]?\*\*?/) return 1
+  if (l ~ /^\*\*(Data|Status|Autor|Decidido por|Implementado por|Gatilho|Exemplo|Pedido do|Escopo)[:]?\*\*?/) return 1
   if (l ~ /^Relacionadas:/) return 1
   if (l ~ /^`/) return 1
   if (l ~ /^>/) return 1

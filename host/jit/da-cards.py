@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """da-cards.py — compila os ledgers (DECISIONS.md vigentes + CONDUCT.md) em CARTÕES DE REGRA e indexa
-(ADAS-JIT F0, task 20261031-018). Saída em ~/.adas/jit/: cards.json, regras.db (FTS5 + vec0), emb-cache.json.
+(ADAS-JIT F0, task 20261031-018). Saída em ~/.adas/jit/: cards.json, regras.db (FTS5 + vec0, coluna escopo), emb-cache.json, grafo.json
+(sinapses DA↔DA, task 20261031-031). Cartão carrega escopo/saga/refs/filhos/exemplo[] do próprio diário.
 
 Níveis (compatível com os 3 do produto):
   1 básico: cartões + FTS5/bm25 — stdlib pura, sem Ollama.
@@ -53,6 +54,15 @@ def extract(home):
         capture_output=True, text=True).stdout, re.M))
     cards = []
     txt = open(os.path.join(home, "DECISIONS.md"), encoding="utf-8").read()
+    # mecanismo-de: DA cujo título é 'Mecanismo da DA-NNN' ou que traz '**Mecanismo da DA-NNN:**' MECANIZA a citada
+    # (DA-465 → DA-412). '**Gatilho da DA-NNN:**' só declara gatilho (já vai pro cartão da citada) — vira refs.
+    filhos = {}
+    for b in re.split(r"(?m)^(?=## DA-\d)", txt)[1:]:
+        h = re.match(r"## (DA-\d+[a-z]?) — ", b)
+        if h:
+            pais = set(re.findall(r"^## DA-\d+[a-z]? — Mecanismo da (D[AC]-\d+[a-z]?)\b", b))
+            pais |= set(re.findall(r"(?m)^\*\*Mecanismo da (D[AC]-\d+[a-z]?):\*\*", b))
+            for pai in pais - {h.group(1)}: filhos.setdefault(pai, []).append(h.group(1))
     for b in re.split(r"(?m)^(?=## DA-\d)", txt)[1:]:
         h = re.match(r"## (DA-\d+[a-z]?) — (.*)", b)
         if not h or h.group(1) not in vig: continue
@@ -60,14 +70,21 @@ def extract(home):
             m = re.search(r"\*\*" + n + r":\*\*(.*?)(?=\n\*\*|\n###|\n---|\Z)", b, re.S)
             return " ".join(m.group(1).split()) if m else ""
         regra = campo("Regra")
-        if regra: cards.append({"id": h.group(1), "titulo": h.group(2).strip(), "regra": regra, "motivo": campo("Motivo")})
+        if regra:
+            md = meta_da(b)
+            ad = re.match(r"Adendo (?:à|a|ao|às) ((?:D[AC]-\d+[a-z]?[/,\s]*(?:e\s+)?)+)", h.group(2))
+            if ad: md["refs"] = (md["refs"] + " " + ad.group(1)).strip()  # 'Adendo à DA-444/451' = refs
+            cards.append({"id": h.group(1), "titulo": h.group(2).strip(), "regra": regra, "motivo": campo("Motivo"),
+                          **md, "exemplo": exemplos(b), "filhos": filhos.get(h.group(1), [])})
     ctxt = open(os.path.join(home, "CONDUCT.md"), encoding="utf-8").read()
     for b in re.split(r"(?m)^(?=## DC-\d)", ctxt)[1:]:
         h = re.match(r"## (DC-\d+) — (.*)", b); r = re.search(r"\*\*Regra:\*\*(.*?)\n", b)
         if not h or not r: continue
         why = re.search(r"\*\*Why:\*\*(.*?)(?=\n\*\*|\n##|\Z)", b, re.S)
         cards.append({"id": h.group(1), "titulo": h.group(2).strip(), "regra": " ".join(r.group(1).split()),
-                      "motivo": " ".join(why.group(1).split()) if why else ""})
+                      "motivo": " ".join(why.group(1).split()) if why else "", "escopo": "instância", "saga": "conduta",
+                      "refs": " ".join(sorted(set(re.findall(r"\bD[AC]-\d{3}\b", b)) - {h.group(1)})),
+                      "consolida": "", "supersede": "", "exemplo": exemplos(b), "filhos": []})
     gat = gatilhos(home)
     for c in cards:
         c["gatilho"] = gat.get(c["id"], {"tipo": "tema"})
@@ -75,6 +92,73 @@ def extract(home):
         c["texto"] = f'{c["id"]} {c["titulo"]}\nRegra: {c["regra"][:700]}\nMotivo: {c["motivo"][:500]}'
         c["hash"] = sha(c["texto"])
     return cards
+
+def meta_da(b):
+    """Linha de metadados da DA (`escopo: …` · `saga: …` · `refs: …`) → dict. '—' vira vazio."""
+    hdr = (b.split("\n", 2) + ["", ""])[1]
+    out = {}
+    for k in ("escopo", "saga", "refs", "consolida", "supersede"):
+        m = re.search(r"`" + k + r":\s*([^`]*)`", hdr)
+        v = m.group(1).strip() if m else ""
+        out[k] = "" if v in ("—", "-") else v
+    return out
+
+def exemplos(b):
+    """'**Exemplo:** …' (uma ou mais linhas no bloco) → lista de textos — a violação concreta que a regra pega."""
+    return [" ".join(m.split()) for m in re.findall(r"(?m)^\*\*Exemplo:\*\*(.*?)(?=\n\*\*|\n###|\n---|\n## |\Z)", b, re.S) if m.strip()]
+
+def ids_de(s):
+    """'DA-163–167, DC-020' → ['DA-163', …, 'DA-167', 'DC-020'] (faixa expandida, máx 30)."""
+    out, s = [], s or ""
+    while re.search(r"(D[AC])-(\d+)/(\d+)", s):  # 'DA-444/451' = DA-444 e DA-451
+        s = re.sub(r"(D[AC])-(\d+)/(\d+)", r"\1-\2 \1-\3", s)
+    for pre, a, b in re.findall(r"\b(D[AC])-(\d+)[a-z]?(?:\s*[–-]\s*(?:D[AC]-)?(\d+))?", s):
+        lo, hi = int(a), int(b) if b else int(a)
+        out += [f"{pre}-{i:03d}" for i in range(lo, min(hi, lo + 30) + 1)] if hi >= lo else [f"{pre}-{int(a):03d}"]
+    return out
+
+def cosseno():
+    """A MESMA aresta semântica do cérebro: cosine() do brain-linker.py (instância). Produto sem o cérebro → igual, local."""
+    try:
+        import importlib.util
+        sp = importlib.util.spec_from_file_location("brain_linker", os.path.join(HOME, "claude-tg-tmux/scripts/brain/brain-linker.py"))
+        m = importlib.util.module_from_spec(sp); sp.loader.exec_module(m)
+        return m.cosine
+    except Exception:
+        import math
+        return lambda a, b: (sum(x * y for x, y in zip(a, b)) / ((math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))) or 1.0))
+
+def compila_grafo(cards, out, cache):
+    """grafo.json — sinapse DA↔DA (task 20261031-029 §B.2). Explícita: refs/consolida/supersede/mecanismo-de = 1,0;
+    mesma saga = 0,3. Semântica: cosseno de cartão (mesmo critério do brain-linker: top-5 ≥ 0,80).
+    Lido por regra-jit (regra-mãe), regra-search --espalha e bus-preflight (vizinhos). Só REORDENA/ANEXA:
+    nunca cria disparo (medido: espalhamento não cruza limiar em regra de forma).
+    ponytail: cosseno O(N²) em python puro (~5 s a 273 cartões); passar pro KNN do vec0 perto de 1.000."""
+    cos = cosseno()
+    ids = {c["id"] for c in cards}; E = {}
+    def add(u, v, w, t):  # u→v guarda a direção (mecanismo-de: u = regra-mãe, v = cartão que a mecaniza)
+        if u != v and u in ids and v in ids:
+            k = (u, v) if u < v else (v, u)
+            if E.get(k, (0,))[0] < w or (t == "mecanismo-de" and E[k][1] != t): E[k] = (w, t, u, v)
+    saga = {}
+    for c in cards:
+        for fld in ("refs", "consolida", "supersede"):
+            for v in ids_de(c.get(fld)): add(c["id"], v, 1.0, fld)
+        for v in c.get("filhos") or []: add(c["id"], v, 1.0, "mecanismo-de")
+        if c.get("saga") and c["saga"] != "conduta": saga.setdefault(c["saga"], []).append(c["id"])
+    for mem in saga.values():
+        for i, u in enumerate(mem):
+            for v in mem[i + 1:]: add(u, v, 0.3, "saga")
+    vec = {c["id"]: cache[c["hash"]] for c in cards if c["hash"] in cache}
+    for u in vec:
+        top = sorted(((cos(vec[u], vec[v]), v) for v in vec if v != u), reverse=True)[:5]
+        for s, v in top:
+            if s >= 0.80: add(u, v, round(s, 3), "semântica")
+    arestas = [{"a": u, "b": v, "w": w, "tipo": t} for (w, t, u, v) in E.values()]
+    tmp = os.path.join(out, "grafo.json.tmp")
+    json.dump(arestas, open(tmp, "w"), ensure_ascii=False); os.replace(tmp, os.path.join(out, "grafo.json"))
+    print(f"grafo: {len(arestas)} arestas ({sum(e['tipo'] == 'mecanismo-de' for e in arestas)} mecanismo-de, "
+          f"{sum(e['tipo'] == 'semântica' for e in arestas)} semânticas)")
 
 def parse_gatilho(spec):
     """'forma · reply · juiz · modo=deny · pergunta="…"' → dict. Tolerante: token desconhecido é ignorado."""
@@ -126,6 +210,7 @@ def compila_juiz(cards, out):
                     "regra_curta": c["regra_curta"],
                     "conserto": g.get("conserto") or "reescreva cumprindo a Regra (ou diga explicitamente o que não conferiu).",
                     "limiar": float(gt.get("limiar", LIMIAR_PADRAO)),
+                    "limiar_aviso": float(gt["limiar_aviso"]) if gt.get("limiar_aviso") else None,  # faixa de aviso abaixo do deny
                     "modo": "deny" if g.get("modo") == "deny" and aprovado else "aviso",
                     "modo_pedido": g.get("modo", "aviso"), "replay": "aprovado" if aprovado else ("reprovado" if gt else "pendente"),
                     "fonte": g.get("fonte")})
@@ -138,7 +223,7 @@ def compila_juiz(cards, out):
 def compila_gatilhos(cards, out):
     """gatilhos.json: só cartões com gatilho declarado (≠ tema puro) — o que o regra-jit avalia por predicado
     (evento · <superfície> · quando=/re/ [salvo=/re/]) e o que o adas-jit-test.sh roda por hook= (fixtures)."""
-    gs = [{"id": c["id"], "titulo": c["titulo"], "regra_curta": c["regra_curta"], "gatilho": c["gatilho"]}
+    gs = [{"id": c["id"], "titulo": c["titulo"], "regra_curta": c["regra_curta"], "escopo": c.get("escopo", ""), "gatilho": c["gatilho"]}
           for c in cards if (c.get("gatilho") or {}).get("tipo", "tema") != "tema"]
     tmp = os.path.join(out, "gatilhos.json.tmp")
     json.dump(gs, open(tmp, "w"), ensure_ascii=False, indent=1); os.replace(tmp, os.path.join(out, "gatilhos.json"))
@@ -187,16 +272,17 @@ def main():
             print(f"embeddings novos: {len(todo)}")
         except Exception as e:
             print(f"Ollama indisponível ({e.__class__.__name__}) — índice só FTS (nível 1)"); vec_ok = False
+    compila_grafo(cards, OUT, cache)
     db_p = os.path.join(OUT, "regras.db.tmp")
     if os.path.exists(db_p): os.remove(db_p)
     db = sqlite3.connect(db_p)
     has_vec = vec_ok and load_vec(db)
-    db.execute("create table docs(id integer primary key, key text, titulo text, regra_curta text, texto text)")
+    db.execute("create table docs(id integer primary key, key text, titulo text, regra_curta text, texto text, escopo text)")
     db.execute("create virtual table docs_fts using fts5(texto, content='docs', content_rowid='id')")
     if has_vec: db.execute("create virtual table docs_vec using vec0(embedding float[768])")
     db.execute("create table meta(k text primary key, v text)")
     for i, c in enumerate(cards, 1):
-        db.execute("insert into docs values(?,?,?,?,?)", (i, c["id"], c["titulo"], c["regra_curta"], c["texto"]))
+        db.execute("insert into docs values(?,?,?,?,?,?)", (i, c["id"], c["titulo"], c["regra_curta"], c["texto"], c.get("escopo") or ""))
         db.execute("insert into docs_fts(rowid,texto) values(?,?)", (i, c["texto"]))
         if has_vec and c["hash"] in cache: db.execute("insert into docs_vec(rowid,embedding) values(?,?)", (i, f32(cache[c["hash"]])))
     db.executemany("insert into meta values(?,?)", [("n", str(len(cards))), ("vec", "1" if has_vec else "0"), ("modelo", MODEL)])

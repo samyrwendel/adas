@@ -2,7 +2,8 @@
 """regra-search — consulta o índice de cartões de regra (ADAS-JIT F0, task 20261031-018).
 
   regra-search "<payload da ação>" [--superficie prompt|reply|edit|bash|bus] [-k 3] [--json]
-               [--l2 0.65] [--bm25 -25] [--no-vec] [--all]
+               [--l2 0.65] [--bm25 -25] [--no-vec] [--all] [--cwd DIR] [--espalha]
+  --cwd: só cartões do escopo do diretório (rotas.conf). --espalha: reordena pelo grafo.json (sinapses).
 
 Híbrido: vetor (L2, nomic-embed-text via Ollama) + lexical (bm25 FTS5), fusão RRF. O RRF só ORDENA; quem decide
 mostrar é o LIMIAR: l2 <= --l2  OU  bm25 <= --bm25 (RRF não discrimina: ~0,032 em positivo e em ruído).
@@ -11,7 +12,7 @@ Degrada sem aviso de erro: sem sqlite-vec/Ollama cai no nível 1 (só bm25). Sa�
 import json, os, re, sqlite3, struct, sys, time, urllib.request
 
 HOME = os.path.expanduser("~")
-D = os.path.join(HOME, ".adas", "jit")
+D = os.environ.get("ADAS_JIT_DIR") or os.path.join(HOME, ".adas", "jit")
 OLL = os.environ.get("ADAS_OLLAMA", "http://127.0.0.1:11434/api/embed")
 MODEL = os.environ.get("ADAS_EMBED_MODEL", "nomic-embed-text")
 L2_MAX, BM25_MAX = 0.65, -25.0
@@ -23,6 +24,8 @@ class Index:
     def __init__(self, path=None, vec=True):
         self.db = sqlite3.connect(path or os.path.join(D, "regras.db"))
         self.vec = False
+        self.vec_erro = None  # nome da exceção quando o embed falha — "nivel 2" sozinho mentia (task 029 §A.2 #3)
+        self.tem_escopo = any(r[1] == "escopo" for r in self.db.execute("pragma table_info(docs)"))
         if vec and self.db.execute("select v from meta where k='vec'").fetchone()[0] == "1":
             try:
                 sys.path.insert(0, D); import importlib.util  # noqa
@@ -51,8 +54,8 @@ class Index:
                 qv = qvec or self.embed(q)
                 for rid, d in self.db.execute("select rowid, distance from docs_vec where embedding match ? and k=? order by distance", (f32(qv), n)):
                     l2[rid] = d
-            except Exception:
-                pass  # Ollama fora: nível 1
+            except Exception as e:
+                self.vec_erro = type(e).__name__  # Ollama fora/lento: nível 1 nesta consulta
         fq = self.fts_q(q)
         if fq:
             try:
@@ -65,10 +68,66 @@ class Index:
             for rank, rid in enumerate(lst, 1): sc[rid] = sc.get(rid, 0) + 1 / (60 + rank)
         out = []
         for rank, (rid, s) in enumerate(sorted(sc.items(), key=lambda x: -x[1]), 1):
-            key, titulo, curta = self.db.execute("select key,titulo,regra_curta from docs where id=?", (rid,)).fetchone()
-            out.append({"id": key, "titulo": titulo, "regra_curta": curta, "rank": rank, "rrf": round(s, 4),
+            key, titulo, curta, esc = self.db.execute("select key,titulo,regra_curta,%s from docs where id=?"
+                                                      % ("escopo" if self.tem_escopo else "''"), (rid,)).fetchone()
+            out.append({"id": key, "titulo": titulo, "regra_curta": curta, "escopo": esc or "", "rank": rank, "rrf": round(s, 4),
                         "l2": round(l2[rid], 3) if rid in l2 else None, "bm25": round(bm[rid], 1) if rid in bm else None})
         return out
+
+def escopos(cwd, home=HOME):
+    """Escopos visíveis no cwd — MESMO contrato do adas_da_rotas (adas-lib.sh): prefixo mais longo do
+    ~/.adas/rotas.conf vence; sem rota = produto,instância. DA projeto/* só aparece no cwd do projeto
+    (task 20261031-029 §A.2 #2: 40 DAs projeto/* vazavam pro hook da instância)."""
+    best, blen = "produto,instância", -1
+    try:
+        for l in open(os.path.join(home, ".adas", "rotas.conf"), encoding="utf-8"):
+            if "|" not in l or l.lstrip().startswith("#"): continue
+            pre, esc = l.rstrip("\n").split("|", 1)
+            if (cwd == pre or (cwd or "").startswith(pre.rstrip("/") + "/")) and len(pre) > blen: best, blen = esc, len(pre)
+    except OSError:
+        pass
+    return {e.strip() for e in best.split(",") if e.strip()}
+
+def no_escopo(card_escopo, esc):
+    """Cartão sem escopo declarado passa (fail-open); com escopo, precisa cruzar o conjunto do cwd."""
+    toks = {t.strip() for t in (card_escopo or "").split(",") if t.strip()}
+    return not toks or bool(toks & esc)
+
+def grafo(d=None):
+    try:
+        return json.load(open(os.path.join(d or D, "grafo.json")))
+    except Exception:
+        return []
+
+def ativacao(r):
+    """a0 da recuperação híbrida (task 029 §B.2): vetor (0,80−L2)/0,30, léxico −bm25/40, clip 0–1."""
+    av = max(0.0, min(1.0, (0.80 - r["l2"]) / 0.30)) if r.get("l2") is not None else 0.0
+    al = max(0.0, min(1.0, -r["bm25"] / 40.0)) if r.get("bm25") is not None else 0.0
+    return max(av, al)
+
+def espalha(a0, arestas, beta=0.7, saltos=2):
+    """Ativação por espalhamento no grafo.json: a1[v] = max(a0[v], a0[u]·w·β^salto). MAX, não soma — hub não
+    infla (DA-376 tem grau ~50). Só REORDENA a recuperação; quem dispara continua sendo o limiar de cada motor."""
+    adj = {}
+    for e in arestas:
+        adj.setdefault(e["a"], []).append((e["b"], e["w"])); adj.setdefault(e["b"], []).append((e["a"], e["w"]))
+    a = dict(a0)
+    for h in range(saltos):
+        nxt = dict(a)
+        for u, au in a.items():
+            for v, w in adj.get(u, ()):
+                c = au * w * beta ** (h + 1)
+                if c > nxt.get(v, 0.0): nxt[v] = c
+        a = nxt
+    return a
+
+def regra_mae(ids, arestas):
+    """Cartão-MECANISMO mostrado → a regra que ele mecaniza (aresta mecanismo-de, a = mãe). Determinístico.
+    Adendo em lote (um cartão mecanizando >2 regras, ex. DA-376) não conta: aí não há UMA mãe."""
+    maes = {}
+    for e in arestas:
+        if e["tipo"] == "mecanismo-de": maes.setdefault(e["b"], []).append(e["a"])
+    return {i: maes[i] for i in ids if 0 < len(maes.get(i, [])) <= 2}
 
 def acima(r, l2max=L2_MAX, bmmax=BM25_MAX):
     if r["l2"] is not None and r["l2"] <= l2max: return "vetor"
@@ -80,18 +139,32 @@ def main():
     def opt(n, d, t=str):
         return t(a[a.index(n) + 1]) if n in a else d
     k, l2m, bmm, sup = opt("-k", 3, int), opt("--l2", L2_MAX, float), opt("--bm25", BM25_MAX, float), opt("--superficie", "")
-    skip = {a[i + 1] for i, x in enumerate(a[:-1]) if x in ("-k", "--l2", "--bm25", "--superficie")}
+    skip = {a[i + 1] for i, x in enumerate(a[:-1]) if x in ("-k", "--l2", "--bm25", "--superficie", "--cwd")}
     pos = [x for x in a if not x.startswith("-") and x not in skip] if True else []
     q = " ".join(pos) if pos else sys.stdin.read()
     if not q.strip(): sys.exit(0)
     t0 = time.time()
     idx = Index(vec="--no-vec" not in a)
-    res = idx.search(q)
+    res = idx.search(q, n=40 if "--espalha" in a else 15)
+    if "--cwd" in a:
+        esc = escopos(opt("--cwd", ""))
+        res = [r for r in res if no_escopo(r.get("escopo"), esc)]
     for r in res: r["acima"] = acima(r, l2m, bmm)
+    if "--espalha" in a:  # reordena por a1; vizinho que não veio na busca entra abaixo do limiar (nunca dispara sozinho)
+        a1 = espalha({r["id"]: ativacao(r) for r in res}, grafo())
+        por = {r["id"] for r in res}
+        for key in [k for k in a1 if k not in por and a1[k] > 0]:
+            row = idx.db.execute("select titulo,regra_curta,%s from docs where key=?" % ("escopo" if idx.tem_escopo else "''"), (key,)).fetchone()
+            if row and ("--cwd" not in a or no_escopo(row[2], esc)):
+                res.append({"id": key, "titulo": row[0], "regra_curta": row[1], "escopo": row[2] or "", "l2": None, "bm25": None,
+                            "acima": None, "via": "grafo"})
+        for r in res: r["a1"] = round(a1.get(r["id"], 0.0), 3)
+        res = sorted(res, key=lambda r: -r["a1"])
     shown = res[:k] if "--all" in a else [r for r in res if r["acima"]][:k]
     ms = round((time.time() - t0) * 1000)
     if "--json" in a:
-        print(json.dumps({"superficie": sup, "nivel": 2 if idx.vec else 1, "ms": ms, "cartoes": shown}, ensure_ascii=False))
+        print(json.dumps({"superficie": sup, "nivel": 2 if idx.vec and not idx.vec_erro else 1,
+                          "vetor": idx.vec_erro or ("ok" if idx.vec else "off"), "ms": ms, "cartoes": shown}, ensure_ascii=False))
     else:
         for r in shown:
             print(f'{r["id"]} [{r["acima"] or "abaixo"} l2={r["l2"]} bm25={r["bm25"]}] {r["regra_curta"]}  → da-index.sh show {r["id"]}')

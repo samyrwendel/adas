@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """jit-replay.py — F0: reproduz a tabela do §3 (queries.json) e repete o limiar sobre os replies REAIS do
 transcript do mainbot. Só leitura; nada de hook. Saída: ~/.adas/jit/replay.json.
-Uso: jit-replay.py queries <queries.json> | replies <transcript.jsonl> [--lim N] [--skip N]"""
+Uso: jit-replay.py queries <queries.json> | replies <transcript.jsonl> [--lim N] [--skip N]
+     jit-replay.py espalha <queries.json> [--cwd DIR]   (sinapses: rank antes/depois do espalhamento → replay-espalha.json)"""
 import glob, importlib.util, json, os, statistics, sys, time, urllib.request
 
 D = os.path.dirname(os.path.abspath(__file__))
@@ -35,6 +36,27 @@ def queries(path):
         print(f'- {label[:46]:46s} rank {ranks} | l2 {out[-1]["l2_top1"]} | bm25 {out[-1]["bm25_top1"]} | acima {ac}')
     return out
 
+def espalha(path, cwd):
+    """Sinapses B0 (task 20261031-031): rank do esperado ANTES (a0, recuperação híbrida) e DEPOIS (a1, espalhamento
+    no grafo.json), com o filtro de escopo do cwd. Negativo (esperado vazio): máx a1 = teto de ruído."""
+    esc, g, out = rs.escopos(cwd), rs.grafo(), []
+    def rank(a, e):
+        o = [k for k, _ in sorted(a.items(), key=lambda x: -x[1])]
+        return o.index(e) + 1 if e in o else f">{len(o)}"
+    for label, q, exp in json.load(open(path)):
+        res = [r for r in idx.search(q, n=40) if rs.no_escopo(r.get("escopo"), esc)]
+        a0 = {r["id"]: rs.ativacao(r) for r in res}
+        a1 = rs.espalha(a0, g)
+        a1 = {k: v for k, v in a1.items() if k in a0 or rs.no_escopo(escopo_de.get(k), esc)}
+        row = {"label": label, "esperado": exp, "antes": {e: rank(a0, e) for e in exp}, "depois": {e: rank(a1, e) for e in exp},
+               "max_a0": round(max(a0.values(), default=0), 3), "max_a1": round(max(a1.values(), default=0), 3),
+               "top3_depois": [k for k, _ in sorted(a1.items(), key=lambda x: -x[1])[:3]]}
+        out.append(row)
+        print(f'- {label[:46]:46s} {row["antes"]} → {row["depois"]}  máx a1 {row["max_a1"]}  top3 {row["top3_depois"]}')
+    neg = [r["max_a1"] for r in out if not r["esperado"]]
+    print("teto de ruído (máx a1 nos negativos):", max(neg, default=None))
+    return out
+
 def replies(path, lim, skip):
     items = []
     for l in open(path):
@@ -56,7 +78,11 @@ def replies(path, lim, skip):
 
 if __name__ == "__main__":
     a = sys.argv[1:]
-    if a[0] == "queries":
+    if a[0] == "espalha":
+        cwd = a[a.index("--cwd") + 1] if "--cwd" in a else os.path.expanduser("~")
+        escopo_de = {k: e for k, e in idx.db.execute("select key, %s from docs" % ("escopo" if idx.tem_escopo else "''"))}
+        json.dump(espalha(a[1], cwd), open(os.path.join(rs.D, "replay-espalha.json"), "w"), ensure_ascii=False, indent=1)
+    elif a[0] == "queries":
         json.dump(queries(a[1]), open(os.path.join(D, "replay-queries.json"), "w"), ensure_ascii=False, indent=1)
     else:
         lim = int(a[a.index("--lim") + 1]) if "--lim" in a else 10**6

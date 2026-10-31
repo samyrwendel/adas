@@ -21,7 +21,11 @@ Motores, nesta ordem (k≤3 no total, silêncio é o default):
         edit:   L2 ≤ 0,60; ledgers (DECISIONS*/CONDUCT) ficam só com o motor de evento
 Saída: additionalContext (nunca bloqueia; deny é papel dos guards `hook=`). Cartão cujo id já está no
 payload é omitido (o agente já está nele); cartão já mostrado na sessão nos últimos 60 min também.
-Ledger: ~/.claude/bus/regra-jit.log (JSONL: ts, sid, superfície, motor, cartões com l2/bm25, decisão, ms).
+Escopo: no motor de TEMA, cartão `projeto/*` só aparece no cwd do projeto (rotas.conf, contrato do
+adas_da_rotas); o motor de EVENTO não filtra (o predicado de caminho/comando já é o escopo).
+Regra-mãe: cartão-mecanismo mostrado traz a regra que ele mecaniza (grafo.json, aresta mecanismo-de).
+Ledger: ~/.claude/bus/regra-jit.log (JSONL: ts, sid, superfície, nível, vetor ok|off|<erro>, escopo, cartões
+com l2/bm25, decisão, ms). Par (PostToolBatch): leu_da + adesao {id: aplicou|ignorou|n/a} pelo `viola=/re/`.
 Env: ADAS_JIT=off (desliga) | log (sombra: grava o ledger, não injeta). Fail-open em tudo."""
 import hashlib, json, os, re, subprocess, sys, time
 
@@ -105,6 +109,18 @@ def rx(v):
     return re.compile(v, re.I) if v else None
 
 
+_RS = None
+def rs():
+    """regra-search como módulo (Index, escopos, grafo, regra_mae) — carregado uma vez por hook."""
+    global _RS
+    if _RS is None:
+        import importlib.machinery, importlib.util
+        ld = importlib.machinery.SourceFileLoader("regra_search", os.path.join(D, "regra-search"))
+        _RS = importlib.util.module_from_spec(importlib.util.spec_from_loader("regra_search", ld))
+        ld.exec_module(_RS)
+    return _RS
+
+
 def motor_evento(sup, alvo):
     try:
         gs = json.load(open(os.path.join(D, "gatilhos.json")))
@@ -113,6 +129,8 @@ def motor_evento(sup, alvo):
     out = []
     for g in gs:
         gt = g.get("gatilho") or {}
+        # sem filtro de escopo aqui: o predicado (caminho/comando) JÁ é o escopo — a DA-401 (projeto) governa a edição
+        # de ~/claude-tg-tmux/skills/quantfury feita do cwd da instância. O filtro vale pro motor de TEMA.
         if gt.get("superficie") != sup or not gt.get("quando") or gt.get("hook"):
             continue
         try:
@@ -125,19 +143,16 @@ def motor_evento(sup, alvo):
     return out
 
 
-def motor_tema(sup, texto, alvo):
+def motor_tema(sup, texto, alvo, esc):
+    """→ (cartões, nível, vetor). vetor = ok | off | <Exceção> — o embed que morreu sob carga fica no ledger."""
     lim = LIMIAR[sup]
     if sup == "edit" and LEDGERS.search(alvo):
-        return [], 0
+        return [], 0, "-"
     if sup == "bash" and (os.environ.get("ADAS_JIT_BASH_VEC") != "1" or len(texto.split()) <= lim.get("min_palavras", 0)):
-        return [], 0
+        return [], 0, "-"
     os.environ.setdefault("ADAS_EMBED_TIMEOUT", "1.5")
-    import importlib.machinery, importlib.util
-    ld = importlib.machinery.SourceFileLoader("regra_search", os.path.join(D, "regra-search"))
-    m = importlib.util.module_from_spec(importlib.util.spec_from_loader("regra_search", ld))
-    ld.exec_module(m)
-    idx = m.Index(vec=True)
-    res = idx.search(texto, n=8)
+    idx = rs().Index(path=os.path.join(D, "regras.db"), vec=True)
+    res = [r for r in idx.search(texto, n=12) if rs().no_escopo(r.get("escopo"), esc)][:8]
     bm_ok = "bm25" in lim and len(texto) < lim.get("bm25_max_chars", 0)
     out = []
     for r in res:
@@ -148,7 +163,8 @@ def motor_tema(sup, texto, alvo):
             via = "lexical"
         if via:
             out.append({"id": r["id"], "regra_curta": r["regra_curta"], "motor": via, "l2": r["l2"], "bm25": r["bm25"]})
-    return out, (2 if idx.vec else 1)
+    erro = getattr(idx, "vec_erro", None)
+    return out, (2 if idx.vec and not erro else 1), (erro or ("ok" if idx.vec else "off"))
 
 
 def vistos(sid):
@@ -191,8 +207,22 @@ def par(p, sid):
     lote = re.sub(r"📌 ADAS-JIT[^\"]*", "", json.dumps(p, ensure_ascii=False))  # o texto injetado não conta como leitura
     leu = [c for c in mostrado["cartoes"] if re.search(r"\b%s\b" % re.escape(c), lote)]
     ferr = sorted(set(re.findall(r'"tool_name":\s*"([^"]+)"', lote)))
+    # adesão por PREDICADO (task 029 §A.2 #4): cartão com `viola=/re/` no Gatilho → a ação seguinte casa? ignorou : aplicou.
+    # Sem viola= → n/a (menção do id não prova cumprimento). Ações = tool_input dos tool_uses do lote.
+    try:
+        gs = {g["id"]: g.get("gatilho") or {} for g in json.load(open(os.path.join(D, "gatilhos.json")))}
+    except Exception:
+        gs = {}
+    acoes = "\n".join(json.dumps(t.get("tool_input") or {}, ensure_ascii=False) for t in p.get("tool_uses") or [])
+    adesao = {}
+    for c in mostrado["cartoes"]:
+        try:
+            v = rx((gs.get(c) or {}).get("viola"))
+        except re.error:
+            v = None
+        adesao[c] = ("ignorou" if v.search(acoes) else "aplicou") if v else "n/a"
     ledger({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "sid": sid, "superficie": "par",
-            "mostrado_em": mostrado.get("superficie"), "cartoes": mostrado["cartoes"], "leu_da": leu,
+            "mostrado_em": mostrado.get("superficie"), "cartoes": mostrado["cartoes"], "leu_da": leu, "adesao": adesao,
             "ferramentas": ferr[:6], "atraso_s": round(time.time() - mostrado.get("t", time.time()), 1)})
 
 
@@ -233,13 +263,14 @@ def main():
         return par(p, sid)
     if not sup or not texto.strip() or not os.path.exists(os.path.join(D, "regras.db")):
         return
+    esc = rs().escopos(p.get("cwd") or os.getcwd(), HOME)
     cards = motor_evento(sup, alvo)
-    nivel = 0
+    nivel, vetor = 0, "-"
     if len(cards) < K:
         try:
-            tema, nivel = motor_tema(sup, texto, alvo)
-        except Exception:
-            tema = []
+            tema, nivel, vetor = motor_tema(sup, texto, alvo, esc)
+        except Exception as e:
+            tema, vetor = [], "erro:" + type(e).__name__
         cards += [c for c in tema if c["id"] not in {x["id"] for x in cards}]
     vp, vd = vistos(sid)
     now = time.time()
@@ -256,12 +287,12 @@ def main():
     decisao = ("inline" if modo != "log" else "sombra") if mostrar else "silencio"
     ms = round((time.time() - t0) * 1000)
     if cards or sup == "prompt":
-        ledger({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "sid": sid, "superficie": sup, "nivel": nivel,
-                "decisao": decisao, "ms": ms, "payload": red(texto),
+        ledger({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "sid": sid, "superficie": sup, "nivel": nivel, "vetor": vetor,
+                "escopo": ",".join(sorted(esc)), "decisao": decisao, "ms": ms, "payload": red(texto),
                 "cartoes": [{k: c.get(k) for k in ("id", "motor", "l2", "bm25")} for c in mostrar],
                 "omitidos": omitidos})
     elif ms > 300:
-        ledger({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "sid": sid, "superficie": sup, "nivel": nivel,
+        ledger({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "sid": sid, "superficie": sup, "nivel": nivel, "vetor": vetor,
                 "decisao": "silencio", "ms": ms})
     if not mostrar or modo == "log":
         return
@@ -280,8 +311,11 @@ def main():
     except OSError:
         pass
     linhas = ["📌 ADAS-JIT — regra(s) do diário que tocam ESTA ação (não bloqueia; confira antes de seguir):"]
+    mae = rs().regra_mae({c["id"] for c in mostrar}, rs().grafo(D))
     for c in mostrar:
         l = f'• {c["id"]} — {c["regra_curta"]}'
+        if mae.get(c["id"]):  # cartão-mecanismo → a regra que ele mecaniza (DA-465 → DA-412), sinapse determinística
+            l += f'  (regra-mãe: {", ".join(mae[c["id"]])})'
         if c.get("conserto"):
             l += f'  ⇒ {c["conserto"]}'
         linhas.append(l + f'  → bash ~/scripts/da-index.sh show {c["id"]} ~')
