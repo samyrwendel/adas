@@ -45,6 +45,25 @@ traz `cwd` de verdade (chaves reais: `session_id, model, provider, platform, pro
 > `~/scripts/da-index.sh`) e **não chegam** ao Hermes por este plugin. Se o Hermes precisa de regras
 > próprias da instância, mantenha um `DECISIONS.md` local e injete-o com um hook `pre_llm_call` à parte.
 
+## ADAS-JIT no Hermes (regra no ato + juiz)
+O plugin injeta o núcleo; as regras do diário chegam por shell hook, sem plugin Python:
+```yaml
+hooks:
+  pre_llm_call:
+    - command: /opt/data/adas/host/jit/hermes-jit.py   # caminho DENTRO do container
+      timeout: 15
+  post_llm_call:
+    - command: /opt/data/adas/host/jit/hermes-jit.py
+      timeout: 15
+hooks_auto_accept: true
+```
+Lê `$HERMES_HOME/governanca/{DECISIONS.md, padrao.md, juiz-reply.json}`:
+- regras próprias (DH-NNN) entram inteiras;
+- do padrão entram até 3 regras escolhidas pela mensagem (FTS5, limiar `ADAS_JIT_BM25`);
+- o juiz (nível 3) lê a resposta depois de sair e deixa aviso para o próximo turno.
+
+Ledger em `governanca/jit/jit.log`. Nível em `ADAS_JIT_NIVEL`: sem Ollama no container, o vetor não roda.
+
 ## Testar que os ganchos disparam
 
 **Provado neste repo**, sem precisar de uma instância Hermes real (o `ctx` é um mock mínimo que só

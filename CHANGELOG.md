@@ -3,6 +3,15 @@
 Cada versão diz o que muda para quem usa, não a lista de commits. A primeira linha `Resumo:` de cada
 versão é a que aparece no aviso de versão nova da sessão.
 
+## 1.1.0 — 2026-10-31
+
+Resumo: ADAS-JIT chega ao Hermes; a cada mensagem entram só as regras que tocam o assunto, e um juiz avisa quando a resposta quebra regra de forma.
+
+- **ADAS-JIT no Hermes** (`host/jit/hermes-jit.py`, shell hooks `pre_llm_call` e `post_llm_call`):
+  - as regras próprias do host entram inteiras;
+  - do padrão entram só as que tocam a mensagem (busca por palavra com limiar). Conversa comum não puxa regra.
+- **Juiz no Hermes** (nível 3). Lê a resposta depois que ela sai, porque o Hermes não tem gancho de shell antes da entrega. A violação fica no ledger e vira aviso no próximo turno. Chave: a do OpenRouter que o próprio Hermes já usa.
+
 ## 1.0.1 — 2026-10-31
 
 Resumo: o aviso de versão nova sai sempre na própria linha.
