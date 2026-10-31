@@ -196,9 +196,32 @@ def par(p, sid):
             "ferramentas": ferr[:6], "atraso_s": round(time.time() - mostrado.get("t", time.time()), 1)})
 
 
+def recompila_se_velho():
+    """Ledger mais novo que o compilado → da-cards.py desacoplado. Pega escrita por shell (da-new.sh, heredoc),
+    que o PostToolUse do Edit não vê, e hook morto no teto antes de lançar (task 20261031-030).
+    Trava de 120 s por arquivo-marcador; o da-cards.py tem flock próprio contra corrida."""
+    try:
+        alvo = os.path.getmtime(os.path.join(D, "cards.json"))
+        led = max(os.path.getmtime(os.path.join(HOME, f)) for f in ("DECISIONS.md", "CONDUCT.md")
+                  if os.path.exists(os.path.join(HOME, f)))
+    except (OSError, ValueError):
+        return
+    marca = os.path.join(D, ".recompila")
+    if led <= alvo or (os.path.exists(marca) and time.time() - os.path.getmtime(marca) < 120):
+        return
+    try:
+        open(marca, "w").close()
+        subprocess.Popen(["timeout", "300", sys.executable, os.path.join(D, "da-cards.py"), "--out", D],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+    except OSError:
+        pass
+
+
 def main():
     if os.environ.get("ADAS_JIT", "inline") == "off":
         return
+    recompila_se_velho()
     t0 = time.time()
     try:
         p = json.loads(sys.stdin.read() or "{}")

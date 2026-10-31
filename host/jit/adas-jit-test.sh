@@ -33,7 +33,10 @@ SEM_CSV="$(IFS=,; echo "${SEM[*]:-}")" T="$T" FIXDIR="$FIXDIR" JD="$JD" REAL_HOM
 import glob, json, os, subprocess, sys
 T, FIX, JD, RH = os.environ["T"], os.environ["FIXDIR"], os.environ["JD"], os.environ["REAL_HOME"]
 sem = {s for s in os.environ.get("SEM_CSV", "").split(",") if s}
-gs = {g["id"]: g["gatilho"] for g in json.load(open(os.path.join(T, "jit", "gatilhos.json"))) if g["id"] not in sem}
+gp = os.path.join(T, "jit", "gatilhos.json")
+todos = json.load(open(gp))
+json.dump([g for g in todos if g["id"] not in sem], open(gp, "w"), ensure_ascii=False)  # --sem tira também o quando= que o regra-jit lê
+gs = {g["id"]: g["gatilho"] for g in todos if g["id"] not in sem}
 H = os.path.join(T, "home")
 ok = bad = 0
 def chk(nome, cond, extra=""):
@@ -91,6 +94,18 @@ for rid, g in sorted(gs.items()):
     if g.get("hook") or g.get("quando"):
         chk(f"{rid} ({g.get('tipo')}·{g.get('superficie')}·{'hook=' + g['hook'] if g.get('hook') else 'quando'}) tem fixture", rid in com)
 
+print("── recompilação segue o diário (task 20261031-030) ──")
+rj, rh = os.path.join(T, "rc", "jit"), os.path.join(T, "rc", "home")
+os.makedirs(rj); os.makedirs(rh)
+open(os.path.join(rj, "cards.json"), "w").write("[]"); os.utime(os.path.join(rj, "cards.json"), (1, 1))
+open(os.path.join(rh, "DECISIONS.md"), "w").write("# x\n")
+env = dict(os.environ, HOME=rh, ADAS_JIT_DIR=rj, ADAS_JIT_BUS=os.path.join(rh, "bus"), ADAS_JIT="inline"); env.pop("AXON_HEADLESS", None)
+pl = json.dumps({"hook_event_name": "PreToolUse", "session_id": "rc", "tool_name": "Bash", "tool_input": {"command": "true"}})
+subprocess.run(["python3", os.path.join(JD, "regra-jit.py")], input=pl, capture_output=True, text=True, env=env, timeout=20)
+chk("diário mais novo que cards.json arma a recompilação (escrita por shell)", os.path.exists(os.path.join(rj, ".recompila")))
+os.remove(os.path.join(rj, ".recompila")); os.utime(os.path.join(rj, "cards.json"))
+subprocess.run(["python3", os.path.join(JD, "regra-jit.py")], input=pl, capture_output=True, text=True, env=env, timeout=20)
+chk("compilado em dia não recompila", not os.path.exists(os.path.join(rj, ".recompila")))
 print("── SessionStart sem corte (ADAS-JIT) ──")
 # adas_session_emit direto (o hook adas-activate.sh grava o .active da sessão — efeito colateral que o teste não pode ter)
 r = subprocess.run(["bash", "-c", f'. "{RH}/.claude/hooks/adas-lib.sh" && adas_session_emit "{RH}"'], capture_output=True, text=True, timeout=30)

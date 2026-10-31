@@ -12,7 +12,7 @@ Níveis (compatível com os 3 do produto):
 Gatilho vem de `da-index.sh gatilhos` (última linha de cada id vale; ausência = tema).
 Incremental por hash do texto indexado: DA nova = 1 embedding. Semente opcional: /tmp/senior-013/emb.json.
 Uso: da-cards.py [--home DIR] [--out DIR] [--no-vec] [--so-juiz] [--seed emb.json]"""
-import hashlib, json, os, re, sqlite3, struct, subprocess, sys, urllib.request
+import fcntl, hashlib, json, os, re, sqlite3, struct, subprocess, sys, urllib.request
 
 HOME = os.path.expanduser("~")
 OUT = os.path.join(HOME, ".adas", "jit")
@@ -153,6 +153,11 @@ def main():
     global OUT
     OUT = a[a.index("--out") + 1] if "--out" in a else OUT
     os.makedirs(OUT, exist_ok=True)
+    trava = open(os.path.join(OUT, ".compila.lock"), "w")  # hook + regra-jit podem disparar juntos
+    try:
+        fcntl.flock(trava, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        print("da-cards: outra compilação em curso — saindo"); return
     cards = extract(home)
     compila_juiz(cards, OUT)
     compila_gatilhos(cards, OUT)
