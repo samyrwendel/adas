@@ -161,6 +161,9 @@ for sid, acao, esp in (("a1", "ssh root@nanogo 'restic backup /home/degen/comcri
     chk(f"T4 DA-464 mostrado + '{acao[16:60]}…' → {esp}", ad.get("DA-464") == esp and ad.get("DA-444") == "n/a", str(ad))
 g = json.load(open(os.path.join(RH, ".adas/jit/grafo.json")))
 chk("T6 grafo.json: DA-412 é regra-mãe da DA-465 (mecanismo-de)", any(e["a"] == "DA-412" and e["b"] == "DA-465" and e["tipo"] == "mecanismo-de" for e in g))
+CL = {"refs": "explícita", "consolida": "explícita", "supersede": "explícita", "mecanismo-de": "explícita", "saga": "pertencimento", "semântica": "semântica", "adesao": "aprendida"}
+chk("T6 grafo.json: toda aresta tem classe ∈ {explícita, pertencimento, semântica, aprendida} e casa com o tipo (GLOSSARIO.md)",
+    all(e.get("classe") == CL.get(e["tipo"]) for e in g), str([e for e in g if e.get("classe") != CL.get(e["tipo"])][:2]))
 import importlib.machinery, importlib.util
 ld = importlib.machinery.SourceFileLoader("rs", os.path.join(JD, "regra-search")); rs = importlib.util.module_from_spec(importlib.util.spec_from_loader("rs", ld)); ld.exec_module(rs)
 chk("T6 cartão DA-465 mostrado → regra-mãe DA-412", rs.regra_mae({"DA-465"}, g).get("DA-465") == ["DA-412"])

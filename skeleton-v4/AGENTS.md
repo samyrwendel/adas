@@ -13,7 +13,7 @@
    stdlib? → nativo da plataforma? → dependência já instalada? → uma linha? → só então o mínimo. Pare no
    1º degrau que resolve. Os não-negociáveis (validação, erro, segurança, caminho do dinheiro testado) ficam SEMPRE.
 4. Tomou/mudou uma decisão? `bash scripts/da-new.sh <escopo> <saga> "<título>"`, preencha a DA, dobre na
-   faixa afetada e **regenere o `ADAS.md` — no mesmo commit**. Supersede, nunca apaga. **Fix aprovado que
+   faixa afetada e **regenere o `ADAS.md` — no mesmo commit**. Supersede, nunca apaga. Vocabulário: [GLOSSARIO.md](https://github.com/samyrwendel/adas/blob/main/GLOSSARIO.md). **Fix aprovado que
    representa uma CLASSE de erro** → a regra dobra na faixa que dispara no momento certo, não em doc morto.
 5. **Atalho consciente?** Marque na linha — `// adas: <teto>. <upgrade>.` — vira débito contado por
    `scripts/adas-report.sh`.

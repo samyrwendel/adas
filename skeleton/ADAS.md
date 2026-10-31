@@ -19,6 +19,7 @@
 2. **Adesão > invenção.** Se já existe token/componente/padrão/decisão, **use o que existe**.
 3. **Consolidar > reescrever · padronizar > inventar · medir antes de substituir · nunca regredir o que funciona.**
 4. Lógica pode vir de referências; **a identidade visual/de marca NUNCA**. Nada mockado/hardcoded — fonte real.
+5. Vocabulário (DA, saga, cabeça, gatilho, sinapse…): [GLOSSARIO.md](https://github.com/samyrwendel/adas/blob/main/GLOSSARIO.md).
 
 ### Escada de decisão — pare no 1º degrau que resolve *(padrão do [ponytail](https://github.com/DietrichGebert/ponytail), MIT)*
 ANTES de escrever código novo, desça a escada e **pare no primeiro degrau que já resolve** — "o melhor

@@ -7,6 +7,11 @@
 
 Nasceu no projeto **Holdge** (suíte DeFi self-custodial) e foi extraído como método reutilizável.
 
+**Vocabulário:** [`GLOSSARIO.md`](GLOSSARIO.md). Duas metáforas, cada uma na sua camada: o **carro** (faixa,
+gate, drift) descreve o ENFORCEMENT, o que mantém o agente na pista no ato; o **cérebro** (sinapse, ativação,
+consolidação) descreve a MEMÓRIA, o que ele lembra e como lembra. O ADAS-JIT é a ponte: a memória acende, o
+enforcement age. Os nomes canônicos são os simples; a analogia do cérebro é sinônimo, nunca nome de campo.
+
 ## Por que existe
 LLMs reinventam: recriam um componente que já existe, mudam uma cor canônica, fogem do escopo,
 repetem um bug já decidido. O ADAS troca "confiar que a LLM lembra" por uma **hierarquia de
@@ -40,17 +45,17 @@ ADAS.md  (PORTÁTIL: cola em qualquer LLM, sem hook/sem repo)
    +
 DECISIONS.md  (DIÁRIO EM CAMADAS — o loop de volta):
    ├─ DA-NNN         append-only, nunca some — o que foi DECIDIDO e por quê
-   ├─ NA-<saga>      DA-CABEÇA por saga — o que VALE HOJE (consolida a linhagem)
+   ├─ cabeça da saga  a DA com `consolida:` — o que VALE HOJE (NA-<saga> é a vista gerada dela, opcional)
    └─ views geradas  índice · sagas · lições · vigentes-por-escopo (regeneradas)
 ```
 Cada camada **cita e é gerada da de cima**. Por isso "auto-aprimorar" é mecânico: decisão entra como
 `DA-NNN`, dobra na faixa que afeta, regenera o portátil — **no mesmo commit**. São **três papéis
 distintos**, não um: **constituição/faixa = COMO se trabalha**; **`DA-NNN` = O QUE foi decidido e por quê**
-(histórico imutável); **`NA-<saga>` = O QUE vale hoje** — a cabeça da saga, que se lê sem varrer o histórico.
+(histórico imutável); **a cabeça da saga (`consolida:`) = O QUE vale hoje** — se lê sem varrer o histórico.
 
 **Aposentar decisão são DOIS mecanismos, não um.** *Supersede* é substituição **pontual e declarada** de
 uma decisão específica — raro por natureza (medido nesta instalação: 11 de 235 decisões aposentadas por supersede — 4 íntegras, 7 parciais). O que resolve **acúmulo** é a
-**consolidação na cabeça da saga**: a `NA-<saga>` reescreve o que vale e absorve a linhagem **sem apagar
+**consolidação na cabeça da saga**: a DA-cabeça (`consolida:`) reescreve o que vale e absorve a linhagem **sem apagar
 nenhuma** decisão — medido, **28 cabeças cobrindo ~150 decisões**, e a **leitura obrigatória caiu de ~200
 para ~78**. Nada some; muda só o que você **precisa** ler pra saber a regra atual.
 

@@ -38,6 +38,8 @@ Depois, **três passos que o plugin sozinho não faz** (validados num Hermes rea
 Config: `ADAS_HOME` (env) ou `~/adas` (default) precisa apontar pro clone do repo `adas`. `session_info`
 traz `cwd` de verdade (chaves reais: `session_id, model, provider, platform, profile_name, cwd`).
 
+> Vocabulário (saga, cabeça, gatilho, sinapse): [`GLOSSARIO.md`](../../GLOSSARIO.md).
+>
 > O plugin injeta **só o núcleo** do `ADAS.md`. O índice de decisões (`DECISIONS.md`) e a camada 0 de sagas
 > do `adas-lib.sh` (`adas_da_layer0`) assumem o layout do host Claude Code (`~/DECISIONS.md`,
 > `~/scripts/da-index.sh`) e **não chegam** ao Hermes por este plugin. Se o Hermes precisa de regras

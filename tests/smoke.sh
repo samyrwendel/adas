@@ -661,6 +661,20 @@ grep -q '^\[ADAS-CORTE\] licoes' "$T/frt_cut_licoes.txt" \
 grep -q 'membros completos.*ADAS-CORTE' "$T/frt_cut_licoes.txt" \
   && bad "rodapé colado no ponteiro [ADAS-CORTE] de lições" || ok "rodapé não cola no ponteiro de corte de lições"
 
+echo "== vocabulário (GLOSSARIO.md, DA de vocabulário)"
+[ -f "$ROOT/GLOSSARIO.md" ] && ok "GLOSSARIO.md existe" || bad "GLOSSARIO.md ausente"
+grep -q 'GLOSSARIO.md' "$ROOT/README.md" && ok "README cita GLOSSARIO.md" || bad "README não cita GLOSSARIO.md"
+grep -qi 'narrativa' "$ROOT/README.md" && bad "README ainda usa 'narrativa' (aposentada: é 'cabeça da saga')" || ok "README sem 'narrativa'"
+gl_falta=""
+for t in DA DC saga cabeça rodada escopo faixa cartão gatilho juiz regra-mãe adesão nota "mapa de conteúdo" destilação grafo \
+         sinapse ativação espalhamento limiar consolidação episódio plasticidade poda; do
+  grep -q -- "$t" "$ROOT/GLOSSARIO.md" || gl_falta="$gl_falta $t"
+done
+[ -z "$gl_falta" ] && ok "glossário cobre os 16 canônicos + as analogias" || bad "glossário sem:$gl_falta"
+gl_cl=$(python3 -c "import re;s=open('$ROOT/host/jit/da-cards.py').read();print(' '.join(sorted(set(re.findall(r'\"(explícita|pertencimento|semântica|aprendida)\"', s)))))")
+gl_cf=""; for c in $gl_cl; do grep -q -- "\*\*$c\*\*" "$ROOT/GLOSSARIO.md" || gl_cf="$gl_cf $c"; done
+[ -n "$gl_cl" ] && [ -z "$gl_cf" ] && ok "toda classe de sinapse do da-cards.py está no glossário ($gl_cl)" || bad "classe sem glossário:$gl_cf (achadas: $gl_cl)"
+
 echo
 echo "RESULTADO: $pass ok, $fail falha(s)"
 [ "$fail" = 0 ]

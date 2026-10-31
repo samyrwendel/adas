@@ -128,6 +128,10 @@ def cosseno():
         import math
         return lambda a, b: (sum(x * y for x, y in zip(a, b)) / ((math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))) or 1.0))
 
+# espécie da sinapse (GLOSSARIO.md): `tipo` diz a ORIGEM da aresta, `classe` a espécie. `aprendida` nasce com o B1.
+CLASSE = {"refs": "explícita", "consolida": "explícita", "supersede": "explícita", "mecanismo-de": "explícita",
+          "saga": "pertencimento", "semântica": "semântica", "adesao": "aprendida"}
+
 def compila_grafo(cards, out, cache):
     """grafo.json — sinapse DA↔DA (task 20261031-029 §B.2). Explícita: refs/consolida/supersede/mecanismo-de = 1,0;
     mesma saga = 0,3. Semântica: cosseno de cartão (mesmo critério do brain-linker: top-5 ≥ 0,80).
@@ -154,7 +158,7 @@ def compila_grafo(cards, out, cache):
         top = sorted(((cos(vec[u], vec[v]), v) for v in vec if v != u), reverse=True)[:5]
         for s, v in top:
             if s >= 0.80: add(u, v, round(s, 3), "semântica")
-    arestas = [{"a": u, "b": v, "w": w, "tipo": t} for (w, t, u, v) in E.values()]
+    arestas = [{"a": u, "b": v, "w": w, "tipo": t, "classe": CLASSE[t]} for (w, t, u, v) in E.values()]
     tmp = os.path.join(out, "grafo.json.tmp")
     json.dump(arestas, open(tmp, "w"), ensure_ascii=False); os.replace(tmp, os.path.join(out, "grafo.json"))
     print(f"grafo: {len(arestas)} arestas ({sum(e['tipo'] == 'mecanismo-de' for e in arestas)} mecanismo-de, "

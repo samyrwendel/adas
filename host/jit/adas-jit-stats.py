@@ -59,6 +59,13 @@ print("cartões mais mostrados: " + (", ".join(f"{k}×{v}" for k, v in cart.most
 print("adesão (par cartão × ação seguinte): " + (" · ".join(f"{k} {v}" for k, v in ades.most_common()) or "sem par")
       + " — 'ignorou' só existe em cartão com viola=")
 
+try:  # sinapses por espécie (GLOSSARIO.md): explícita · pertencimento · semântica · aprendida
+    gr = json.load(open(os.path.join(os.path.expanduser("~"), ".adas", "jit", "grafo.json")))
+    cl = collections.Counter(e.get("classe", "?") for e in gr)
+    print(f"sinapses (grafo.json): {len(gr)} · " + " · ".join(f"{k} {v}" for k, v in cl.most_common()))
+except (OSError, ValueError):
+    print("sinapses: grafo.json indisponível")
+
 jd, jms, custo = collections.Counter(), [], 0.0
 for d in linhas(os.path.join(BUS, "juiz-reply.log")):
     jd[d.get("decisao", "?")] += 1
