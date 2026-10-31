@@ -12,6 +12,7 @@
 #   da-index.sh list  [--escopo a,b] [--saga slug] [--vigentes] [--desde AAAA-MM-DD] [dir]
 #   da-index.sh show DA-NNN [dir] | show --saga slug [dir] | show --anexos DA-NNN [dir]
 #   da-index.sh export-saga slug [dir]
+#   da-index.sh gatilhos [dir]                         # TSV id⇥gatilho⇥fonte (ADAS-JIT, DA-468)
 # [dir] = onde vivem DECISIONS.md e os gerados (default: $HOME — NUNCA o cwd; DA-196).
 #
 # Determinístico: mesmo DECISIONS.md + membros.tsv ⇒ mesmos gerados byte a byte.
@@ -744,6 +745,7 @@ usage() {
   echo "     da-index.sh list [--escopo a,b] [--saga slug] [--vigentes] [--desde AAAA-MM-DD] [dir]"
   echo "     da-index.sh show DA-NNN|--saga slug|--anexos DA-NNN [dir]"
   echo "     da-index.sh export-saga slug [dir]"
+  echo "     da-index.sh gatilhos [dir]"
   exit 2
 }
 
@@ -933,6 +935,26 @@ cmd_export_saga() {
   } | sed -E 's/DA-[0-9]+[a-z]?[–-]DA-[0-9]+[a-z]?/[decisões internas]/g; s/DA-[0-9]+[a-z]?/[decisão interna]/g; s/  +/ /g'
 }
 
+# gatilhos: o QUANDO de cada regra (ADAS-JIT, DA-468). Lê `**Gatilho:** <spec>` dentro do bloco da
+# própria DA (DECISIONS.md) ou DC (CONDUCT.md) e o adendo `**Gatilho da DA-NNN:**`/`**Gatilho da DC-NNN:**`
+# de qualquer DA posterior (molde dos "Mecanismo da DA-NNN", append-only). Sem linha = sem saída (o
+# consumidor trata como `tema`). Ordem = ordem no diário; vale a ÚLTIMA linha de cada id.
+cmd_gatilhos() {
+  local dir="${1:-$DA_DIR_DEFAULT}"
+  [ -f "$dir/DECISIONS.md" ] || { echo "✗ da-index: $dir/DECISIONS.md não existe"; exit 2; }
+  local f
+  for f in "$dir/DECISIONS.md" "$dir/CONDUCT.md"; do
+    [ -f "$f" ] || continue
+    awk -v OFS='\t' '
+      /^## D[AC]-[0-9]+/ { match($0, /D[AC]-[0-9]+[a-z]?/); cur = substr($0, RSTART, RLENGTH); next }
+      match($0, /^\*\*Gatilho da D[AC]-[0-9]+[a-z]?:\*\*[ \t]*/) {
+        spec = substr($0, RLENGTH+1); h = substr($0, 1, RLENGTH); match(h, /D[AC]-[0-9]+[a-z]?/)
+        if (spec != "") print substr(h, RSTART, RLENGTH), spec, cur; next }
+      cur != "" && match($0, /^\*\*Gatilho:\*\*[ \t]*/) { spec = substr($0, RLENGTH+1); if (spec != "") print cur, spec, cur }
+    ' "$f"
+  done
+}
+
 MODE="${1:-}"; shift || true
 case "$MODE" in
   update) cmd_update "$@" ;;
@@ -941,5 +963,6 @@ case "$MODE" in
   list) cmd_list "$@" ;;
   show) cmd_show "$@" ;;
   export-saga) cmd_export_saga "$@" ;;
+  gatilhos) cmd_gatilhos "$@" ;;
   *) usage ;;
 esac
