@@ -12,10 +12,12 @@
 Níveis (ADAS_JIT_NIVEL, DA-468): 1 = próprias + busca por palavra; 2 = idem (vetor não roda aqui: sem Ollama no
 container; o nível 2 se comporta como 1); 3 = + juiz. Default 3. Fail-open em tudo: erro = sem saída, exit 0.
 Arquivos em ADAS_GOV_DIR (default $HERMES_HOME/governanca): DECISIONS.md, padrao.md, juiz-reply.json, jit/ (ledger,
-avisos). Chave do juiz: env OPENROUTER_API_KEY / EXPERIENTIALLABS_API_KEY, senão a linha do $HERMES_HOME/.env.
+avisos). Juiz: provedores e chave do juiz_prov.py (mesmo módulo do Claude Code; o $HERMES_HOME/.env entra como
+ADAS_JUIZ_ENVFILE, ponteiro, a chave não é copiada). Chave colada na conversa (DA-479): o pre_llm_call avisa o modelo
+pra NÃO usar, mandar revogar e indicar o caminho seguro (`juiz_prov.py link`).
 Env: ADAS_JIT_K (3), ADAS_JIT_BM25 (limiar, -5.0), ADAS_BUDGET_OWN (3500), ADAS_JIT_TETO (chamadas/dia, 300),
 ADAS_JIT_TIMEOUT (s, 8)."""
-import json, os, re, sqlite3, sys, time, urllib.request
+import json, os, re, sqlite3, sys, time
 
 HH = os.environ.get("HERMES_HOME", "/opt/data")
 GOV = os.environ.get("ADAS_GOV_DIR", os.path.join(HH, "governanca"))
@@ -26,8 +28,12 @@ BM25 = float(os.environ.get("ADAS_JIT_BM25", "-5.0"))  # calibrado em 31/10: ru�
 BUDGET_OWN = int(os.environ.get("ADAS_BUDGET_OWN", "3500"))
 TETO = int(os.environ.get("ADAS_JIT_TETO", "300"))
 TIMEOUT = float(os.environ.get("ADAS_JIT_TIMEOUT", "8"))
-PROV = [("OPENROUTER_API_KEY", "https://openrouter.ai/api/v1/systemone"),
-        ("EXPERIENTIALLABS_API_KEY", "https://api.experientiallabs.ai/v1/systemone")]
+os.environ.setdefault("ADAS_JUIZ_ENVFILE", os.path.join(HH, ".env"))
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import juiz_prov  # noqa: E402
+# chave/token colado no chat (DA-479): formato de chave de API conhecido, nunca o texto comum
+CHAVE_COLADA = re.compile(r"(?<![\w-])(sk-(?:or-v1-|ant-|proj-)?[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{30,}|github_pat_\w{30,}"
+                          r"|AIza[0-9A-Za-z_-]{30,}|xox[abp]-[\w-]{20,}|AKIA[0-9A-Z]{16}|\d{8,10}:AA[\w-]{30,})")
 
 
 def regras(arq, pref):
@@ -106,6 +112,11 @@ def pre(p):
             aviso = None
     ledger({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "ev": "pre", "sid": p.get("session_id"), "nivel": NIVEL,
             "cartoes": hits, "aviso": bool(aviso)})
+    if CHAVE_COLADA.search(msg):
+        aviso = ((aviso + " ") if aviso else "") + (
+            "A mensagem do usuário traz uma CHAVE/TOKEN colada (DA-479): NÃO use, não repita e não guarde. Diga que ela "
+            "ficou exposta no histórico do chat e precisa ser REVOGADA no painel do provedor; a nova entra sem passar pelo "
+            "chat, pelo link de uso único (o dono pede o link) ou por `juiz_prov.py configurar` no terminal.")
     if not linhas and not sel and not aviso:
         return
     out = "GOVERNANÇA (ADAS do Hermes — vale nesta resposta; regra PRÓPRIA vence a padrão):\n"
@@ -118,18 +129,6 @@ def pre(p):
     if pad:
         out += f"(padrão completo: {len(pad)} regras em {GOV}/padrao.md — leia se o assunto pedir)"
     print(json.dumps({"context": out.strip()}, ensure_ascii=False))
-
-
-def chave(nome):
-    if os.environ.get(nome):
-        return os.environ[nome]
-    try:
-        for l in open(os.path.join(HH, ".env"), encoding="utf-8"):
-            if l.startswith(nome + "="):
-                return l.split("=", 1)[1].strip().strip('"').strip("'")
-    except OSError:
-        pass
-    return ""
 
 
 def chamadas_hoje():
@@ -161,28 +160,17 @@ def post(p):
            "plataforma": ex.get("platform"), "len": len(texto), "chamou": False}
     if chamadas_hoje() >= TETO:
         rec["decisao"] = "teto"; return ledger(rec)
-    q = {c["id"]: {"type": "noul", "instructions": c["pergunta"]} for c in cartoes}
-    corpo = json.dumps({"model": "jev-latest", "state": {"mensagem": texto[:4000], "formato": "markdown"},
-                        "questions": q}).encode()
-    t0 = time.time(); resp = None
-    for nome, url in PROV:
-        k = chave(nome)
-        if not k:
-            continue
-        try:
-            rec["chamou"] = True
-            req = urllib.request.Request(url, data=corpo, headers={"Authorization": "Bearer " + k, "Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=max(0.5, TIMEOUT - (time.time() - t0))) as r:
-                d = json.loads(r.read())
-            resp = {a: float(v.get("noul")) for a, v in (d.get("answers") or {}).items() if v.get("noul") is not None}
-            rec.update(prov=nome.split("_")[0].lower(), model=d.get("model"), cost=(d.get("usage") or {}).get("cost"))
-            if resp:
-                break
-        except Exception as e:
-            rec["erro"] = f"{type(e).__name__}: {str(e)[:80]}"
+    t0 = time.time()
+    rec["chamou"] = bool(juiz_prov.provedores(rede=False))
+    try:
+        resp, meta = juiz_prov.perguntar(texto[:4000], cartoes, t0 + TIMEOUT, "markdown")
+        rec.update(meta)
+    except Exception as e:
+        resp = None
+        rec["erro"] = str(e)[:120]
     rec["ms"] = round((time.time() - t0) * 1000)
     if not resp:
-        rec["decisao"] = "erro" if rec.get("chamou") else "sem_chave"; return ledger(rec)
+        rec["decisao"] = "erro" if rec["chamou"] else "sem_chave"; return ledger(rec)
     viol = [c for c in cartoes if resp.get(c["id"], 0.0) >= min(c.get("limiar", 0.8), c.get("limiar_aviso") or 9)]
     rec.update(resp={a: round(b, 3) for a, b in resp.items()}, decisao="aviso" if viol else "ok", cartoes=[c["id"] for c in viol])
     ledger(rec)

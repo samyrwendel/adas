@@ -7,18 +7,23 @@ pergunta nova, sem tocar neste arquivo.
 Ordem: 1) os guards determinísticos dos cartões `forma · reply · hook=` (copiar-guard…) rodam ANTES, com o
 mesmo payload; se algum nega, o juiz REPASSA a negação e para (sem custo de LLM). É o único lugar onde o
 guard roda no reply (task 20261031-031: registro standalone removido do settings). 2) cache por
-hash (texto + rubrica). 3) Jev nativo (systemone, perguntas `noul`) pela OpenRouter; reserva
-ExperientialLabs. Pergunta com probabilidade ≥ limiar do cartão = violação.
+hash (texto + rubrica). 3) provedores do juiz_prov.py, na ordem configurada: Jev (systemone, perguntas `noul`)
+direto na TypeSafe, pela OpenRouter, pela ExperientialLabs ou pelo Vercel Gateway, ou qualquer endpoint OpenAI-compatível
+(Ollama local). Pergunta com probabilidade ≥ limiar do cartão = violação.
 Saída: cartão em modo `deny` → permissionDecision deny citando DA-NNN + Regra + conserto; modo `aviso`
 (rótulo ainda não aprovado, ou reprovado no replay) → additionalContext (a mensagem sai).
 
 FAIL-OPEN: erro, timeout (4 s no total), teto diário, rubrica ausente → exit 0 sem saída. Bot mudo é pior
 que bot errado. Ledger: ~/.claude/bus/juiz-reply.log (uma linha JSON por chamada).
-Chave: env OPENROUTER_API_KEY / EXPERIENTIALLABS_API_KEY, senão o script JUIZ_REPLY_CRED (`<script> <provedor> value`).
-Env: ADAS_JIT_NIVEL (<3 = juiz desligado), JUIZ_REPLY_RUBRICA, JUIZ_REPLY_TETO (chamadas/dia, default 600), JUIZ_REPLY_TIMEOUT (s, default 4),
+Chave: juiz_prov.py (env → ~/.adas/juiz.env → ADAS_JUIZ_ENVFILE → cofre ADAS_JUIZ_CRED); sem chave = juiz desligado,
+e o SessionStart avisa. Nível: ADAS_JIT_NIVEL (fixo) → ~/.adas/jit/nivel.fixo → ~/.adas/jit/nivel (termostato) → 3;
+abaixo de 3 o hook não faz nada. Env: JUIZ_REPLY_RUBRICA, JUIZ_REPLY_TETO (chamadas/dia, default 600), JUIZ_REPLY_TIMEOUT (s, default 4),
 JUIZ_REPLY_LEDGER, JUIZ_REPLY_CACHE (testes apontam pra /tmp).
 """
-import hashlib, json, os, subprocess, sys, time, urllib.request
+import hashlib, json, os, subprocess, sys, time
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))  # juiz_prov.py mora ao lado (hook instalado = symlink)
+import juiz_prov  # noqa: E402
 
 H = os.path.expanduser("~")
 RUBRICA = os.environ.get("JUIZ_REPLY_RUBRICA", f"{H}/.adas/jit/juiz-reply.json")
@@ -26,48 +31,12 @@ LEDGER = os.environ.get("JUIZ_REPLY_LEDGER", f"{H}/.claude/bus/juiz-reply.log")
 CACHE = os.environ.get("JUIZ_REPLY_CACHE", f"{H}/.adas/jit/juiz-cache.json")
 TETO = int(os.environ.get("JUIZ_REPLY_TETO", "600"))
 TIMEOUT = float(os.environ.get("JUIZ_REPLY_TIMEOUT", "4"))
-CRED = os.environ.get("JUIZ_REPLY_CRED", f"{H}/claude-tg-tmux/scripts/get-credential.sh")
-NIVEL = os.environ.get("ADAS_JIT_NIVEL", "3")  # DA-468: o juiz é o nível 3; abaixo dele o hook não faz nada
-PROVEDORES = [("openrouter", "https://openrouter.ai/api/v1/systemone"),
-              ("experientiallabs", "https://api.experientiallabs.ai/v1/systemone")]
 MAX_TEXTO = 4000
 
 
-ENV_CHAVE = {"openrouter": "OPENROUTER_API_KEY", "experientiallabs": "EXPERIENTIALLABS_API_KEY"}
-
-
-def chave(prov):
-    """Chave do provedor: env (OPENROUTER_API_KEY / EXPERIENTIALLABS_API_KEY) ou o cofre da instância
-    (JUIZ_REPLY_CRED: script `<cred> <provedor> value`). Sem chave → exceção → fail-open."""
-    if os.environ.get(ENV_CHAVE.get(prov, "")):
-        return os.environ[ENV_CHAVE[prov]]
-    if not os.path.exists(CRED):
-        raise RuntimeError(f"sem chave para {prov}")
-    r = subprocess.run(["bash", CRED, prov, "value"], capture_output=True, text=True, timeout=2)
-    return r.stdout.strip()
-
-
 def perguntar(texto, cartoes, prazo, fmt=None):
-    """Uma chamada, todas as perguntas. Devolve (respostas{id: p}, meta) ou levanta exceção."""
-    q = {c["id"]: {"type": "noul", "instructions": c["pergunta"]} for c in cartoes}
-    corpo = json.dumps({"model": "jev-latest", "state": {"mensagem": texto[:MAX_TEXTO], "formato": (fmt or "text")}, "questions": q}).encode()
-    erro = None
-    for prov, url in PROVEDORES:
-        resta = prazo - time.time()
-        if resta < 0.3:
-            break
-        try:
-            req = urllib.request.Request(url, data=corpo, headers={
-                "Authorization": "Bearer " + chave(prov), "Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=resta) as r:
-                d = json.loads(r.read())
-            resp = {k: float(v.get("noul")) for k, v in (d.get("answers") or {}).items() if v.get("noul") is not None}
-            if not resp:
-                raise ValueError("sem answers")
-            return resp, {"prov": prov, "model": d.get("model"), "cost": (d.get("usage") or {}).get("cost")}
-        except Exception as e:  # tenta a reserva
-            erro = f"{prov}: {type(e).__name__}: {str(e)[:80]}"
-    raise RuntimeError(erro or "sem tempo")
+    """Uma chamada, todas as perguntas, pelos provedores do juiz_prov (ordem configurada, fail-over)."""
+    return juiz_prov.perguntar(texto[:MAX_TEXTO], cartoes, prazo, fmt)
 
 
 def ledger(reg):
@@ -125,7 +94,7 @@ def saida(violados, resp):
 
 
 def main():
-    if NIVEL.isdigit() and int(NIVEL) < 3:
+    if juiz_prov.nivel() < 3:
         return
     raw = sys.stdin.read()
     p = json.loads(raw)

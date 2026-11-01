@@ -75,6 +75,17 @@ for d in linhas(os.path.join(BUS, "juiz-reply.log")):
 print(f"juiz-reply: {sum(jd.values())} replies · " + " · ".join(f"{k} {v}" for k, v in jd.most_common())
       + f" · custo US${custo:.4f} · p95 {p95(jms)} ms")
 
+try:  # termostato (DA-468): toda mudança de nível da semana aparece aqui
+    ts = json.load(open(os.path.join(H, ".adas", "jit", "termostato.json")))
+    print(f"nível do JIT: {ts.get('efetivo')}" + (f" (fixo: {ts['fixo']}; automático {ts.get('automatico')})" if ts.get("fixo") else "")
+          + " — " + "; ".join(ts.get("motivos") or []))
+    mud = [h for h in ts.get("historico") or [] if h["ts"] >= corte]
+    print("mudanças de nível: " + ("nenhuma" if not mud else ""))
+    for h in mud:
+        print(f'  {h["ts"][:16]} {h["de"]} → {h["para"]}: {"; ".join(h["motivos"])}')
+except (OSError, ValueError):
+    print("nível do JIT: termostato ainda não rodou")
+
 try:
     r = subprocess.run([sys.executable, os.path.join(H, "scripts", "check-da-gatilho.py"), "--list", H],
                        capture_output=True, text=True, timeout=60).stdout

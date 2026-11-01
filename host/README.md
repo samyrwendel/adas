@@ -58,7 +58,7 @@ cai no topo do arquivo) e, para o JIT via roteador, `.claude/hooks/adas-inject.s
 ## ADAS-JIT (níveis 1–3)
 O motor fica em `host/jit/` e roda direto do clone (link simbólico, sem cópia).
 ```bash
-mkdir -p ~/.adas/jit && for f in da-cards.py regra-jit.py regra-search juiz-reply.py adas-jit-stats.py; do
+mkdir -p ~/.adas/jit && for f in da-cards.py regra-jit.py regra-search juiz-reply.py juiz_prov.py termostato.py adas-jit-stats.py; do
   ln -sf "$PWD/host/jit/$f" ~/.adas/jit/$f; done
 python3 ~/.adas/jit/da-cards.py              # compila ~/DECISIONS.md + ~/CONDUCT.md → cards.json, regras.db, grafo.json
 python3 ~/.adas/jit/da-cards.py --no-vec     # nível 1 (sem Ollama)
@@ -69,7 +69,11 @@ Registre os hooks no `~/.claude/settings.json`, de preferência por script com b
 
 Variáveis:
 - nível: `ADAS_JIT_NIVEL` (1, 2 ou 3), ver o README;
-- chave do juiz: `OPENROUTER_API_KEY` ou `EXPERIENTIALLABS_API_KEY`, ou `JUIZ_REPLY_CRED=<script provedor value>`;
+- chave do juiz (`host/jit/juiz_prov.py`, comando `adas juiz`): env (`TYPESAFE_API_KEY`, `OPENROUTER_API_KEY`,
+  `EXPERIENTIALLABS_API_KEY`, `AI_GATEWAY_API_KEY`) → `~/.adas/juiz.env` → arquivo apontado por `ADAS_JUIZ_ENVFILE` →
+  cofre apontado por `ADAS_JUIZ_CRED` (`<script> <provedor> value`). Ordem: `ADAS_JUIZ_ORDEM`. OpenAI-compatível/Ollama:
+  `ADAS_JUIZ_OPENAI_URL` + `ADAS_JUIZ_OPENAI_MODEL` [+ `ADAS_JUIZ_OPENAI_KEY`]. `adas juiz testar` faz uma pergunta real;
+- nível: `adas nivel` (termostato) grava `~/.adas/jit/nivel`; `~/.adas/jit/nivel.fixo` fixa;
 - sombra (grava o ledger, não injeta): `ADAS_JIT=log`.
 
 Ledgers: `~/.claude/bus/regra-jit.log` e `juiz-reply.log`. Resumo semanal: `python3 ~/.adas/jit/adas-jit-stats.py`.

@@ -25,4 +25,11 @@ adas_session_emit "$cwd" 2>/dev/null || true
 # (linha própria: a camada 0 pode terminar sem \n e o aviso grudaria nela)
 v="$([ -f "$DIR/adas-version.sh" ] && bash "$DIR/adas-version.sh" 2>/dev/null)"
 [ -n "$v" ] && printf '\n%s\n' "$v"
+# ADAS-JIT (DA-468): termostato do nível 1×/dia em segundo plano; juiz sem chave NÃO fica calado (task 20261101-001)
+J="$(cat "$HOME/.claude/adas/source" 2>/dev/null || echo "$HOME/adas")/host/jit"
+if [ -f "$J/termostato.py" ] && [ -z "$(find "$HOME/.adas/jit/termostato.json" -mmin -1440 2>/dev/null)" ]; then
+  (setsid timeout 120 python3 "$J/termostato.py" >/dev/null 2>&1 &) 2>/dev/null
+fi
+a="$([ -f "$J/juiz_prov.py" ] && timeout 3 python3 "$J/juiz_prov.py" status --aviso 2>/dev/null)"
+[ -n "$a" ] && printf '\n%s\n' "$a"
 exit 0

@@ -14,7 +14,8 @@ Motores, nesta ordem (k≤3 no total, silêncio é o default):
      (edit) ou no corpo (prompt). ms, 0 token.
   2. TEMA — busca híbrida no índice de cartões (regra-search), com limiar POR SUPERFÍCIE (medido na F0 e
      na calibração desta task sobre 400 Bash + 79 Edit reais):
-        prompt: L2 ≤ 0,65, ou bm25 ≤ -25 só se o corpo < 300 chars (bm25 é absoluto e infla com o tamanho)
+        prompt: L2 ≤ 0,65, ou bm25 ≤ -25 só se o corpo < 300 chars (bm25 é absoluto e infla com o tamanho),
+                ou LÍDER: os dois motores concordam (ver lider(); task 20261101-001)
         bash:   DESLIGADO por padrão (ADAS_JIT_BASH_VEC=1 liga: L2 ≤ 0,65 e comando > 8 palavras). Medido em
                 135 comandos reais: léxico dispara em 60–90% (ruído); vetor custa ~1 s/comando em CPU e
                 disparou 3/135, todos autorreferentes; o positivo real (backup de um servidor) ficou em L2 0,74. Bash = evento.
@@ -26,8 +27,9 @@ adas_da_rotas); o motor de EVENTO não filtra (o predicado de caminho/comando j�
 Regra-mãe: cartão-mecanismo mostrado traz a regra que ele mecaniza (grafo.json, aresta mecanismo-de).
 Ledger: ~/.claude/bus/regra-jit.log (JSONL: ts, sid, superfície, nível, vetor ok|off|<erro>, escopo, cartões
 com l2/bm25, decisão, ms). Par (PostToolBatch): leu_da + adesao {id: aplicou|ignorou|n/a} pelo `viola=/re/`.
-Env: ADAS_JIT=off (desliga) | log (sombra: grava o ledger, não injeta). ADAS_JIT_NIVEL=1 tira o vetor (só
-evento + léxico); 2/3 (default) usa o vetor; o juiz (nível 3) é o hook juiz-reply.py. Fail-open em tudo."""
+Env: ADAS_JIT=off (desliga) | log (sombra: grava o ledger, não injeta). Nível (ADAS_JIT_NIVEL → ~/.adas/jit/nivel.fixo →
+~/.adas/jit/nivel, do termostato.py → 3): 1 tira o vetor (só evento + léxico); 2/3 usa o vetor; o juiz (nível 3) é o
+hook juiz-reply.py. Fail-open em tudo."""
 import hashlib, json, os, re, subprocess, sys, time
 
 HOME = os.path.expanduser("~")
@@ -37,7 +39,7 @@ LOG = os.path.join(BUS, "regra-jit.log")
 STATE = os.path.join(BUS, "regra-jit")
 K = 3
 TTL_VISTO = 3600
-LIMIAR = {"prompt": {"l2": 0.65, "bm25": -25.0, "bm25_max_chars": 300},
+LIMIAR = {"prompt": {"l2": 0.65, "bm25": -25.0, "bm25_max_chars": 300, "lider_l2": 0.82, "lider_bm25": -12.0, "lider_razao": 1.6},
           "bash": {"l2": 0.65, "min_palavras": 8},
           "edit": {"l2": 0.60}}
 LEDGERS = re.compile(r"(^|/)(DECISIONS[^/]*|CONDUCT[^/]*|DECISIONS-INDEX)\.md$")
@@ -132,7 +134,9 @@ def motor_evento(sup, alvo):
         gt = g.get("gatilho") or {}
         # sem filtro de escopo aqui: o predicado (caminho/comando) JÁ é o escopo — a DA-401 (projeto) governa a edição
         # de ~/claude-tg-tmux/skills/quantfury feita do cwd da instância. O filtro vale pro motor de TEMA.
-        if gt.get("superficie") != sup or not gt.get("quando") or gt.get("hook"):
+        # superfície pode ser lista ("bash,edit,prompt"): a CLASSE da ação (atualizar o pacote X, escrever no caminho Y)
+        # acende em qualquer superfície que a carrega — task 20261101-001, medição 033 (sed -i no cache, npm update -g)
+        if sup not in (gt.get("superficie") or "").replace(" ", "").split(",") or not gt.get("quando") or gt.get("hook"):
             continue
         try:
             q, s = rx(gt["quando"]), rx(gt.get("salvo"))
@@ -144,6 +148,17 @@ def motor_evento(sup, alvo):
     return out
 
 
+def nivel():
+    """Nível do JIT (DA-468): env → nivel.fixo → nivel (termostato) → 3. Mesmo contrato do juiz_prov.nivel()."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+        import juiz_prov
+        return juiz_prov.nivel()
+    except Exception:
+        v = os.environ.get("ADAS_JIT_NIVEL", "3")
+        return int(v) if v.isdigit() else 3
+
+
 def motor_tema(sup, texto, alvo, esc):
     """→ (cartões, nível, vetor). vetor = ok | off | <Exceção> — o embed que morreu sob carga fica no ledger."""
     lim = LIMIAR[sup]
@@ -153,7 +168,7 @@ def motor_tema(sup, texto, alvo, esc):
         return [], 0, "-"
     os.environ.setdefault("ADAS_EMBED_TIMEOUT", "1.5")
     # DA-468: nível 1 = travas + gatilho + busca por palavra (sem vetor); 2 = + vetor; 3 = + juiz (hook à parte)
-    idx = rs().Index(path=os.path.join(D, "regras.db"), vec=os.environ.get("ADAS_JIT_NIVEL", "2") not in ("0", "1"))
+    idx = rs().Index(path=os.path.join(D, "regras.db"), vec=nivel() >= 2)
     res = [r for r in idx.search(texto, n=12) if rs().no_escopo(r.get("escopo"), esc)][:8]
     bm_ok = "bm25" in lim and len(texto) < lim.get("bm25_max_chars", 0)
     out = []
@@ -165,8 +180,30 @@ def motor_tema(sup, texto, alvo, esc):
             via = "lexical"
         if via:
             out.append({"id": r["id"], "regra_curta": r["regra_curta"], "motor": via, "l2": r["l2"], "bm25": r["bm25"]})
+    lid = lider(res, lim)
+    if lid and lid["id"] not in {c["id"] for c in out}:
+        out.append({"id": lid["id"], "regra_curta": lid["regra_curta"], "motor": "lider", "l2": lid["l2"], "bm25": lid["bm25"]})
     erro = getattr(idx, "vec_erro", None)
     return out, (2 if idx.vec and not erro else 1), (erro or ("ok" if idx.vec else "off"))
+
+
+def lider(res, lim):
+    """Os dois motores CONCORDAM num líder (task 20261101-001, medição 033): 1º no léxico com folga (bm25 ≥ razão × o
+    2º — normaliza o bm25 pela própria consulta, que infla com o tamanho), entre os 2 primeiros no vetor, e passando
+    um piso frouxo em cada lado. Banco de 68 casos: regra-alvo no prompt 12 → 23; nas 300 mensagens reais do dono,
+    disparo 7 → 13 (5 dos 6 novos relevantes). O espalhamento pelo grafo foi medido aqui e não achou alvo novo (0/68):
+    fica só reordenando."""
+    if "lider_razao" not in lim:
+        return None
+    bms = sorted((r for r in res if r.get("bm25") is not None), key=lambda r: r["bm25"])
+    l2s = sorted((r for r in res if r.get("l2") is not None), key=lambda r: r["l2"])
+    if not bms or not l2s:
+        return None
+    t, seg = bms[0], (bms[1]["bm25"] if len(bms) > 1 else -0.1)
+    if (t["l2"] is not None and t["l2"] <= lim["lider_l2"] and t["bm25"] <= lim["lider_bm25"]
+            and t["bm25"] / min(seg, -0.1) >= lim["lider_razao"] and t["id"] in {r["id"] for r in l2s[:2]}):
+        return t
+    return None
 
 
 def vistos(sid):

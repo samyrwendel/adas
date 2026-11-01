@@ -731,7 +731,7 @@ echo "== ADAS-JIT no Hermes (host/jit/hermes-jit.py)"
 HJ="$T/hj"; mkdir -p "$HJ/governanca"
 printf '## DH-001 — Regra própria\n**Regra:** sempre responder em português.\n' > "$HJ/governanca/DECISIONS.md"
 printf '## DA-900 — Commit e push\n**Regra:** task que muda código fecha com commit+push; nada solto.\n`origem: x`\n\n## DA-901 — Backup diário\n**Regra:** backup restic diário do servidor.\n\n## DA-902 — Painel\n**Regra:** painel só na rede interna.\n\n## DA-903 — Modelo\n**Regra:** modelo por tarefa.\n\n## DA-904 — Chave\n**Regra:** segredo só no cofre.\n' > "$HJ/governanca/padrao.md"
-hj(){ printf '{"hook_event_name":"%s","session_id":"s1","extra":{"user_message":"%s","assistant_response":"%s"}}' "$1" "$2" "$3" | env -u OPENROUTER_API_KEY -u EXPERIENTIALLABS_API_KEY HERMES_HOME="$HJ" ADAS_JIT_BM25=-0.3 python3 "$ROOT/host/jit/hermes-jit.py"; }  # fixture de 2 regras: bm25 baixo, limiar é calibração
+hj(){ printf '{"hook_event_name":"%s","session_id":"s1","extra":{"user_message":"%s","assistant_response":"%s"}}' "$1" "$2" "$3" | env -u OPENROUTER_API_KEY -u EXPERIENTIALLABS_API_KEY -u TYPESAFE_API_KEY -u ADAS_JUIZ_CRED -u JUIZ_REPLY_CRED ADAS_JUIZ_CONF="$HJ/sem-juiz.env" HERMES_HOME="$HJ" ADAS_JIT_BM25=-0.3 python3 "$ROOT/host/jit/hermes-jit.py"; }  # fixture de 2 regras: bm25 baixo, limiar é calibração
 o="$(hj pre_llm_call "faz o commit e o push do repositório" "")"
 printf '%s' "$o" | grep -q 'DH-001' && printf '%s' "$o" | grep -q 'DA-900' && ! printf '%s' "$o" | grep -q 'DA-901' \
   && ok "pre_llm_call: próprias inteiras + só a regra do padrão que toca a mensagem" || bad "pre_llm_call errado: $o"
@@ -743,6 +743,11 @@ o="$(hj post_llm_call "" "o backup segue de pé")"; rc=$?
 printf '{"texto":"aviso de teste","ts":"x"}' > "$HJ/governanca/jit/aviso-s1.json"
 o="$(hj pre_llm_call "oi" "")"
 printf '%s' "$o" | grep -q 'aviso de teste' && [ ! -f "$HJ/governanca/jit/aviso-s1.json" ] && ok "aviso pendente do juiz entra no próximo turno e é consumido" || bad "aviso pendente não entrou/não foi consumido"
+
+echo "== ADAS 1.1.1: juiz (provedores, chave sem chat, aviso), termostato, chave colada (tests/test_jit_111.py)"
+o="$(python3 "$ROOT/tests/test_jit_111.py" 2>&1)"; rc=$?
+printf '%s\n' "$o" | grep -E '^  [✓✗]' | sed 's/^  //' | while IFS= read -r l; do echo "  $l"; done
+[ "$rc" = 0 ] && ok "test_jit_111: $(printf '%s' "$o" | tail -1)" || bad "test_jit_111 falhou: $(printf '%s' "$o" | tail -1)"
 
 echo
 echo "RESULTADO: $pass ok, $fail falha(s)"

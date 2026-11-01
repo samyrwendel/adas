@@ -23,6 +23,8 @@ echo "✓ hooks copiados para $H"
 cp "$DIR/../VERSION" "$A/VERSION"
 (cd "$DIR/.." && pwd) > "$A/source"
 echo "✓ ADAS $(cat "$A/VERSION") (fonte: $(cat "$A/source"))"
+# linha de comando `adas` (juiz, nível, versão) — symlink pro clone, segue o update
+mkdir -p "$HOME/.local/bin" && ln -sfn "$DIR/adas" "$HOME/.local/bin/adas" && echo "✓ comando adas em ~/.local/bin/adas (adas juiz status)"
 
 # 2) repos.conf — um caminho ABSOLUTO por linha
 if [ "$#" -gt 0 ]; then

@@ -3,6 +3,28 @@
 Cada versão diz o que muda para quem usa, não a lista de commits. A primeira linha `Resumo:` de cada
 versão é a que aparece no aviso de versão nova da sessão.
 
+## 1.1.1 — 2026-10-31
+
+Resumo: o juiz sem chave avisa e se liga sem passar pelo chat; o nível de vigilância se ajusta sozinho; a regra certa chega em 90% das violações medidas (antes 58%).
+
+- **Juiz sem chave avisa.** No nível 3 sem chave, o começo da sessão mostra "Juiz DESLIGADO: sem chave — nível 2" e o comando de ligar. O produto não aponta mais pra caminho de instância nenhuma.
+- **Ligar o juiz sem colar a chave no chat** (comando novo `adas`):
+  - `adas juiz configurar --auto` acha a chave que o agente já tem (ambiente, `.env` do Hermes, cofre, Ollama local), testa e grava a primeira que responde;
+  - `adas juiz configurar` pede a chave escondida no terminal e grava `~/.adas/juiz.env` (permissão 600);
+  - `adas juiz link` abre um formulário de uso único que vale 5 minutos.
+- **Chave colada na conversa não é usada.** O agente manda revogar e indica um dos caminhos acima. O juiz ganhou uma pergunta pra isso, e o Hermes avisa o modelo quando a mensagem traz uma chave.
+- **Mais provedores pro juiz:** Jev direto na TypeSafe, OpenRouter, ExperientialLabs, Vercel Gateway, ou qualquer endpoint compatível com OpenAI (inclusive Ollama local). As perguntas e o limiar são os mesmos; a ordem é configurável; se todos falham, a mensagem sai.
+- **Termostato do nível** (`adas nivel`). Sobe por tamanho do diário, por 2º agente no repo, por código que mexe com dinheiro, cliente ou mensagem a pessoas, e por achado do juiz. Desce depois de 30 dias sem achado. A fixação manual vence. Toda mudança sai na revisão semanal.
+- **A regra certa chega mais vezes.** Medido no banco de 68 casos reais:
+  - regra entregue nas violações: **74 → 114 de 127**;
+  - no pedido do dono: 13 → 25 de 68;
+  - cartões fora do alvo quase iguais (9 → 11 no pedido, 16 → 18 nas ações).
+
+  O que mudou:
+  - o gatilho de evento descreve a classe da ação, não o comando de um exemplo, e pode valer em várias superfícies (`bash,edit,prompt`);
+  - a busca dispara quando a busca por palavra e a por parecença apontam a mesma regra em 1º lugar;
+  - a trava de copiar e colar pega também texto anunciado pra colar (prompt, reclamação, comando curto).
+
 ## 1.1.0 — 2026-10-31
 
 Resumo: ADAS-JIT chega ao Hermes; a cada mensagem entram só as regras que tocam o assunto, e um juiz avisa quando a resposta quebra regra de forma.

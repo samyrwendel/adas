@@ -165,11 +165,22 @@ o cartão de um mecanismo traz junto a regra-mãe.
 |---|---|---|
 | **1** | travas (guards) + gatilho de evento + busca por palavra (FTS5) | zero; stdlib |
 | **2** (padrão) | + busca por parecença (vetor `nomic-embed-text` via Ollama + `sqlite-vec`) | ~1 s de CPU por consulta |
-| **3** | + juiz de forma (`juiz-reply.py`: perguntas do diário numa chamada; OpenRouter/ExperientialLabs; teto diário; falha = passa) | centavos por dia |
+| **3** | + juiz de forma (`juiz-reply.py`: perguntas do diário numa chamada; Jev na TypeSafe, OpenRouter, ExperientialLabs ou Vercel Gateway, ou qualquer endpoint OpenAI-compatível, inclusive Ollama local; teto diário; falha = passa) | centavos por dia (zero no Ollama) |
 
-Escolha o nível pelo risco: agente que fala com gente ou mexe em dinheiro → 3; agente de código calado → 1 ou 2.
-O termostato que sobe e desce o nível sozinho (por tamanho do diário, risco e violação medida) **ainda não
-existe**: hoje o nível é fixado por variável de ambiente e pelos hooks que você registra.
+O **termostato** (`adas nivel`) escolhe o nível sozinho, 1×/dia no começo da sessão:
+- sobe por tamanho (>50 DAs → 2, >200 → 3), por 2º agente commitando no repo, por código que toca dinheiro, cliente
+  ou mensagem a pessoas, e por achado do juiz ou de um guard;
+- desce quando passam 30 dias sem achado;
+- fixação manual vence: `ADAS_JIT_NIVEL` ou o arquivo `~/.adas/jit/nivel.fixo`;
+- toda mudança de nível sai na revisão semanal (`adas-jit-stats.py`).
+
+**Juiz sem chave não fica calado.** No nível 3 sem chave, o começo da sessão avisa
+"Juiz DESLIGADO: sem chave — nível 2" com o comando de ligar. A chave nunca passa pelo chat:
+- `adas juiz configurar --auto` acha a chave que o agente já tem (ambiente, `.env` do Hermes, cofre, Ollama local) e grava a 1ª que responde;
+- `adas juiz configurar` lê a chave escondida no terminal e grava `~/.adas/juiz.env` (permissão 600);
+- `adas juiz link` abre um formulário local de uso único (5 min) pra quem só tem o chat.
+
+Chave colada na conversa não é usada: o agente manda revogar e indica um desses caminhos.
 Instalação e teste: [`host/README.md`](host/README.md#adas-jit-níveis-1-3). Medição: com o cartão certo no
 contexto, modelos baratos chegaram à adesão de um modelo de ponta em casos reais; o gargalo medido é **achar** a
 regra, não o tamanho do modelo.

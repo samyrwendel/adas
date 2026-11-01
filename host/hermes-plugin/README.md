@@ -64,6 +64,20 @@ Lê `$HERMES_HOME/governanca/{DECISIONS.md, padrao.md, juiz-reply.json}`:
 
 Ledger em `governanca/jit/jit.log`. Nível em `ADAS_JIT_NIVEL`: sem Ollama no container, o vetor não roda.
 
+Juiz: mesmos provedores do Claude Code (`host/jit/juiz_prov.py`); o `$HERMES_HOME/.env` entra como ponteiro
+(`ADAS_JUIZ_ENVFILE`), a chave não é copiada. Mensagem do usuário com chave colada (formato `sk-…`, `ghp_…`, token de
+bot…) vira aviso pro modelo: não usar, mandar revogar e indicar o link de uso único (DA-479).
+
+Link de uso único pelo bot (usuário só-chat): um comando rápido do Hermes que roda o `link` e devolve a URL.
+**Não provado num Hermes vivo** nesta versão; confira o nome da chave na doc de
+`config.yaml` da sua versão:
+```yaml
+quick_commands:
+  juiz:
+    type: exec
+    command: python3 /opt/data/adas/host/jit/juiz_prov.py link --host <IP da tailnet do host>
+```
+
 ## Testar que os ganchos disparam
 
 **Provado neste repo**, sem precisar de uma instância Hermes real (o `ctx` é um mock mínimo que só
