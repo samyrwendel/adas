@@ -126,7 +126,47 @@ sys.exit(jp.configurar_auto())"""], {"ADAS_OLLAMA_BASE": BASE + "/nada"})
 c = open(cf).read() if os.path.exists(cf) else ""
 chk("configurar --auto acha a chave no .env do Hermes, testa e grava só o PONTEIRO", r.returncode == 0
     and f"ADAS_JUIZ_ENVFILE={T}/.hermes/.env" in c and "chave-do-hermes" not in c, r.stdout + c)
+os.remove(cf); os.remove(os.path.join(T, ".hermes", ".env"))
+
+# provedores que o AGENTE já tem (Hermes/OpenClaw/Codex), lidos na hora — nada copiado
+hh = os.path.join(T, "hh"); os.makedirs(hh, exist_ok=True)
+open(os.path.join(hh, ".env"), "w").write("ROUTER_KEY=chave-do-router\n")
+open(os.path.join(hh, "config.yaml"), "w").write(f"""model:
+  default: "modelo-barato"   # comentário
+  provider: "custom"
+  base_url: "{BASE}/v1"
+custom_providers:
+  - name: roteador
+    base_url: "{BASE}/v1"
+    key_env: ROUTER_KEY
+    model: "modelo-barato"
+    models:
+      - modelo-barato
+""")
+pv = jp.provs_de_fonte("hermes:" + os.path.join(hh, "config.yaml"))
+chk("Hermes config.yaml: custom_providers + key_env do .env → provedor OpenAI-compatível com a chave lida na hora",
+    any(p["via"] == "hermes roteador" and p["key"] == "chave-do-router" and p["model"] == "modelo-barato" for p in pv), pv)
+r = run(["python3", os.path.join(J, "juiz_prov.py"), "configurar", "--auto"], {"HERMES_HOME": hh, "ADAS_OLLAMA_BASE": BASE + "/nada"})
+c = open(cf).read() if os.path.exists(cf) else ""
+chk("configurar --auto reusa o provedor do Hermes: grava FONTE (ponteiro), nunca a chave", r.returncode == 0
+    and "ADAS_JUIZ_FONTE=hermes:" in c and "chave-do-router" not in c, r.stdout + c)
+r = run(["python3", os.path.join(J, "juiz-reply.py")], dict(e, JUIZ_REPLY_CACHE=os.path.join(T, "c3.json")), inp=pl)
+chk("juiz-reply usa o provedor do Hermes → aviso", "DA-1" in r.stdout, r.stdout)
 os.remove(cf)
+oc = os.path.join(T, "openclaw.json")
+json.dump({"env": {"MINHA_CHAVE": "do-openclaw"}, "models": {"providers": {"meu": {"baseUrl": BASE + "/v1", "apiKey": "${MINHA_CHAVE}",
+           "models": [{"id": "glm-barato"}]}, "or": {"baseUrl": "https://openrouter.ai/api/v1", "apiKey": "k-or", "models": [{"id": "x"}]}}}}, open(oc, "w"))
+pv = jp.provs_de_fonte("openclaw:" + oc)
+chk("OpenClaw openclaw.json: models.providers (apiKey ${VAR} do bloco env) + OpenRouter vira Jev primeiro",
+    any(p["via"] == "openclaw meu" and p["key"] == "do-openclaw" and p["model"] == "glm-barato" for p in pv)
+    and any(p["nome"] == "openrouter" and p["tipo"] == "systemone" and p["key"] == "k-or" for p in pv), pv)
+cx = os.path.join(T, "config.toml")
+open(cx, "w").write(f'model = "m"\n[model_providers.oauth]\nbase_url = "{BASE}/v1"\n[model_providers.chave]\nbase_url = "{BASE}/v1"\nenv_key = "CX_KEY"\n')
+os.environ["CX_KEY"] = "do-codex"
+pv = jp.provs_de_fonte("codex:" + cx)
+chk("Codex config.toml: provedor com env_key entra; login OAuth (sem chave) fica de fora (DA-006)",
+    [p["via"] for p in pv] == ["codex chave"] and pv[0]["key"] == "do-codex", pv)
+del os.environ["CX_KEY"]
 
 # link de uso único
 r = run(["python3", os.path.join(J, "juiz_prov.py"), "link", "--ttl", "20"])

@@ -12,6 +12,10 @@ Provedores, na ordem de ADAS_JUIZ_ORDEM (default typesafe,openrouter,experientia
 Os quatro primeiros falam /systemone (perguntas tipadas `noul`). Falhou um, tenta o próximo; acabou o prazo → exceção
 → quem chama passa (fail-open).
 
+Antes de tudo, se o agente JÁ tem provedor configurado, o juiz reusa (ADAS_JUIZ_FONTE=<tipo>:<arquivo>, lido na hora):
+Hermes (config.yaml model/custom_providers + .env), OpenClaw (openclaw.json models.providers), Codex (config.toml
+providers com api_key/env_key — login OAuth fica de fora, DA-006), Claude Code (bloco env do settings.json). Jev pelo
+mesmo provedor quando ele é OpenRouter/EL/TypeSafe/Gateway; senão o modelo do próprio agente, OpenAI-compatível.
 De onde vem a chave (primeiro que tiver): env do processo → ~/.adas/juiz.env (KEY=VALUE, chmod 600) → os arquivos
 de ADAS_JUIZ_ENVFILE (ex. o .env do Hermes; ponteiro, a chave não é copiada) → o script ADAS_JUIZ_CRED
 (`<script> <provedor> value`, o cofre da instância). Sem nenhuma: juiz DESLIGADO e o nível efetivo é 2.
@@ -82,10 +86,119 @@ def tem_cofre(c):
     return bool(cred and os.path.exists(os.path.expanduser(cred)))
 
 
+# ───────────────────────── provedores que o AGENTE já tem configurados ─────────────────────────
+# Lidos NA HORA do arquivo do próprio agente (ponteiro ADAS_JUIZ_FONTE=<tipo>:<caminho>); nada é copiado.
+# Codex/Claude por OAuth (auth.json, .credentials.json) NÃO entram: credencial de CLI OAuth não sai do CLI (DA-006).
+JEV_HOSTS = {"openrouter.ai": "openrouter", "experientiallabs.ai": "experientiallabs", "typesafe.ai": "typesafe",
+             "ai-gateway.vercel.sh": "gateway"}
+
+
+def _env_ref(v, envs):
+    """'${VAR}' / '$VAR' → valor do env do agente ou do processo."""
+    m = re.fullmatch(r"\$\{?(\w+)\}?", (v or "").strip())
+    return (envs.get(m.group(1)) or os.environ.get(m.group(1), "")) if m else (v or "")
+
+
+def _yaml_hermes(path):
+    """Mini-leitor do config.yaml do Hermes: bloco `model:` e lista `custom_providers:` (chave: valor simples)."""
+    model, custom, cur, bloco = {}, [], None, None
+    for l in open(path, encoding="utf-8"):
+        l = re.sub(r"\s+#.*$", "", l.rstrip("\n"))
+        if not l.strip() or l.lstrip().startswith("#"):
+            continue
+        if not l.startswith(" "):
+            bloco = l.split(":", 1)[0].strip(); cur = None; continue
+        m = re.match(r"^(\s*)(-\s+)?([\w-]+):\s*(.*)$", l)
+        if not m:
+            continue
+        ind, item, k, v = len(m.group(1)), m.group(2), m.group(3), m.group(4).strip().strip('"').strip("'")
+        if bloco == "model" and ind == 2:
+            model[k] = v
+        elif bloco == "custom_providers":
+            if item:
+                cur = {}; custom.append(cur)
+            if cur is not None and v:
+                cur[k] = v
+    return model, custom
+
+
+def _prov_de(nome, base, key, model):
+    """Um provedor do agente → [Jev pelo mesmo provedor (se for OpenRouter/EL/TypeSafe/Gateway), OpenAI-compatível]."""
+    out = []
+    host = re.sub(r"^https?://([^/:]+).*", r"\1", base or "")
+    jev = next((v for h, v in JEV_HOSTS.items() if host.endswith(h)), None)
+    if jev and key:
+        var, url, m = SYSTEMONE[jev]
+        out.append({"nome": jev, "tipo": "systemone", "url": url, "model": m, "key": key, "via": nome})
+    if base and model:
+        out.append({"nome": "openai", "tipo": "openai", "url": base.rstrip("/"), "model": model, "key": key or "", "via": nome})
+    return out
+
+
+def provs_de_fonte(fonte):
+    """'hermes:/opt/data/config.yaml' | 'openclaw:~/.openclaw/openclaw.json' | 'codex:~/.codex/config.toml' |
+    'claude:~/.claude/settings.json' → provedores (Jev primeiro, depois o modelo do próprio agente)."""
+    tipo, _, path = (fonte or "").partition(":")
+    path = os.path.expanduser(path)
+    if not os.path.exists(path):
+        return []
+    out = []
+    try:
+        if tipo == "hermes":
+            envs = ler_env(os.path.join(os.path.dirname(path), ".env"))
+            for nome, (var, url, m) in SYSTEMONE.items():
+                if envs.get(var):
+                    out.append({"nome": nome, "tipo": "systemone", "url": url, "model": m, "key": envs[var], "via": "hermes .env"})
+            model, custom = _yaml_hermes(path)
+            for p in custom + [dict(model, name="model", model=model.get("default") or model.get("model"))]:
+                key = envs.get(p.get("key_env", "")) or _env_ref(p.get("api_key"), envs)
+                out += _prov_de("hermes " + p.get("name", "?"), p.get("base_url"), key, p.get("model"))
+        elif tipo == "openclaw":
+            d = json.load(open(path))
+            envs = {k: str(v) for k, v in (d.get("env") or {}).items() if isinstance(v, (str, int))}
+            for nome, p in ((d.get("models") or {}).get("providers") or {}).items():
+                ms = [x.get("id") for x in p.get("models") or [] if isinstance(x, dict)]
+                out += _prov_de("openclaw " + nome, p.get("baseUrl"), _env_ref(p.get("apiKey"), envs), ms[0] if ms else None)
+        elif tipo == "codex":
+            import tomllib
+            d = tomllib.load(open(path, "rb"))
+            for nome, p in {**(d.get("model_providers") or {}), **(d.get("providers") or {})}.items():
+                key = p.get("api_key") or os.environ.get(p.get("env_key") or "", "")
+                if key:  # sem chave = login ChatGPT/OAuth (auth.json): fica de fora (DA-006)
+                    out += _prov_de("codex " + nome, p.get("base_url"), key, d.get("model"))
+        elif tipo == "claude":
+            envs = {k: str(v) for k, v in (json.load(open(path)).get("env") or {}).items()}
+            for nome, (var, url, m) in SYSTEMONE.items():
+                if envs.get(var):
+                    out.append({"nome": nome, "tipo": "systemone", "url": url, "model": m, "key": envs[var], "via": "claude settings env"})
+    except Exception:
+        return out
+    return out
+
+
+def fontes_agente():
+    """Configs de agente presentes nesta máquina (Hermes, OpenClaw, Codex, Claude Code)."""
+    hh = os.environ.get("HERMES_HOME")
+    cand = [("hermes", os.path.join(hh, "config.yaml")) if hh else None, ("hermes", "/opt/data/config.yaml"),
+            ("hermes", os.path.join(H, ".hermes", "config.yaml")),
+            ("openclaw", os.environ.get("OPENCLAW_CONFIG") or os.path.join(H, ".openclaw", "openclaw.json")),
+            ("codex", os.path.join(H, ".codex", "config.toml")), ("claude", os.path.join(H, ".claude", "settings.json"))]
+    vistos, out = set(), []
+    for c in filter(None, cand):
+        if os.path.exists(c[1]) and c[1] not in vistos:
+            vistos.add(c[1]); out.append(f"{c[0]}:{c[1]}")
+    return out
+
+
 def provedores(c=None, rede=True):
     """Lista na ordem configurada, só os que têm chave (ou URL, no openai). rede=False: não chama o cofre (rápido)."""
     c = conf() if c is None else c
     out = []
+    fonte = os.environ.get("ADAS_JUIZ_FONTE") or c.get("ADAS_JUIZ_FONTE")
+    if fonte:  # provedor do próprio agente, lido na hora; ADAS_JUIZ_FONTE_PROV fixa qual (o que passou no teste)
+        fp = provs_de_fonte(fonte)
+        pin = c.get("ADAS_JUIZ_FONTE_PROV") or os.environ.get("ADAS_JUIZ_FONTE_PROV")
+        out += sorted(fp, key=lambda p: (f'{p["nome"]}@{p.get("via")}' != pin))
     for nome in (os.environ.get("ADAS_JUIZ_ORDEM") or c.get("ADAS_JUIZ_ORDEM") or ORDEM).replace(" ", "").split(","):
         if nome in SYSTEMONE:
             var, url, model = SYSTEMONE[nome]
@@ -211,6 +324,10 @@ def candidatos():
             if ler_env(f).get(var):
                 out.append(({"nome": nome, "tipo": "systemone", "url": url, "model": model, "key": ler_env(f)[var]},
                             [f"ADAS_JUIZ_ORDEM={nome}", f"ADAS_JUIZ_ENVFILE={f}"], f"{var} em {f}"))
+    for f in fontes_agente():  # a config de provedores do próprio agente (Hermes/OpenClaw/Codex/Claude)
+        for p in provs_de_fonte(f):
+            out.append((p, ["ADAS_JUIZ_ORDEM=none", f"ADAS_JUIZ_FONTE={f}", f'ADAS_JUIZ_FONTE_PROV={p["nome"]}@{p.get("via")}'],
+                        f'{p["nome"]} de {p.get("via")} ({f.split(":", 1)[1]})'))
     cred = os.environ.get("ADAS_JUIZ_CRED") or os.environ.get("JUIZ_REPLY_CRED")
     if cred and os.path.exists(cred):
         for nome, (var, url, model) in SYSTEMONE.items():

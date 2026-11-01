@@ -3,6 +3,19 @@
 Cada versão diz o que muda para quem usa, não a lista de commits. A primeira linha `Resumo:` de cada
 versão é a que aparece no aviso de versão nova da sessão.
 
+## 1.1.2 — 2026-10-31
+
+Resumo: o juiz reusa o provedor que o agente já tem configurado (Hermes, OpenClaw, Codex, Claude Code), sem copiar a chave.
+
+- `adas juiz configurar --auto` agora lê a configuração de provedores do próprio agente:
+  - Hermes: `config.yaml` (modelo e `custom_providers`) + `.env`;
+  - OpenClaw: `openclaw.json` (`models.providers`);
+  - Codex: `config.toml` (provedor com chave; login OAuth fica de fora);
+  - Claude Code: bloco `env` do `settings.json`.
+- Quando o provedor é OpenRouter, ExperientialLabs, TypeSafe ou Vercel Gateway, o juiz usa o Jev por ele. Senão, usa o modelo barato do próprio agente.
+- Grava só o ponteiro pro arquivo do agente. A chave é lida na hora e nunca é copiada.
+- Provado num Hermes real (5 de 6 provedores da config responderam) e numa config real de OpenClaw (2 de 2).
+
 ## 1.1.1 — 2026-10-31
 
 Resumo: o juiz sem chave avisa e se liga sem passar pelo chat; o nível de vigilância se ajusta sozinho; a regra certa chega em 90% das violações medidas (antes 58%).

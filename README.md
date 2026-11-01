@@ -176,7 +176,10 @@ O **termostato** (`adas nivel`) escolhe o nível sozinho, 1×/dia no começo da 
 
 **Juiz sem chave não fica calado.** No nível 3 sem chave, o começo da sessão avisa
 "Juiz DESLIGADO: sem chave — nível 2" com o comando de ligar. A chave nunca passa pelo chat:
-- `adas juiz configurar --auto` acha a chave que o agente já tem (ambiente, `.env` do Hermes, cofre, Ollama local) e grava a 1ª que responde;
+- `adas juiz configurar --auto` reusa o provedor que o agente já tem configurado (Hermes `config.yaml` + `.env`,
+  OpenClaw `openclaw.json`, Codex `config.toml` com chave, bloco `env` do Claude Code, Ollama local), testa e grava
+  só o PONTEIRO da 1ª que responde: a chave é lida na hora, do arquivo do agente. Jev quando o provedor é
+  OpenRouter/EL/TypeSafe/Gateway; senão o modelo barato do próprio agente. Login OAuth (auth.json) fica de fora;
 - `adas juiz configurar` lê a chave escondida no terminal e grava `~/.adas/juiz.env` (permissão 600);
 - `adas juiz link` abre um formulário local de uso único (5 min) pra quem só tem o chat.
 
