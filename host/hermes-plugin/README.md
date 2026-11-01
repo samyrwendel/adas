@@ -62,6 +62,11 @@ Lê `$HERMES_HOME/governanca/{DECISIONS.md, padrao.md, juiz-reply.json}`:
 - do padrão entram até 3 regras escolhidas pela mensagem (FTS5, limiar `ADAS_JIT_BM25`);
 - o juiz (nível 3) lê a resposta depois de sair e deixa aviso para o próximo turno.
 
+- regra do padrão com `**Gatilho:** evento · prompt · quando=/re/` entra pela FORMA da frase, mesmo sem palavra em comum
+  (ex.: DA-482, frase de decisão do dono → registrar a próxima DH-NNN, que o hook calcula e mostra);
+- regra com `**Padrão sem ADAS:** … resposta=/re/`: se a resposta casa e o `DECISIONS.md` não foi escrito desde a
+  mensagem, o post deixa aviso pro turno seguinte (determinístico, em qualquer nível, ledger `ev: padrao`).
+
 Ledger em `governanca/jit/jit.log`. Nível em `ADAS_JIT_NIVEL`: sem Ollama no container, o vetor não roda.
 
 Juiz: mesmos provedores do Claude Code (`host/jit/juiz_prov.py`); o `$HERMES_HOME/.env` entra como ponteiro

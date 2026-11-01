@@ -30,6 +30,7 @@ O ADAS-JIT é a ponte entre as duas: a memória acende (ativação) e o enforcem
 | **faixa** | regra de trabalho de um projeto, auto-disparada pela descrição (camada de enforcement) | `.claude/skills/*/SKILL.md` |
 | **cartão** | a DA compilada em forma curta (regra, conserto, gatilho), pronta para ser mostrada | `cards.json` / `regras.db` (`host/jit/da-cards.py`) |
 | **gatilho** | a condição que faz uma regra aparecer: `evento` (predicado no comando/caminho), `forma` (juiz ou guard), `tema` (busca) | linha `**Gatilho:**` da DA; `gatilhos.json` |
+| **padrão sem ADAS** | a reação que o modelo teria sem o ADAS e que a regra substitui (ex.: gravar a decisão do dono na memória nativa e responder "anotado"). Entra na busca e, com `resposta=/re/`, é checada na resposta que saiu | linha `**Padrão sem ADAS:**` da DA (DA-482) |
 | **juiz** | modelo que lê a mensagem antes de sair e responde as perguntas de forma | `juiz-reply.json` + `juiz-reply.py` (instância) |
 | **regra-mãe** | a regra que um cartão-mecanismo serve; aparece junto com ele | `regra_mae()` em `regra-search` |
 | **adesão** | a regra foi mostrada e a ação seguinte cumpriu (`aplicou`) ou não (`ignorou`). É o "A" de ADAS | campo `adesao` do ledger `regra-jit.log` |

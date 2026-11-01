@@ -11,6 +11,8 @@ Níveis (compatível com os 3 do produto):
     Gatilho = pergunta nova, sem código. `forma · reply · hook=<guard>` entra na lista de guards que o juiz
     roda ANTES. Modo `deny` só com `modo=deny` no Gatilho E aprovado no replay (juiz-gate.json); o resto é aviso.
 Gatilho vem de `da-index.sh gatilhos` (última linha de cada id vale; ausência = tema).
+`**Padrão sem ADAS:** <o que o modelo faria por default> [resposta=/re/]` entra no texto indexado (a regra casa também
+pela reação default que ela substitui); o `resposta=` é lido pelo post do Hermes (hermes-jit.py), task 20261101-007.
 Incremental por hash do texto indexado: DA nova = 1 embedding. Semente opcional: /tmp/senior-013/emb.json.
 Uso: da-cards.py [--home DIR] [--out DIR] [--no-vec] [--so-juiz] [--seed emb.json]"""
 import fcntl, hashlib, json, os, re, sqlite3, struct, subprocess, sys, urllib.request
@@ -75,7 +77,8 @@ def extract(home):
             ad = re.match(r"Adendo (?:à|a|ao|às) ((?:D[AC]-\d+[a-z]?[/,\s]*(?:e\s+)?)+)", h.group(2))
             if ad: md["refs"] = (md["refs"] + " " + ad.group(1)).strip()  # 'Adendo à DA-444/451' = refs
             cards.append({"id": h.group(1), "titulo": h.group(2).strip(), "regra": regra, "motivo": campo("Motivo"),
-                          **md, "exemplo": exemplos(b), "filhos": filhos.get(h.group(1), [])})
+                          **md, "exemplo": exemplos(b), "filhos": filhos.get(h.group(1), []),
+                          "padrao_sem_adas": " ".join(re.findall(r"(?m)^\*\*Padrão sem ADAS:\*\*(.*)$", b)[-1:])})
     ctxt = open(os.path.join(home, "CONDUCT.md"), encoding="utf-8").read()
     for b in re.split(r"(?m)^(?=## DC-\d)", ctxt)[1:]:
         h = re.match(r"## (DC-\d+) — (.*)", b); r = re.search(r"\*\*Regra:\*\*(.*?)\n", b)
@@ -90,6 +93,8 @@ def extract(home):
         c["gatilho"] = gat.get(c["id"], {"tipo": "tema"})
         c["regra_curta"] = c["regra"] if len(c["regra"]) <= 240 else c["regra"][:237].rstrip() + "…"
         c["texto"] = f'{c["id"]} {c["titulo"]}\nRegra: {c["regra"][:700]}\nMotivo: {c["motivo"][:500]}'
+        if c.get("padrao_sem_adas"):  # a reação DEFAULT do modelo que a regra substitui também casa a busca (task 20261101-007)
+            c["texto"] += f'\nPadrão sem ADAS: {re.sub(r"resposta=/.*?/(?=\s|$)", "", c["padrao_sem_adas"])[:400]}'
         c["hash"] = sha(c["texto"])
     return cards
 

@@ -3,6 +3,16 @@
 Cada versão diz o que muda para quem usa, não a lista de commits. A primeira linha `Resumo:` de cada
 versão é a que aparece no aviso de versão nova da sessão.
 
+## 1.1.4 — 2026-11-01
+
+Resumo: quando o dono diz "a partir de agora…", o agente registra a decisão no diário e não só na memória dele.
+
+- **Frase de decisão acende a regra na hora.** "A partir de agora", "não pode mais", "nunca mais", "fica assim", "regra nova", "from now on"… trazem a regra de registrar no diário, mesmo quando a mensagem não tem nenhuma palavra da regra. Antes, no Hermes, nada aparecia e o agente guardava a ordem só na memória própria.
+- **No Hermes o aviso já diz onde escrever:** o caminho do `DECISIONS.md` e o número da próxima DH.
+- **Resposta "anotado, regra permanente na memória" sem o diário escrito leva aviso.** No Hermes, no turno seguinte; no Claude Code, antes do reply sair no Telegram. Não precisa de juiz nem de chave: é uma comparação de texto.
+- **Campo novo nas decisões: `**Padrão sem ADAS:**`.** Diz o que o modelo faria sem o ADAS e que a regra troca. Esse texto também serve pra achar a regra. Com `resposta=/…/`, a resposta que saiu é conferida contra ele.
+- Pra chegar no Hermes, o sync que gera o `padrao.md` agora leva junto essas duas linhas (Gatilho de evento e Padrão sem ADAS).
+
 ## 1.1.3 — 2026-10-31
 
 Resumo: atualizar um clone usado por outro agente (Hermes) não mexe mais no Claude Code da máquina.

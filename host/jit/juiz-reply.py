@@ -20,7 +20,7 @@ e o SessionStart avisa. Nível: ADAS_JIT_NIVEL (fixo) → ~/.adas/jit/nivel.fixo
 abaixo de 3 o hook não faz nada. Env: JUIZ_REPLY_RUBRICA, JUIZ_REPLY_TETO (chamadas/dia, default 600), JUIZ_REPLY_TIMEOUT (s, default 4),
 JUIZ_REPLY_LEDGER, JUIZ_REPLY_CACHE (testes apontam pra /tmp).
 """
-import hashlib, json, os, subprocess, sys, time
+import hashlib, json, os, re, subprocess, sys, time
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))  # juiz_prov.py mora ao lado (hook instalado = symlink)
 import juiz_prov  # noqa: E402
@@ -93,15 +93,45 @@ def saida(violados, resp):
             "⚠️ JUIZ-REPLY (aviso, a mensagem JÁ SAIU): " + " | ".join(partes)}}
 
 
+def padrao_default(texto):
+    """Determinístico, qualquer nível (DA-482, task 20261101-007): o reply casa a reação DEFAULT que uma regra substitui
+    (`resposta=/re/` do campo Padrão sem ADAS, no cards.json) e o diário não foi escrito nos últimos 15 min → aviso.
+    ponytail: janela fixa de 15 min no lugar da marca de turno do Hermes; o reply do Telegram fecha o turno do dono."""
+    try:
+        cards = json.load(open(os.path.join(os.environ.get("ADAS_JIT_DIR") or f"{H}/.adas/jit", "cards.json")))
+        dmt = max(os.path.getmtime(f"{H}/{f}") for f in ("DECISIONS.md", "CONDUCT.md") if os.path.exists(f"{H}/{f}"))
+    except Exception:
+        return None
+    if time.time() - dmt < 900:
+        return None
+    hits, RESP = [], r"resposta=/(.*?)/(?=\s|$)"
+    for c in cards:
+        m = re.search(RESP, c.get("padrao_sem_adas") or "")
+        try:
+            if m and re.search(m.group(1), texto, re.I):
+                hits.append(c)
+        except re.error:
+            continue
+    if not hits:
+        return None
+    return ("Este reply faz o que o modelo faz SEM ADAS: " + " | ".join(
+        c["id"] + ": " + re.sub(RESP, "", c["padrao_sem_adas"]).strip()[:160] for c in hits)
+        + " — o diário (DECISIONS.md/CONDUCT.md) NÃO foi escrito: registre a DA/DC (da-new.sh) antes de mandar e cite o ID.")
+
+
 def main():
-    if juiz_prov.nivel() < 3:
-        return
     raw = sys.stdin.read()
     p = json.loads(raw)
     ti = p.get("tool_input") or {}
     texto = (ti.get("text") or "").strip()
     if not texto:
         return
+    pd = padrao_default(texto)
+    def avisa_padrao():
+        ledger({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "decisao": "padrao", "len": len(texto), "aviso": pd[:200]})
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": pd}}, ensure_ascii=False))
+    if juiz_prov.nivel() < 3:
+        return avisa_padrao() if pd else None
     try:
         rub = json.load(open(RUBRICA))
     except Exception:  # rubrica ausente/corrompida: o juiz cala, mas o guard da DA-412 (deny) não pode calar junto
@@ -117,6 +147,8 @@ def main():
             ledger(reg)
             sys.stdout.write(neg if neg.endswith("\n") else neg + "\n")
             return
+    if pd:  # depois dos guards (deny vence); o juiz roda de novo no reply corrigido
+        return avisa_padrao()
     if not cartoes:
         return
     try:

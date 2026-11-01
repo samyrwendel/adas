@@ -751,6 +751,40 @@ printf '{"texto":"aviso de teste","ts":"x"}' > "$HJ/governanca/jit/aviso-s1.json
 o="$(hj pre_llm_call "oi" "")"
 printf '%s' "$o" | grep -q 'aviso de teste' && [ ! -f "$HJ/governanca/jit/aviso-s1.json" ] && ok "aviso pendente do juiz entra no próximo turno e é consumido" || bad "aviso pendente não entrou/não foi consumido"
 
+echo "== decisão do dono vira DH, nunca só memória nativa (DA-482, hermes-jit.py)"
+# o padrão exportado pelo sync traz Gatilho de evento no prompt + Padrão sem ADAS (resposta=)
+cat >> "$HJ/governanca/padrao.md" <<'PADRAO'
+
+## DA-905 — Decisão do dono vai pro diário
+**Regra:** frase de decisão do dono vira DH no diário do host; memória nativa sozinha é violação.
+**Gatilho:** evento · prompt · quando=/(\ba partir de agora|\bn[ãa]o pode mais\b|\bfrom now on\b)/ · conserto="registre a DH antes de responder"
+**Padrão sem ADAS:** gravar na memória nativa e responder "regra permanente". resposta=/(regra permanente|anotad[oa] (pra|para) sempre)/
+`origem: x`
+PADRAO
+FR="Quando eu pedi tire todos os freios, você desligou o ADAS-JIT junto. O JIT não é freio. A partir de agora isso não pode mais acontecer."
+o="$(ADAS_JIT_BM25=-99 hj pre_llm_call "$FR" "")"
+printf '%s' "$o" | grep -q 'DA-905' && printf '%s' "$o" | grep -q 'Sem ADAS você faria' && printf '%s' "$o" | grep -q 'a próxima é DH-002' \
+  && ok "frase exata do dono: cartão DA-905 entra pelo EVENTO (bm25 desligado), com a reação default e a próxima DH" || bad "frase de decisão não injetou o cartão: $o"
+o="$(ADAS_JIT_BM25=-99 hj pre_llm_call "qual o preço do ETH?" "")"
+printf '%s' "$o" | grep -q 'DA-905' && bad "conversa comum puxou o cartão de decisão: $o" || ok "conversa comum: cartão de decisão em silêncio"
+rm -f "$HJ/governanca/jit/aviso-s1.json"; hj pre_llm_call "$FR" "" >/dev/null
+hj post_llm_call "" "Anotado pra sempre — virou regra permanente na memória." >/dev/null
+grep -q 'DA-905' "$HJ/governanca/jit/aviso-s1.json" 2>/dev/null && tail -2 "$HJ/governanca/jit/jit.log" | grep -q '"ev": "padrao", "sid": "s1", "decisao": "aviso"' \
+  && ok "resposta default sem DH escrita: aviso pro próximo turno + ledger ev=padrao" || bad "resposta default passou sem aviso"
+rm -f "$HJ/governanca/jit/aviso-s1.json"; hj pre_llm_call "$FR" "" >/dev/null; sleep 1
+printf '\n## DH-002 — JIT não é freio\n**Regra:** x\n' >> "$HJ/governanca/DECISIONS.md"
+hj post_llm_call "" "Registrei a DH-002; virou regra permanente." >/dev/null
+[ ! -f "$HJ/governanca/jit/aviso-s1.json" ] && tail -2 "$HJ/governanca/jit/jit.log" | grep -q 'ok_diario' \
+  && ok "diário escrito no turno: a mesma resposta passa (ok_diario)" || bad "acusou mesmo com a DH escrita"
+
+CJ="$T/cj"; mkdir -p "$CJ/.claude/bus" "$CJ/jit"; touch -d '1 hour ago' "$CJ/DECISIONS.md"
+printf '[{"id":"DA-905","padrao_sem_adas":"gravar na memória. resposta=/(regra permanente)/"}]' > "$CJ/jit/cards.json"
+cj(){ printf '{"tool_input":{"text":"%s"}}' "$1" | HOME="$CJ" ADAS_JIT_DIR="$CJ/jit" ADAS_JIT_NIVEL=2 python3 "$ROOT/host/jit/juiz-reply.py"; }
+o="$(cj "Anotado: virou regra permanente na memória.")"
+printf '%s' "$o" | grep -q 'DA-905' && ok "Claude Code (juiz-reply): reply com a reação default e diário parado → aviso" || bad "juiz-reply não acusou a reação default: $o"
+touch "$CJ/DECISIONS.md"; o="$(cj "Registrei a DA; virou regra permanente.")"
+[ -z "$o" ] && ok "Claude Code (juiz-reply): diário escrito há pouco → passa" || bad "juiz-reply acusou com o diário escrito: $o"
+
 echo "== ADAS 1.1.1: juiz (provedores, chave sem chat, aviso), termostato, chave colada (tests/test_jit_111.py)"
 o="$(python3 "$ROOT/tests/test_jit_111.py" 2>&1)"; rc=$?
 printf '%s\n' "$o" | grep -E '^  [✓✗]' | sed 's/^  //' | while IFS= read -r l; do echo "  $l"; done
