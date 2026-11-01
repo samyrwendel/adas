@@ -3,6 +3,13 @@
 Cada versão diz o que muda para quem usa, não a lista de commits. A primeira linha `Resumo:` de cada
 versão é a que aparece no aviso de versão nova da sessão.
 
+## 1.1.3 — 2026-10-31
+
+Resumo: atualizar um clone usado por outro agente (Hermes) não mexe mais no Claude Code da máquina.
+
+- `host/update.sh` só reinstala os hooks do Claude Code quando o clone é o que ele usa (`~/.claude/adas/source`). Num clone do Hermes ou de outro agente, atualiza só o motor e avisa.
+- No Hermes, a configuração do juiz fica em `$HERMES_HOME/governanca/juiz.env`, no volume do app, e sobrevive à troca do container.
+
 ## 1.1.2 — 2026-10-31
 
 Resumo: o juiz reusa o provedor que o agente já tem configurado (Hermes, OpenClaw, Codex, Claude Code), sem copiar a chave.

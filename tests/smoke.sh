@@ -708,6 +708,13 @@ git clone -q "$T/rem.git" "$T/inst" 2>/dev/null
 (cd "$UB" && git remote set-url origin "$T/rem.git" && echo 1.1.0 > VERSION && printf '\n## 1.1.0\n\nResumo: teste.\n' >> CHANGELOG.md \
   && echo '# novo' >> host/adas-core.sh && git -c user.name=t -c user.email=t@t commit -qam v110 && git push -q origin HEAD) >/dev/null 2>&1
 UH="$T/uh"; mkdir -p "$UH"; echo "MEU DIÁRIO" > "$UH/DECISIONS.md"; mkdir -p "$UH/.specs"; echo spec > "$UH/.specs/x.md"
+mkdir -p "$UH/.claude/adas"; echo "$T/inst" > "$UH/.claude/adas/source"   # instalação existente que aponta pro clone
+# clone de OUTRO agente (Hermes): update atualiza o motor e não cria hooks/settings no Claude Code do HOME
+git clone -q "$T/rem.git" "$T/inst2" 2>/dev/null; (cd "$T/inst2" && git reset -q --hard HEAD~1) 2>/dev/null
+HH2="$T/hh2"; mkdir -p "$HH2/.claude"
+o="$(HOME="$HH2" bash "$T/inst2/host/update.sh" --yes 2>&1)"
+[ "$(cat "$T/inst2/VERSION")" = 1.1.0 ] && [ ! -e "$HH2/.claude/settings.json" ] && [ ! -d "$HH2/.claude/hooks" ] && printf '%s' "$o" | grep -q "motor atualizado" \
+  && ok "update em clone sem instalação do Claude Code: só o motor, sem hooks nem settings" || bad "update de clone alheio mexeu no Claude Code: $o"
 o="$(HOME="$UH" bash "$T/inst/host/update.sh" --check 2>&1)"
 [ "$(cat "$T/inst/VERSION")" = "$BV" ] && printf '%s' "$o" | grep -q "$BV → 1.1.0" && ok "update --check mostra $BV → 1.1.0 e não muda nada" || bad "update --check: $o"
 o="$(printf 'n\n' | HOME="$UH" bash "$T/inst/host/update.sh" 2>&1)"

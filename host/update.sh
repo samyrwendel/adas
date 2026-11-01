@@ -37,8 +37,15 @@ if [ "$MODE" = "ask" ]; then
   case "$r" in s|S|sim|y|Y|yes) ;; *) echo "cancelado — nada alterado"; exit 0;; esac
 fi
 git merge -q --ff-only "$up" || { echo "✗ merge falhou — clone intacto"; exit 1; }
-bash "$DIR/host/install.sh" || { echo "✗ install.sh falhou — o settings.json tem backup em ~/.claude/settings.json.bak-adas"; exit 1; }
-echo "✓ ADAS $(cat VERSION) instalado"
+# os hooks do Claude Code só se este clone É a instalação dele (~/.claude/adas/source). Clone usado por outro agente
+# (Hermes em /opt/data/adas, OpenClaw…) atualiza só o motor: rodar o install.sh ali enfiaria hooks num Claude Code
+# do host que ninguém pediu (task 20261101-005). Instalar pela 1ª vez é o install.sh, não o update.
+if [ "$(cat "$HOME/.claude/adas/source" 2>/dev/null)" = "$DIR" ]; then
+  bash "$DIR/host/install.sh" || { echo "✗ install.sh falhou — o settings.json tem backup em ~/.claude/settings.json.bak-adas"; exit 1; }
+  echo "✓ ADAS $(cat VERSION) instalado"
+else
+  echo "✓ ADAS $(cat VERSION): motor atualizado neste clone (sem instalação do Claude Code apontando pra ele; hooks não mexidos)"
+fi
 
 conf="$HOME/.claude/adas/repos.conf"
 if [ -f "$conf" ]; then

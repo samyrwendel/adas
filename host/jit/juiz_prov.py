@@ -30,7 +30,10 @@ CLI:
 import getpass, json, os, re, secrets, socket, subprocess, sys, time, urllib.request
 
 H = os.path.expanduser("~")
-CONF = os.environ.get("ADAS_JUIZ_CONF") or os.path.join(H, ".adas", "juiz.env")
+# no Hermes a config mora no volume dele ($HERMES_HOME/governanca/juiz.env), não no HOME do processo do container
+_GOV = os.path.join(os.environ.get("HERMES_HOME", ""), "governanca") if os.environ.get("HERMES_HOME") else ""
+CONF = os.environ.get("ADAS_JUIZ_CONF") or (os.path.join(_GOV, "juiz.env") if _GOV and os.path.isdir(_GOV) else
+                                             os.path.join(H, ".adas", "juiz.env"))
 SYSTEMONE = {  # nome: (variável da chave, url, modelo)
     "typesafe": ("TYPESAFE_API_KEY", "https://api.typesafe.ai/v1/systemone", "jev-latest"),
     "openrouter": ("OPENROUTER_API_KEY", "https://openrouter.ai/api/v1/systemone", "jev-latest"),

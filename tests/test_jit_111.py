@@ -168,6 +168,11 @@ chk("Codex config.toml: provedor com env_key entra; login OAuth (sem chave) fica
     [p["via"] for p in pv] == ["codex chave"] and pv[0]["key"] == "do-codex", pv)
 del os.environ["CX_KEY"]
 
+hg = os.path.join(T, "hg"); os.makedirs(os.path.join(hg, "governanca"))
+r = run(["python3", "-c", f"import sys; sys.path.insert(0, {J!r}); import juiz_prov; print(juiz_prov.CONF)"], {"HERMES_HOME": hg})
+chk("no Hermes a config do juiz mora em $HERMES_HOME/governanca/juiz.env (volume persistente)",
+    r.stdout.strip() == os.path.join(hg, "governanca", "juiz.env"), r.stdout + r.stderr)
+
 # link de uso único
 r = run(["python3", os.path.join(J, "juiz_prov.py"), "link", "--ttl", "20"])
 url = r.stdout.strip()
