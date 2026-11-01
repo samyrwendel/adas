@@ -9,6 +9,7 @@ Resumo: atualizar um clone usado por outro agente (Hermes) não mexe mais no Cla
 
 - `host/update.sh` só reinstala os hooks do Claude Code quando o clone é o que ele usa (`~/.claude/adas/source`). Num clone do Hermes ou de outro agente, atualiza só o motor e avisa.
 - No Hermes, a configuração do juiz fica em `$HERMES_HOME/governanca/juiz.env`, no volume do app, e sobrevive à troca do container.
+- **Atenção, quem sai de 1.1.0–1.1.2 num clone do Hermes:** o `update.sh` que roda é o antigo, que ainda reinstala os hooks do Claude Code. Nesse caso use `git -C <clone> pull --ff-only` uma vez. Daí em diante o `update.sh` já é o novo.
 
 ## 1.1.2 — 2026-10-31
 
