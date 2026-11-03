@@ -41,6 +41,7 @@ todos = json.load(open(gp))
 json.dump([g for g in todos if g["id"] not in sem], open(gp, "w"), ensure_ascii=False)  # --sem tira também o quando= que o regra-jit lê
 gs = {g["id"]: g["gatilho"] for g in todos if g["id"] not in sem}
 H = os.path.join(T, "home")
+os.environ["ADAS_JIT_JUIZ"] = "off"  # filtro do juiz (rede) fora das fixtures; ele tem bloco próprio abaixo
 ok = bad = 0
 def chk(nome, cond, extra=""):
     global ok, bad
@@ -207,6 +208,33 @@ if os.environ.get("JUIZ") == "1":
                 print(f"  ⚠ T7 {rid}: {c['nome']} → gap conhecido ({c['gap'][:60]}…), veio {v}")
                 continue
             chk(f"T7 {rid}: {c['nome']} → {'|'.join(c['espera'])}", v in c["espera"], f"veio {v}")
+
+print("── juiz como filtro do motor de evento + heredoc + dedupe (task 20261103-001) ──")
+import importlib.util
+sp_ = importlib.util.spec_from_file_location("rj", os.path.join(JD, "regra-jit.py")); rj = importlib.util.module_from_spec(sp_); sp_.loader.exec_module(rj)
+sb = rj.comando_sem_corpo
+chk("T8 heredoc: palavra do gatilho só no corpo não casa", "nanogo" not in sb("python3 - <<'EOF'\nx = 'nanogo restic'\nEOF\nls"))
+chk("T8 argumento de bus-inject/echo/sed não casa", all("nanogo" not in sb(c) for c in (
+    "bash ~/s/bus-inject.sh devbot 'backup do nanogo restic' 'c'", "echo \"nanogo restic\"", "sed -i 's/nanogo/x/' f")))
+chk("T8 ssh host 'restic …' e python3 -c continuam casando", "restic" in sb("ssh root@nanogo 'restic snapshots'") and "x" in sb("python3 -c 'x'"))
+sys.path.insert(0, JD); import juiz_prov as jp_
+rj.STATE = os.path.join(T, "j8"); card = {"id": "DA-444", "regra_curta": "r", "titulo": "t", "motor": "evento"}
+os.environ.pop("ADAS_JIT_JUIZ", None); jp_.nivel = lambda: 3; jp_.provedores = lambda c=None, rede=True: [{"nome": "stub"}]
+jp_.perguntar = lambda texto, cartoes, prazo, fmt=None, provs=None: ({"DA-444": 0.1}, {"prov": "stub", "cost": 1e-5})
+k, p, m = rj.juiz_filtra("bash", "ls", [dict(card)])
+chk("T8 juiz p<limiar derruba o cartão e grava p/prov/custo", k == [] and p == {"DA-444": 0.1} and m.get("prov") == "stub" and m.get("cost") == 1e-5, str((k, p, m)))
+jp_.perguntar = lambda *a, **kw: ({"DA-444": 0.9}, {"prov": "stub"})
+chk("T8 juiz p≥limiar mantém", len(rj.juiz_filtra("bash", "ls", [dict(card)])[0]) == 1)
+def _boom(*a, **kw): raise RuntimeError("timeout")
+jp_.perguntar = _boom
+k, p, m = rj.juiz_filtra("bash", "ls", [dict(card)])
+chk("T8 falha do juiz = passa (cartão mostrado, erro no ledger)", len(k) == 1 and "erro" in m, str(m))
+rj.JUIZ_TETO = 0
+chk("T8 teto/dia estourado = passa sem chamar", len(rj.juiz_filtra("bash", "ls", [dict(card)])[0]) == 1 and not rj.juiz_filtra("bash", "ls", [dict(card)])[2]["chamou"])
+rj.JUIZ_TETO = 400
+ev_ = {"hook_event_name": "PreToolUse", "session_id": "dd", "cwd": RH, "tool_name": "Bash", "tool_input": {"command": "ssh root@nanogo 'restic snapshots'"}}
+o1, _ = jit(ev_, tag="dd"); o2, _ = jit(ev_, tag="dd")
+chk("T8 dedupe: mesmo cartão na mesma sessão não repete (TTL 30 min)", "DA-444" in o1 and "DA-444" not in o2 and rj.TTL_VISTO == 1800, o2[:100])
 
 print("── SessionStart sem corte (ADAS-JIT) ──")
 # adas_session_emit direto (o hook adas-activate.sh grava o .active da sessão — efeito colateral que o teste não pode ter)

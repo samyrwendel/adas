@@ -21,7 +21,7 @@ Motores, nesta ordem (k≤3 no total, silêncio é o default):
                 disparou 3/135, todos autorreferentes; o positivo real (backup de um servidor) ficou em L2 0,74. Bash = evento.
         edit:   L2 ≤ 0,60; ledgers (DECISIONS*/CONDUCT) ficam só com o motor de evento
 Saída: additionalContext (nunca bloqueia; deny é papel dos guards `hook=`). Cartão cujo id já está no
-payload é omitido (o agente já está nele); cartão já mostrado na sessão nos últimos 60 min também.
+payload é omitido (o agente já está nele); cartão já mostrado na sessão nos últimos 30 min também.
 Escopo: no motor de TEMA, cartão `projeto/*` só aparece no cwd do projeto (rotas.conf, contrato do
 adas_da_rotas); o motor de EVENTO não filtra (o predicado de caminho/comando já é o escopo).
 Regra-mãe: cartão-mecanismo mostrado traz a regra que ele mecaniza (grafo.json, aresta mecanismo-de).
@@ -38,7 +38,10 @@ BUS = os.environ.get("ADAS_JIT_BUS") or os.path.join(HOME, ".claude", "bus")
 LOG = os.path.join(BUS, "regra-jit.log")
 STATE = os.path.join(BUS, "regra-jit")
 K = 3
-TTL_VISTO = 3600
+TTL_VISTO = 1800  # dedupe: o mesmo cartão não repete na sessão em <30 min (medição 20261102-024: 3 cartões = 34 de 48 disparos)
+JUIZ_LIMIAR = float(os.environ.get("ADAS_JIT_JUIZ_LIMIAR", "0.3"))  # prob. mínima de "a regra se aplica a ESTA ação" (calibrado no replay de 30)
+JUIZ_TETO = int(os.environ.get("ADAS_JIT_JUIZ_TETO", "400"))          # chamadas/dia do filtro (custo ~5e-5 USD cada)
+JUIZ_TIMEOUT = float(os.environ.get("ADAS_JIT_JUIZ_TIMEOUT", "2.5"))
 LIMIAR = {"prompt": {"l2": 0.65, "bm25": -25.0, "bm25_max_chars": 300, "lider_l2": 0.82, "lider_bm25": -12.0, "lider_razao": 1.6},
           "bash": {"l2": 0.65, "min_palavras": 8},
           "edit": {"l2": 0.60}}
@@ -124,12 +127,43 @@ def rs():
     return _RS
 
 
+
+TEXTO = {"bus-inject.sh", "da-new.sh", "alert-mainbot.sh", "echo", "printf", "sed", "grep", "rg", "awk", "git", "gh"}
+HEREDOC = re.compile(r"<<-?\s*(['\"]?)(\w+)\1[^\n]*\n.*?(?:\n\s*\2\s*(?=\n|$)|$)", re.S)
+
+def comando_sem_corpo(cmd):
+    """Bash: o `quando` do gatilho casa no COMANDO, não no texto que ele carrega (task 20261103-001, N=8 de 10 na
+    amostra). Tira (1) corpo de heredoc e (2) argumentos entre aspas de programas de texto (TEXTO: bus-inject, da-new,
+    echo, sed, grep, git commit…). `ssh host 'restic …'` e `python3 -c '…'` ficam: lá o argumento É o comando.
+    ponytail: split por ; | & \\n sem aspas aninhadas; subshell $(...) com texto passa inteiro (fail-open = cartão a mais)."""
+    cmd = HEREDOC.sub(lambda m: m.group(0).split("\n", 1)[0], cmd)
+    out = []
+    segs = re.split(r"(?<!\\)([;&|\n]+)", cmd)  # separadores ficam nas posições ímpares
+    # junta de volta segmentos cortados dentro de aspas
+    juntos, buf = [], ""
+    for k, part in enumerate(segs):
+        buf += part
+        if k % 2 == 0 and buf.count("'") % 2 == 0 and buf.count('"') % 2 == 0:
+            juntos.append(buf); buf = ""
+    if buf:
+        juntos.append(buf)
+    for seg in juntos:
+        w = re.sub(r"^\s*(?:\w+=\S*\s+)*", "", seg).split(None, 1)
+        prog = os.path.basename(w[0]) if w else ""
+        if prog in ("bash", "sh", "python3") and len(w) > 1:  # `bash …/bus-inject.sh "<texto>"`
+            prog = os.path.basename(w[1].split()[0])
+        out.append(re.sub(r"'[^']*'|\"[^\"]*\"", "''", seg) if prog in TEXTO else seg)
+    return "".join(out)
+
 def motor_evento(sup, alvo):
     try:
         gs = json.load(open(os.path.join(D, "gatilhos.json")))
     except Exception:
         return []
     out = []
+    cru = alvo
+    if sup == "bash":
+        alvo = comando_sem_corpo(alvo)  # só o `quando` lê o comando limpo; o `salvo` lê o texto inteiro (ex.: "passada de uso" no critério)
     for g in gs:
         gt = g.get("gatilho") or {}
         # sem filtro de escopo aqui: o predicado (caminho/comando) JÁ é o escopo — a DA-401 (projeto) governa a edição
@@ -140,13 +174,50 @@ def motor_evento(sup, alvo):
             continue
         try:
             q, s = rx(gt["quando"]), rx(gt.get("salvo"))
-            if q and q.search(alvo) and not (s and s.search(alvo)):
-                out.append({"id": g["id"], "regra_curta": g["regra_curta"], "motor": "evento",
+            if q and q.search(alvo) and not (s and s.search(cru)):
+                out.append({"id": g["id"], "regra_curta": g["regra_curta"], "titulo": g.get("titulo"), "motor": "evento",
                             "conserto": gt.get("conserto")})
         except re.error:
             continue
     return out
 
+
+def juiz_filtra(sup, alvo, cards):
+    """Filtro do motor de EVENTO (task 20261103-001, Samyr msg 12171): o regex acha a palavra; o juiz Jev responde "a
+    regra se aplica a ESTA ação?" (uma chamada, todas as perguntas, juiz_prov: OpenRouter titular, EL reserva). Cartão
+    com p < JUIZ_LIMIAR cai. FALHA = PASSA (DA-468): sem chave, nível < 3, teto/dia, timeout ou erro mostram o cartão.
+    → (cartões que ficam, {id: p}, meta). Contador diário em STATE/juiz-AAAAMMDD.n (a barra é o teto, não o ledger)."""
+    ev = [c for c in cards if c.get("motor") == "evento"]
+    meta = {"chamou": False}
+    if not ev or os.environ.get("ADAS_JIT_JUIZ", "on") == "off":
+        return cards, {}, meta
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+        import juiz_prov
+        if juiz_prov.nivel() < 3 or not juiz_prov.provedores(rede=False):
+            return cards, {}, dict(meta, motivo="sem_juiz")
+        cn = os.path.join(STATE, "juiz-" + time.strftime("%Y%m%d") + ".n")
+        try:
+            n = int(open(cn).read() or 0)
+        except (OSError, ValueError):
+            n = 0
+        if n >= JUIZ_TETO:
+            return cards, {}, dict(meta, motivo="teto")
+        os.makedirs(STATE, exist_ok=True)
+        open(cn, "w").write(str(n + 1))
+        perg = [{"id": c["id"], "pergunta": (
+            f'A AÇÃO acima (superfície {sup}) trabalha no assunto da regra {c["id"]} — "{c.get("titulo") or ""}" — de modo que '
+            f'lembrar essa regra agora ajudaria quem a executa? Regra: {c["regra_curta"]} '
+            "Responda NÃO só quando o assunto aparece por acaso: texto de fixture/teste de hook, comentário de código, "
+            "mensagem ou task de outro assunto, ou outro projeto.")} for c in ev]
+        t0 = time.time()
+        meta["chamou"] = True
+        resp, m = juiz_prov.perguntar(alvo[:1500], perg, t0 + JUIZ_TIMEOUT)
+        meta.update(ms=round((time.time() - t0) * 1000), prov=m.get("prov"), cost=m.get("cost"))
+    except Exception as e:
+        return cards, {}, dict(meta, erro=type(e).__name__ + ": " + str(e)[:80])
+    return [c for c in cards if c.get("motor") != "evento" or resp.get(c["id"], 1.0) >= JUIZ_LIMIAR], \
+        {k: round(v, 2) for k, v in resp.items()}, meta
 
 def nivel():
     """Nível do JIT (DA-468): env → nivel.fixo → nivel (termostato) → 3. Mesmo contrato do juiz_prov.nivel()."""
@@ -313,15 +384,16 @@ def main():
         cards += [c for c in tema if c["id"] not in {x["id"] for x in cards}]
     vp, vd = vistos(sid)
     now = time.time()
-    mostrar, omitidos = [], []
-    for c in cards:
+    cand, omitidos = [], []
+    for c in cards:  # dedupe ANTES do juiz: cartão já visto não custa chamada
         if re.search(r"\b%s\b" % re.escape(c["id"]), texto):
             omitidos.append((c["id"], "no_payload")); continue
         if c["id"] in vd:
             omitidos.append((c["id"], "visto")); continue
-        mostrar.append(c)
-        if len(mostrar) == K:
-            break
+        cand.append(c)
+    vivos, pj, jmeta = juiz_filtra(sup, alvo, cand)
+    omitidos += [(c["id"], "juiz") for c in cand if c not in vivos]
+    mostrar = vivos[:K]
     modo = os.environ.get("ADAS_JIT", "inline")
     decisao = ("inline" if modo != "log" else "sombra") if mostrar else "silencio"
     ms = round((time.time() - t0) * 1000)
@@ -329,7 +401,7 @@ def main():
         ledger({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "sid": sid, "superficie": sup, "nivel": nivel, "vetor": vetor,
                 "escopo": ",".join(sorted(esc)), "decisao": decisao, "ms": ms, "payload": red(texto),
                 "cartoes": [{k: c.get(k) for k in ("id", "motor", "l2", "bm25")} for c in mostrar],
-                "omitidos": omitidos})
+                "omitidos": omitidos, **({"juiz": dict(jmeta, p=pj)} if jmeta.get("chamou") or jmeta.get("erro") or jmeta.get("motivo") else {})})
     elif ms > 300:
         ledger({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "sid": sid, "superficie": sup, "nivel": nivel, "vetor": vetor,
                 "decisao": "silencio", "ms": ms})
