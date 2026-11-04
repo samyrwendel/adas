@@ -310,10 +310,20 @@ declare -a EFF_SAGA EFF_ESCOPO   # indexado 0..N-1 (NÃO associativo — subscri
 N=0
 
 # DA-024: fantasma conhecido (DA-182) — anunciada, nunca escrita; substância alhures.
-declare -A FANTASMA_REF=( ["DA-024"]="029" )
+# Fantasma = DA anunciada e nunca escrita. Quem declara é o PRÓPRIO diário, em <dir>/.adas/da-fantasmas
+# (1 por linha: "DA-NNN MMM [nota]" = fantasma DA-NNN, substância em DA-MMM). Sem o arquivo, nenhum
+# fantasma — antes vinha chumbado o DA-024 do diário do servidor em TODO projeto (task 20261104-037).
+declare -A FANTASMA_REF=()
+load_fantasmas() {
+  local f="$1/.adas/da-fantasmas" k v _r
+  [ -f "$f" ] || return 0
+  while read -r k v _r; do case "$k" in DA-[0-9]*) FANTASMA_REF["$k"]="$v" ;; esac; done < "$f"
+}
+fantasma_line() { printf -- "- %s · fantasma → ver DA-%s (anunciada no índice congelado, nunca escrita)\n" "$1" "${FANTASMA_REF[$1]}"; }
 
 load_records() {
   local dir="$1"; local dec="$dir/DECISIONS.md"
+  load_fantasmas "$dir"
   if [ ! -f "$dec" ]; then
     echo "✗ da-index: não consegui ler $dec (arquivo não existe) — dir='$dir'" >&2
     exit 1
@@ -524,24 +534,20 @@ build_index() {
   echo "# Índice de Decisões — GERADO de DECISIONS.md (NÃO EDITE À MÃO)"
   echo "# Regenerar: bash scripts/da-index.sh update · Conferir: bash scripts/da-index.sh check"
   echo "# Sem marca = vigente · 🔄 por DA-x = SUPERSEDIDA (íntegra) · ½ por DA-y = alterada (parcial) · 📚 em DA-z = consolidada na cabeça da saga"
-  echo "# fonte: $nheaders cabeçalhos (182 chaves com DA-012a/012b; DA-024 é fantasma) · sha256(DECISIONS.md)=$sha"
+  echo "# fonte: $nheaders cabeçalhos$([ ${#FANTASMA_REF[@]} -gt 0 ] && printf ' (fantasma: %s)' "${!FANTASMA_REF[*]}") · sha256(DECISIONS.md)=$sha"
   echo
   echo "<!-- da-sagas-start -->"
   echo "## Sagas"
   build_sagas_block ""
   echo "<!-- da-sagas-end -->"
   echo
-  local i inserted024=0
-  for ((i=0; i<N; i++)); do
-    if [ "$inserted024" = 0 ] && [ "$(nv "${RAWNUM[i]}")" -gt 24 ]; then
-      printf -- "- DA-024 · fantasma → ver DA-%s (anunciada no índice congelado, nunca escrita)\n" "${FANTASMA_REF[DA-024]:-029}"
-      inserted024=1
-    fi
+  local i fj=0; local -a fan=()
+  [ ${#FANTASMA_REF[@]} -gt 0 ] && mapfile -t fan < <(printf '%s\n' "${!FANTASMA_REF[@]}" | sort -t- -k2,2n)
+  for ((i=0; i<N; i++)); do   # cada fantasma entra na posição numérica dele
+    while [ "$fj" -lt ${#fan[@]} ] && [ "$(nv "${RAWNUM[i]}")" -gt "$(nv "${fan[fj]#DA-}")" ]; do fantasma_line "${fan[fj]}"; fj=$((fj+1)); done
     index_line_for "$i"
   done
-  if [ "$inserted024" = 0 ]; then
-    printf -- "- DA-024 · fantasma → ver DA-%s (anunciada no índice congelado, nunca escrita)\n" "${FANTASMA_REF[DA-024]:-029}"
-  fi
+  while [ "$fj" -lt ${#fan[@]} ]; do fantasma_line "${fan[fj]}"; fj=$((fj+1)); done
   return 0
 }
 
@@ -721,13 +727,13 @@ run_quality_checks() {
       fi
     fi
   fi
-  # c11: número citado que não existe no diário (exceto DA-024, fantasma conhecida)
+  # c11: número citado que não existe no diário (exceto os fantasmas declarados em .adas/da-fantasmas)
   local dec="$dir/DECISIONS.md"
   declare -A exists
   for ((i=0; i<N; i++)); do exists["$(nv "${RAWNUM[i]}")"]=1; done
   local cited unknown=""
   for cited in $(grep -oE 'DA-[0-9]+' "$dec" 2>/dev/null | sort -u); do
-    [ "$cited" = "DA-024" ] && continue
+    [ -n "${FANTASMA_REF[$cited]:-}" ] && continue
     local num; num="$(nv "${cited#DA-}")"
     [ -z "${exists[$num]:-}" ] && unknown+="$cited "
   done

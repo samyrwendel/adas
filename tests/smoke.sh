@@ -187,6 +187,13 @@ DA-001 passa a `escopo: projeto/x`, conforme a DA-002.
 DA-001 passa a `escopo: produto`.
 EOS
 bash "$D/scripts/da-index.sh" update "$D" >/dev/null 2>&1
+# DENTE (task 20261104-037): fantasma vinha chumbado (DA-024 do diário do servidor) em TODO projeto.
+grep -q 'fantasma' "$D/DECISIONS-INDEX.md" && bad "fantasma sem .adas/da-fantasmas (chumbado)" || ok "sem .adas/da-fantasmas → nenhum fantasma"
+mkdir -p "$D/.adas"; echo 'DA-004 002 nota' > "$D/.adas/da-fantasmas"
+bash "$D/scripts/da-index.sh" update "$D" >/dev/null 2>&1
+grep -A1 '^- DA-003 ' "$D/DECISIONS-INDEX.md" | grep -q '^- DA-004 · fantasma → ver DA-002' \
+  && ok "fantasma declarado entra na posição numérica" || bad "fantasma declarado não entrou depois da DA-003"
+rm -rf "$D/.adas"; bash "$D/scripts/da-index.sh" update "$D" >/dev/null 2>&1
 grep -q '^- DA-001 · .*🔄 por DA-002' "$D/DECISIONS-INDEX.md" \
   && ok "supersede pleno detectado por texto" || bad "supersede pleno não marcado"
 # DENTE (task 20260906-034/041): a 1ª linha do corpo da DA-003 é PROSA com "`escopo:" no meio — o parser antigo
