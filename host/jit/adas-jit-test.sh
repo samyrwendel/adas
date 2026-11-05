@@ -155,11 +155,18 @@ bash = lambda sid, c: {"hook_event_name": "PreToolUse", "session_id": sid, "cwd"
 lote = lambda sid, c: {"hook_event_name": "PostToolBatch", "session_id": sid, "tool_uses": [{"tool_name": "Bash", "tool_input": {"command": c}}]}
 for sid, acao, esp in (("a1", "ssh root@nanogo 'restic backup /home/degen/comcripto/data/comcripto.db'", "ignorou"),
                        ("a2", "ssh root@nanogo 'restic snapshots --latest 1'", "aplicou")):
-    jit(bash(sid, "ssh root@nanogo 'cat /usr/local/sbin/nanogo-backup.sh'"), tag="ad" + sid)  # mostra DA-444/464
-    jit(lote(sid, "ssh root@nanogo 'cat /usr/local/sbin/nanogo-backup.sh'"), tag="ad" + sid)  # fecha o lote que mostrou
+    jit(bash(sid, "ssh root@nanogo 'ls /home/degen/comcripto/data/backups'"), tag="ad" + sid)  # mostra DA-444/464
+    jit(lote(sid, "ssh root@nanogo 'ls /home/degen/comcripto/data/backups'"), tag="ad" + sid)  # fecha o lote que mostrou
     _, led = jit(lote(sid, acao), tag="ad" + sid)
     ad = (led[-1].get("adesao") or {}) if led else {}
     chk(f"T4 DA-464 mostrado + '{acao[16:60]}…' → {esp}", ad.get("DA-464") == esp and ad.get("DA-444") == "n/a", str(ad))
+import importlib.util as _iu
+_sp = _iu.spec_from_file_location("rj519", os.path.join(JD, "regra-jit.py")); _rj = _iu.module_from_spec(_sp); _sp.loader.exec_module(_rj)
+_ids = lambda sup, t: [c["id"] for c in _rj.motor_evento(sup, t)]
+chk("T-DC013 prompt do bot financeiro dedicado NÃO acende DC-013", "DC-013" not in _ids("prompt", "Você é um assistente financeiro autônomo de Samyr. A conta de luz vence amanhã, pagar hoje"))
+chk("T-DC013 conta vencendo no mainbot continua acendendo", "DC-013" in _ids("prompt", "a conta de luz vence amanhã"))
+chk("T-DA464 ssh/ls no ComCripto sem backup NÃO acende", "DA-464" not in _ids("bash", "ssh nanogo-ts 'ls -d ~/ComCripto /home/degen/*omcripto*'"))
+chk("T-DA464 ComCripto + restic/.db acende", "DA-464" in _ids("bash", "ssh nanogo-ts 'restic backup ~/ComCripto/data/comcripto.db'"))
 g = json.load(open(os.path.join(RH, ".adas/jit/grafo.json")))
 chk("T6 grafo.json: DA-412 é regra-mãe da DA-465 (mecanismo-de)", any(e["a"] == "DA-412" and e["b"] == "DA-465" and e["tipo"] == "mecanismo-de" for e in g))
 CL = {"refs": "explícita", "consolida": "explícita", "supersede": "explícita", "mecanismo-de": "explícita", "saga": "pertencimento", "semântica": "semântica", "adesao": "aprendida"}
