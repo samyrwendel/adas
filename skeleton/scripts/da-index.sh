@@ -13,6 +13,7 @@
 #   da-index.sh show DA-NNN [dir] | show --saga slug [dir] | show --anexos DA-NNN [dir]
 #   da-index.sh export-saga slug [dir]
 #   da-index.sh gatilhos [dir]                         # TSV id⇥gatilho⇥fonte (ADAS-JIT, DA-468)
+#   da-index.sh draft-head <saga> [--ids DA-a,DA-b] [dir]   # rascunho de cabeça v2 (só lê; recusa >1 gatilho vivo)
 # [dir] = onde vivem DECISIONS.md e os gerados (default: $HOME — NUNCA o cwd; DA-196).
 #
 # Determinístico: mesmo DECISIONS.md + membros.tsv ⇒ mesmos gerados byte a byte.
@@ -993,5 +994,6 @@ case "$MODE" in
   show) cmd_show "$@" ;;
   export-saga) cmd_export_saga "$@" ;;
   gatilhos) cmd_gatilhos "$@" ;;
+  draft-head) exec python3 -I "$SELFDIR/da-draft-head.py" "$@" ;;
   *) usage ;;
 esac

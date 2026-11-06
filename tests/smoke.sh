@@ -237,6 +237,30 @@ grep -q '^- DA-001 · .*½ por DA-003' "$D2/DECISIONS-INDEX.md" \
   && ok "supersede: com anotação parcial → ½" || bad "supersede: anotado não marcou ½ (DA-279/523)"
 grep '^- DA-002 ' "$D2/DECISIONS-INDEX.md" | grep -q '🔄\|½' \
   && bad "supersede em PROSA marcou DA-002 (DA-277/278)" || ok "supersede em prosa não marca quando há campo supersede:"
+# draft-head (reescrita v2, D1): rascunho determinístico; grupo com 2 gatilhos vivos é recusado; da-herda copia fixture.
+D3="$T/dadir3"; mkdir -p "$D3/scripts"; cp "$ROOT/skeleton/scripts/da-index.sh" "$ROOT/skeleton/scripts/da-draft-head.py" "$D3/scripts/"
+cat > "$D3/DECISIONS.md" <<'EOS'
+# T
+
+## DA-001 — Alfa
+`escopo: produto` · `saga: s` · `data: 2026-01-01` · `refs: —` · `consolida: —` · `supersede: —`
+**Regra:** Alfa vale sempre.
+**Gatilho:** evento · bash · quando=/alfa/ · conserto="alfa"
+
+## DA-002 — Beta
+`escopo: produto` · `saga: s` · `data: 2026-01-02` · `refs: —` · `consolida: —` · `supersede: —`
+**Regra:** Beta vale sempre.
+**Gatilho:** evento · bash · quando=/beta/ · conserto="beta"
+EOS
+bash "$D3/scripts/da-index.sh" update "$D3" >/dev/null 2>&1
+dh="$(bash "$D3/scripts/da-index.sh" draft-head s --ids DA-001 "$D3" 2>&1)"
+case "$dh" in *'`consolida: DA-001`'*) ok "draft-head: grupo de 1 → cabeça com consolida e gatilho herdado";; *) bad "draft-head não montou o rascunho";; esac
+dh="$(bash "$D3/scripts/da-index.sh" draft-head s "$D3" 2>&1)"
+case "$dh" in *"2 gatilhos vivos"*) ok "draft-head: 2 gatilhos vivos → recusa e manda dividir";; *) bad "draft-head aceitou 2 gatilhos vivos";; esac
+mkdir -p "$D3/a/fixtures" "$D3/a/jit"; echo '{"nome":"x"}' > "$D3/a/fixtures/DA-001.jsonl"; echo '{"DA-001":{"aprovado":true}}' > "$D3/a/jit/juiz-gate.json"
+ADAS_DIR="$D3/a" bash "$ROOT/host/jit/da-herda.sh" DA-001 DA-009 >/dev/null 2>&1
+{ [ -f "$D3/a/fixtures/DA-009.jsonl" ] && [ -f "$D3/a/fixtures/_herdadas/DA-001.jsonl" ] && grep -q 'herdado de DA-001' "$D3/a/jit/juiz-gate.json"; } \
+  && ok "da-herda: fixture e portão do juiz passam ao id novo" || bad "da-herda não herdou"
 expect_exit 0 "check: sincronizado → verde" bash "$D/scripts/da-index.sh" check "$D"
 printf '\n## DA-004 — Anexada por fora do hook\ncorpo\n' >> "$D/DECISIONS.md"
 expect_exit 1 "check: DA anexada por echo >> → ACUSA divergência" bash "$D/scripts/da-index.sh" check "$D"
