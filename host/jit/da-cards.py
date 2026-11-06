@@ -74,25 +74,31 @@ def extract(home):
         regra = campo("Regra")
         if regra:
             md = meta_da(b)
+            if md["tipo"] == "registro": continue  # D4: registro é fato, não ordem — fica no diário/show, não vira cartão
             ad = re.match(r"Adendo (?:à|a|ao|às) ((?:D[AC]-\d+[a-z]?[/,\s]*(?:e\s+)?)+)", h.group(2))
             if ad: md["refs"] = (md["refs"] + " " + ad.group(1)).strip()  # 'Adendo à DA-444/451' = refs
             cards.append({"id": h.group(1), "titulo": h.group(2).strip(), "regra": regra, "motivo": campo("Motivo"),
                           **md, "exemplo": exemplos(b), "filhos": filhos.get(h.group(1), []),
-                          "padrao_sem_adas": " ".join(re.findall(r"(?m)^\*\*Padrão sem ADAS:\*\*(.*)$", b)[-1:])})
+                          "padrao_sem_adas": " ".join(re.findall(r"(?m)^\*\*Padrão sem ADAS:\*\*(.*)$", b)[-1:]),
+                          "detalhe": campo("Detalhe operacional")})
     ctxt = open(os.path.join(home, "CONDUCT.md"), encoding="utf-8").read()
     for b in re.split(r"(?m)^(?=## DC-\d)", ctxt)[1:]:
         h = re.match(r"## (DC-\d+) — (.*)", b); r = re.search(r"\*\*Regra:\*\*(.*?)\n", b)
         if not h or not r: continue
+        st = re.search(r"`status:\s*([^`]*)`", (b.split("\n", 2) + ["", ""])[1])
+        if st and st.group(1).strip().lower() not in ("vigente", ""): continue  # D4: DC aposentada/superada não vira cartão
         why = re.search(r"\*\*Why:\*\*(.*?)(?=\n\*\*|\n##|\Z)", b, re.S)
         cards.append({"id": h.group(1), "titulo": h.group(2).strip(), "regra": " ".join(r.group(1).split()),
                       "motivo": " ".join(why.group(1).split()) if why else "", "escopo": "instância", "saga": "conduta",
                       "refs": " ".join(sorted(set(re.findall(r"\bD[AC]-\d{3}\b", b)) - {h.group(1)})),
-                      "consolida": "", "supersede": "", "exemplo": exemplos(b), "filhos": []})
+                      "consolida": "", "supersede": "", "tipo": "regra", "gravidade": "norma", "exemplo": exemplos(b), "filhos": []})
     gat = gatilhos(home)
     for c in cards:
         c["gatilho"] = gat.get(c["id"], {"tipo": "tema"})
         c["regra_curta"] = c["regra"] if len(c["regra"]) <= 240 else c["regra"][:237].rstrip() + "…"
         c["texto"] = f'{c["id"]} {c["titulo"]}\nRegra: {c["regra"][:700]}\nMotivo: {c["motivo"][:500]}'
+        if c.get("detalhe"):  # D4: a Regra curta (≤120) deixou as palavras de busca no Detalhe — os 500 primeiros entram no índice
+            c["texto"] += f'\nDetalhe: {c["detalhe"][:500]}'
         if c.get("padrao_sem_adas"):  # a reação DEFAULT do modelo que a regra substitui também casa a busca (task 20261101-007)
             c["texto"] += f'\nPadrão sem ADAS: {re.sub(r"resposta=/.*?/(?=\s|$)", "", c["padrao_sem_adas"])[:400]}'
         c["hash"] = sha(c["texto"])
@@ -102,17 +108,19 @@ def meta_da(b):
     """Linha de metadados da DA (`escopo: …` · `saga: …` · `refs: …`) → dict. '—' vira vazio."""
     hdr = (b.split("\n", 2) + ["", ""])[1]
     out = {}
-    for k in ("escopo", "saga", "refs", "consolida", "supersede"):
+    for k in ("escopo", "saga", "refs", "consolida", "supersede", "tipo", "gravidade"):
         m = re.search(r"`" + k + r":\s*([^`]*)`", hdr)
         v = m.group(1).strip() if m else ""
         out[k] = "" if v in ("—", "-") else v
+    out["tipo"] = out["tipo"].lower() if out["tipo"].lower() in ("regra", "registro", "princípio") else "regra"
+    out["gravidade"] = out["gravidade"].lower() if out["gravidade"].lower() in ("piso", "norma", "preferência") else "norma"
     return out
 
 def exemplos(b):
     """'**Exemplo:** …' (uma ou mais linhas no bloco) → lista de textos — a violação concreta que a regra pega."""
     return [" ".join(m.split()) for m in re.findall(r"(?m)^\*\*Exemplo:\*\*(.*?)(?=\n\*\*|\n###|\n---|\n## |\Z)", b, re.S) if m.strip()]
 
-PAR = re.compile(r"(?:✗|errado:)\s*(.+?)\s*(?:→|->)\s*(?:✓|certo:)\s*(.+)", re.I | re.S)
+PAR = re.compile(r"(?:✗|❌|errado:)\s*(.+?)\s*(?:→|->)\s*(?:✓|✅|certo:)\s*(.+)", re.I | re.S)  # D4: ❌/✅ também
 
 def par_exemplo(exs):
     """'**Exemplo:** ✗ <o que saiu errado> → ✓ <como devia sair>' → {"errado", "certo"} (o 1º Exemplo em par vale).
@@ -269,6 +277,13 @@ def compila_pares(cards, out):
     json.dump(pares, open(tmp, "w"), ensure_ascii=False, indent=0); os.replace(tmp, os.path.join(out, "pares.json"))
     print(f"pares: {len(pares)} cartão(ões) com Exemplo em par ✗→✓")
 
+def compila_gravidade(cards, out):
+    """gravidade.json — {id: piso|preferência} só dos que fogem de `norma` (DA-522); regra-jit ordena por isso e nunca corta piso."""
+    g = {c["id"]: c["gravidade"] for c in cards if c.get("gravidade") in ("piso", "preferência")}
+    tmp = os.path.join(out, "gravidade.json.tmp")
+    json.dump(g, open(tmp, "w"), ensure_ascii=False); os.replace(tmp, os.path.join(out, "gravidade.json"))
+    print(f"gravidade: {sum(v == 'piso' for v in g.values())} piso, {sum(v == 'preferência' for v in g.values())} preferência")
+
 def compila_gatilhos(cards, out):
     """gatilhos.json: só cartões com gatilho declarado (≠ tema puro) — o que o regra-jit avalia por predicado
     (evento · <superfície> · quando=/re/ [salvo=/re/]) e o que o adas-jit-test.sh roda por hook= (fixtures)."""
@@ -296,6 +311,7 @@ def main():
     compila_juiz(cards, OUT)
     compila_juiz_prompt(cards, OUT)
     compila_pares(cards, OUT)
+    compila_gravidade(cards, OUT)
     compila_gatilhos(cards, OUT)
     if "--so-juiz" in a:
         return

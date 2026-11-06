@@ -243,6 +243,43 @@ ev_ = {"hook_event_name": "PreToolUse", "session_id": "dd", "cwd": RH, "tool_nam
 o1, _ = jit(ev_, tag="dd"); o2, _ = jit(ev_, tag="dd")
 chk("T8 dedupe: mesmo cartão na mesma sessão não repete (TTL 30 min)", "DA-444" in o1 and "DA-444" not in o2 and rj.TTL_VISTO == 1800, o2[:100])
 
+print("── D4: cartão lê tipo/gravidade/status da DC, par ❌/✅, Detalhe (task 20261106-010) ──")
+import importlib.util as _iu4
+_sp4 = _iu4.spec_from_file_location("dc4", os.path.join(JD, "da-cards.py")); dc4 = _iu4.module_from_spec(_sp4); _sp4.loader.exec_module(dc4)
+chk("D4 par aceita ❌/✅", dc4.par_exemplo(["❌ disse fiz sem fazer → ✅ conferiu e citou o comando"]) == {"errado": "disse fiz sem fazer", "certo": "conferiu e citou o comando"})
+chk("D4 par ✗/✓ segue valendo", dc4.par_exemplo(["✗ a → ✓ b"]) == {"errado": "a", "certo": "b"})
+m4 = dc4.meta_da("## DA-1 — t\n`tipo: registro` · `gravidade: piso`\n")
+chk("D4 meta lê tipo e gravidade", m4["tipo"] == "registro" and m4["gravidade"] == "piso")
+m4 = dc4.meta_da("## DA-1 — t\n`escopo: produto`\n")
+chk("D4 padrão: tipo regra, gravidade norma", m4["tipo"] == "regra" and m4["gravidade"] == "norma")
+h4 = os.path.join(T, "d4home"); os.makedirs(os.path.join(h4, "scripts"))
+os.symlink(os.path.join(RH, "scripts/da-index.sh"), os.path.join(h4, "scripts/da-index.sh"))
+open(os.path.join(h4, "DECISIONS.md"), "w").write(
+    "## DA-901 — Regra viva\n`escopo: instância` · `tipo: regra` · `gravidade: piso`\n**Regra:** r viva.\n**Detalhe operacional:** palavraunicadodetalhe aqui.\n\n"
+    "## DA-902 — Registro\n`escopo: instância` · `tipo: registro`\n**Regra:** fato.\n")
+open(os.path.join(h4, "CONDUCT.md"), "w").write(
+    "## DC-901 — Viva\n`escopo: comportamento` · `status: vigente`\n**Regra:** c viva.\n\n"
+    "## DC-902 — Aposentada\n`escopo: comportamento` · `status: aposentada`\n**Regra:** c morta.\n")
+try:
+    cs4 = {c["id"]: c for c in dc4.extract(h4)}
+    vivos4 = "DA-901" in cs4
+    chk("D4 tipo: registro não vira cartão", vivos4 and "DA-902" not in cs4, sorted(cs4))
+    chk("D4 DC com status ≠ vigente não vira cartão", "DC-901" in cs4 and "DC-902" not in cs4, sorted(cs4))
+    chk("D4 Detalhe entra no texto indexado", vivos4 and "palavraunicadodetalhe" in cs4["DA-901"]["texto"])
+    chk("D4 gravidade chega ao cartão", vivos4 and cs4["DA-901"]["gravidade"] == "piso")
+except Exception as e:  # da-index.sh do home de teste não lista vigentes → o teste acusa em vez de quebrar
+    chk("D4 extract em home mínimo", False, repr(e))
+jd4 = os.path.join(T, "d4jit"); os.makedirs(jd4)
+json.dump({"P": "piso", "F": "preferência"}, open(os.path.join(jd4, "gravidade.json"), "w"))
+_sp5 = _iu4.spec_from_file_location("rj4", os.path.join(JD, "regra-jit.py")); rj4 = _iu4.module_from_spec(_sp5); _sp5.loader.exec_module(rj4)
+rj4.D = jd4
+ids4 = lambda l: [c["id"] for c in rj4.corta_k([{"id": i} for i in l])]
+chk("D4 corta_k: preferência sai primeiro", ids4(["F", "a", "b", "c"]) == ["a", "b", "c"], ids4(["F", "a", "b", "c"]))
+chk("D4 corta_k: piso do fim não é cortado", ids4(["a", "b", "c", "P"]) == ["a", "b", "c", "P"] or "P" in ids4(["a", "b", "c", "P"]), ids4(["a", "b", "c", "P"]))
+chk("D4 corta_k: piso passa de K", len(ids4(["P", "P", "P", "P", "a"])) == 4 and "a" not in ids4(["P", "P", "P", "P", "a"]))
+os.remove(os.path.join(jd4, "gravidade.json"))
+chk("D4 corta_k sem gravidade.json = vivos[:K]", ids4(["a", "b", "c", "d"]) == ["a", "b", "c"])
+
 print("── SessionStart sem corte (ADAS-JIT) ──")
 # adas_session_emit direto (o hook adas-activate.sh grava o .active da sessão — efeito colateral que o teste não pode ter)
 r = subprocess.run(["bash", "-c", f'. "{RH}/.claude/hooks/adas-lib.sh" && adas_session_emit "{RH}"'], capture_output=True, text=True, timeout=30)

@@ -331,6 +331,20 @@ def lider(res, lim):
     return None
 
 
+def corta_k(vivos):
+    """Corta em K respeitando a gravidade (DA-522, D4): piso nunca é cortado (pode passar de K), preferência é a primeira a sair.
+    Sem gravidade.json (ou tudo norma) = vivos[:K] de sempre. Ordem original preservada dentro de cada nível."""
+    try:
+        g = json.load(open(os.path.join(D, "gravidade.json")))
+    except Exception:
+        return vivos[:K]
+    peso = {"piso": 0, "preferência": 2}
+    ordem = sorted(range(len(vivos)), key=lambda i: (peso.get(g.get(vivos[i]["id"]), 1), i))
+    pisos = [i for i in ordem if g.get(vivos[i]["id"]) == "piso"]
+    keep = set(pisos) | set(ordem[:max(K, len(pisos))])
+    return [c for i, c in enumerate(vivos) if i in keep]
+
+
 def vistos(sid):
     p = os.path.join(STATE, re.sub(r"[^\w-]", "_", sid or "nosid") + ".seen")
     now = time.time()
@@ -451,7 +465,7 @@ def main():
         cand.append(c)
     vivos, pj, jmeta = juiz_filtra(sup, alvo, cand)
     omitidos += [(c["id"], "juiz") for c in cand if c not in vivos]
-    mostrar = vivos[:K]
+    mostrar = corta_k(vivos)
     modo = os.environ.get("ADAS_JIT", "inline")
     decisao = ("inline" if modo != "log" else "sombra") if mostrar else "silencio"
     ms = round((time.time() - t0) * 1000)
