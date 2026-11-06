@@ -146,7 +146,7 @@ def jit(payload, extra=None, tag="x"):
 OLIVUM = "calcular o custo in-house do duto de exaustão peça a peça com a dobradeira de 2 m da serralheria"
 pr = lambda cwd, q, sid: {"hook_event_name": "UserPromptSubmit", "session_id": sid, "cwd": cwd, "prompt": q}
 out, led = jit(pr(RH, OLIVUM, "e1"), tag="esc1")
-chk("T2 cwd=home: DA-433 (projeto/olivum) NÃO aparece", "DA-433" not in out and led and led[-1].get("escopo") == "instância,produto", out[:120])
+chk("T2 cwd=home: DA-611 (projeto/olivum) NÃO aparece", "DA-611" not in out and led and led[-1].get("escopo") == "instância,produto", out[:120])
 out, led = jit(pr(os.path.join(RH, "tradingagents"), "no card do TradingDegens o eixo temporal da tela mostra a hora de Manaus ou da bolsa de NY?", "e2"), tag="esc2")
 chk("T2 cwd=tradingagents: cartão projeto/tradingdegens aparece (DA-193)", "DA-193" in out, out[:160])
 out, led = jit(pr(RH, "qual o custo do duto da cozinha", "e3"), {"ADAS_EMBED_TIMEOUT": "0.001"}, tag="vec")
