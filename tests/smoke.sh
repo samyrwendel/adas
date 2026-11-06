@@ -210,6 +210,33 @@ bash "$D/scripts/da-index.sh" list --escopo instância "$D" | grep -q '^- DA-002
   && ok "list --escopo filtra pelo escopo efetivo" || bad "list --escopo ignora a reclassificação"
 grep -q 'Fazemos X sempre' "$D/DECISIONS-INDEX.md" \
   && ok "linha 'o que decide' extraída do campo Decisão" || bad "decisão não extraída"
+# task 20261106-008: campo `supersede:` com anotação entre parênteses marca ½ (parcial) e "supersede" em PROSA
+# de DA que tem o campo NÃO marca ninguém. Falha contra o da-index anterior.
+D2="$T/dadir2"; mkdir -p "$D2/scripts"; cp "$ROOT/skeleton/scripts/da-index.sh" "$D2/scripts/"
+cat > "$D2/DECISIONS.md" <<'EOS'
+# T
+
+## DA-001 — Alfa
+`escopo: produto` · `saga: s` · `data: 2026-01-01` · `refs: —` · `consolida: —` · `supersede: —`
+**Regra:** Alfa vale sempre.
+
+## DA-002 — Beta
+`escopo: produto` · `saga: s` · `data: 2026-01-02` · `refs: —` · `consolida: —` · `supersede: —`
+**Regra:** Beta vale sempre.
+
+## DA-003 — Gama
+`escopo: produto` · `saga: s` · `data: 2026-01-03` · `refs: DA-001` · `consolida: —` · `supersede: DA-001 (só o toggle; o resto continua)`
+**Regra:** Gama altera parte da Alfa.
+
+## DA-004 — Delta
+`escopo: produto` · `saga: s` · `data: 2026-01-04` · `refs: DA-002` · `consolida: —` · `supersede: —`
+**Regra:** Delta é uma emenda (supersede + grandfather) da DA-002, sem superseder nada.
+EOS
+bash "$D2/scripts/da-index.sh" update "$D2" >/dev/null 2>&1
+grep -q '^- DA-001 · .*½ por DA-003' "$D2/DECISIONS-INDEX.md" \
+  && ok "supersede: com anotação parcial → ½" || bad "supersede: anotado não marcou ½ (DA-279/523)"
+grep '^- DA-002 ' "$D2/DECISIONS-INDEX.md" | grep -q '🔄\|½' \
+  && bad "supersede em PROSA marcou DA-002 (DA-277/278)" || ok "supersede em prosa não marca quando há campo supersede:"
 expect_exit 0 "check: sincronizado → verde" bash "$D/scripts/da-index.sh" check "$D"
 printf '\n## DA-004 — Anexada por fora do hook\ncorpo\n' >> "$D/DECISIONS.md"
 expect_exit 1 "check: DA anexada por echo >> → ACUSA divergência" bash "$D/scripts/da-index.sh" check "$D"

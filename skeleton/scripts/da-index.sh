@@ -44,6 +44,25 @@ function refs_in_plain(s,    out) {
   while (match(s, /DA-[0-9]+/)) { out = out (out=="" ? "" : ",") substr(s, RSTART, RLENGTH); s = substr(s, RSTART+RLENGTH) }
   return out
 }
+# Campo de cabeçalho `supersede:` — segmentos separados por ";". Anotação entre parênteses com
+# "só/parcial/apenas/somente" = alteração PARCIAL (½); sem ela = superseded íntegro. Refs dentro do
+# parêntese não contam como alvo (task 20261106-008; antes o campo inteiro virava UMA chave e não marcava nada).
+function mark_supfield(val, by,    k, a, i, seg, bare, r, depth, j, c, v2) {
+  v2 = ""; depth = 0   # ";" DENTRO de parênteses não separa segmentos
+  for (j=1; j<=length(val); j++) {
+    c = substr(val, j, 1)
+    if (c == "(") depth++
+    else if (c == ")" && depth > 0) depth--
+    v2 = v2 ((c == ";" && depth > 0) ? "\001" : c)
+  }
+  k = split(v2, a, ";")
+  for (i=1; i<=k; i++) {
+    seg = a[i]; bare = seg; gsub(/\([^)]*\)/, "", bare)
+    r = refs_in_plain(bare); if (r == "") continue
+    if (seg ~ /\([^)]*([Ss]ó|[Pp]arcial|PARCIAL|[Aa]penas|[Ss]omente|[Pp]artes?|[Nn]ão a |continua valendo)/) mark_targets("par", r, by)
+    else mark_targets("sup", r, by)
+  }
+}
 function csv_add(list, item) { if (item == "") return list; if (list == "") return item; return list "," item }
 function mark_targets(map_name, targets, by,    k, a, i, key) {
   k = split(targets, a, ",")
@@ -150,14 +169,14 @@ function flush(   ) {
     bodydata_a[n] = bodydata; corpolines_a[n] = bl
     haspaste_a[n] = (commitcount >= 3 || efficiency_seen == 1 || tablelines >= 2) ? 1 : 0
     historico_a[n] = historico_list
-    if (e_supersede != "") mark_targets("sup", e_supersede, curraw)
+    if (e_supersede != "") mark_supfield(e_supersede, curraw)
     if (e_consolida != "") mark_targets("con", e_consolida, curraw)
   }
   cur=""; curraw=""; curline=0; t=""
   e_escopo=""; e_saga=""; e_data=""; e_refs=""; e_consolida=""; e_supersede=""; e_medido=""
   regra=""; regrasrc="none"; motivo=""; tradeoff=""; licao=""; bodydata=""; bodydata_label=""; bodydateline=""; d0=""; f0=""
   bl=0; commitcount=0; efficiency_seen=0; tablelines=0
-  inhist=0; historico_list=""; tagline_seen=0
+  inhist=0; historico_list=""; tagline_seen=0; supfield_seen=0
   ptried["f"]=0; ptried["d"]=0; pactive["f"]=1; pactive["d"]=0
   pbufopen["f"]=0; pbufopen["d"]=0; pbuf["f"]=""; pbuf["d"]=""; pbufmeta["f"]=0; pbufmeta["d"]=0
   presult["f"]=""; presult["d"]=""
@@ -200,7 +219,7 @@ cur == "" { next }
         else if (key == "data") e_data = val
         else if (key == "refs") e_refs = csv_add(e_refs, val)
         else if (key == "consolida") e_consolida = csv_add(e_consolida, val)
-        else if (key == "supersede") e_supersede = csv_add(e_supersede, val)
+        else if (key == "supersede") { e_supersede = csv_add(e_supersede, val); supfield_seen = 1 }
         else if (key == "medido") e_medido = val
       }
     }
@@ -249,7 +268,9 @@ cur == "" { next }
     if (!(curraw in supby)) supby[curraw] = tgt
     next
   }
-  if (match(line, /[Ss]upersede[a-z]*/)) {
+  # DA com campo `supersede:` no cabeçalho: só o campo conta; "supersede" em PROSA ("emenda (supersede + grandfather)")
+  # não marca ninguém (task 20261106-008).
+  if (!supfield_seen && match(line, /[Ss]upersede[a-z]*/)) {
     seg = substr(line, RSTART)
     if (match(seg, /[;.]/)) seg = substr(seg, 1, RSTART-1)
     r = refs_in_plain(seg)
@@ -863,7 +884,9 @@ cmd_list() {
       [[ ",${EFF_SAGA[i]}," == *",$saga_f,"* ]] || continue
     fi
     if [ "$vigentes" = 1 ]; then
-      [ -n "$(mark_of "$i")" ] && continue
+      # ½ (alterada parcial / reclassificada) segue VIVA e em circulação; só 🔄 e 📚 saem (task 20261106-008:
+      # 7 DAs do vigia de mainbot mudo e DA-390 perdiam o cartão por um ½).
+      case "$(mark_of "$i")" in sup:*|con:*) continue ;; esac
     fi
     if [ -n "$desde" ]; then
       local d="${DATATAG[i]:-${BODYDATA[i]}}"
