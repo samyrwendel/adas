@@ -274,6 +274,33 @@ mkdir -p "$D3/a/fixtures" "$D3/a/jit"; echo '{"nome":"x"}' > "$D3/a/fixtures/DA-
 ADAS_DIR="$D3/a" bash "$ROOT/host/jit/da-herda.sh" DA-001 DA-009 >/dev/null 2>&1
 { [ -f "$D3/a/fixtures/DA-009.jsonl" ] && [ -f "$D3/a/fixtures/_herdadas/DA-001.jsonl" ] && grep -q 'herdado de DA-001' "$D3/a/jit/juiz-gate.json"; } \
   && ok "da-herda: fixture e portão do juiz passam ao id novo" || bad "da-herda não herdou"
+# DA parcial (½) E consolidada (📚) sai dos vigentes e mostra 📚 (task 20261106-011/014)
+D4="$T/dadir4"; mkdir -p "$D4/scripts" "$D4/.adas"; cp "$ROOT/skeleton/scripts/da-index.sh" "$D4/scripts/"; : > "$D4/.adas/sagas.conf"
+cat > "$D4/DECISIONS.md" <<'EOS'
+# DECISIONS
+
+## DA-001 — regra antiga
+`escopo: produto` · `saga: nova/x` · `data: 2026-01-01` · `refs: —` · `consolida: —` · `supersede: —`
+**Regra:** fazer A e B.
+
+## DA-002 — troca só a parte B
+`escopo: produto` · `saga: nova/x` · `data: 2026-01-02` · `refs: DA-001` · `consolida: —` · `supersede: DA-001 (só a parte B)`
+**Regra:** fazer B de outro jeito.
+
+## DA-003 — cabeça
+`escopo: produto` · `saga: nova/x` · `data: 2026-01-03` · `refs: —` · `consolida: DA-001, DA-002` · `supersede: —`
+**Regra:** fazer A e o B novo.
+### Histórico
+- DA-001 — regra antiga
+- DA-002 — troca da parte B
+EOS
+bash "$D4/scripts/da-index.sh" update "$D4" >/dev/null 2>&1
+vig="$(bash "$D4/scripts/da-index.sh" list --vigentes "$D4" 2>&1)"
+{ ! echo "$vig" | grep -q '^- DA-001 ' && echo "$vig" | grep -q '^- DA-003 '; } \
+  && ok "da-index: DA ½+📚 sai dos vigentes, cabeça fica" || bad "DA ½+📚 vigente ou cabeça sumiu: $vig"
+lst="$(bash "$D4/scripts/da-index.sh" list "$D4" 2>&1)"   # variável: pipefail+grep -q dá SIGPIPE
+echo "$lst" | grep -q '^- DA-001 .*📚 em DA-003' \
+  && ok "da-index: DA ½+📚 mostra a marca 📚" || bad "DA-001 sem marca 📚"
 expect_exit 0 "check: sincronizado → verde" bash "$D/scripts/da-index.sh" check "$D"
 printf '\n## DA-004 — Anexada por fora do hook\ncorpo\n' >> "$D/DECISIONS.md"
 expect_exit 1 "check: DA anexada por echo >> → ACUSA divergência" bash "$D/scripts/da-index.sh" check "$D"

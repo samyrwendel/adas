@@ -393,8 +393,8 @@ load_records() {
 mark_of() {
   local i="$1"
   [ -n "${MSUP[i]}" ] && { echo "sup:${MSUP[i]}"; return; }
-  [ -n "${MPAR[i]}" ] && { echo "par:${MPAR[i]}"; return; }
   [ -n "${MCON[i]}" ] && { echo "con:${MCON[i]}"; return; }
+  [ -n "${MPAR[i]}" ] && { echo "par:${MPAR[i]}"; return; }
   echo ""
 }
 mark_render() {   # "🔄 por DA-x" | "½ por DA-y" | "📚 em DA-z" | ""
