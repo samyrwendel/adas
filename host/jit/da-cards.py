@@ -112,6 +112,17 @@ def exemplos(b):
     """'**Exemplo:** …' (uma ou mais linhas no bloco) → lista de textos — a violação concreta que a regra pega."""
     return [" ".join(m.split()) for m in re.findall(r"(?m)^\*\*Exemplo:\*\*(.*?)(?=\n\*\*|\n###|\n---|\n## |\Z)", b, re.S) if m.strip()]
 
+PAR = re.compile(r"(?:✗|errado:)\s*(.+?)\s*(?:→|->)\s*(?:✓|certo:)\s*(.+)", re.I | re.S)
+
+def par_exemplo(exs):
+    """'**Exemplo:** ✗ <o que saiu errado> → ✓ <como devia sair>' → {"errado", "certo"} (o 1º Exemplo em par vale).
+    Exemplo sem ✓ continua valendo como só-violação (não vira par)."""
+    for e in exs or []:
+        m = PAR.search(e)
+        if m and m.group(1).strip() and m.group(2).strip():
+            return {"errado": m.group(1).strip(), "certo": m.group(2).strip()}
+    return None
+
 def ids_de(s):
     """'DA-163–167, DC-020' → ['DA-163', …, 'DA-167', 'DC-020'] (faixa expandida, máx 30)."""
     out, s = [], s or ""
@@ -229,6 +240,35 @@ def compila_juiz(cards, out):
     json.dump(corpo, open(tmp, "w"), ensure_ascii=False, indent=1); os.replace(tmp, os.path.join(out, "juiz-reply.json"))
     print(f"juiz-reply: {len(rub)} pergunta(s) ({sum(r['modo']=='deny' for r in rub)} deny), {len(hooks)} guard(s) antes")
 
+def compila_juiz_prompt(cards, out):
+    """Rubrica do juiz da superfície PROMPT (mensagem do dono). Entra o cartão com `juiz` + `pergunta=` cujo Gatilho lista
+    a superfície prompt — `forma · prompt · hook=<guard> · juiz` ou `evento · prompt · quando=/re/ · juiz` (regex na
+    frente, juiz atrás). Modo: sombra (só ledger) até o portão do replay aprovar em juiz-gate.json (chave "<id>@prompt")
+    → aviso (vira cartão). Nunca deny: mensagem do dono não se nega."""
+    gp = os.path.join(out, "juiz-gate.json")
+    gate = json.load(open(gp)) if os.path.exists(gp) else {}
+    rub = []
+    for c in cards:
+        g = c.get("gatilho") or {}
+        if not g.get("juiz") or not g.get("pergunta") or "prompt" not in (g.get("superficie") or "").replace(" ", "").split(","):
+            continue  # pergunta SEMPRE tipada no prompt (lição da DA-471: "desrespeita esta regra?" dá ruído alto)
+        gt = gate.get(c["id"] + "@prompt") or {}
+        rub.append({"id": c["id"], "titulo": c["titulo"], "pergunta": g["pergunta"], "regra_curta": c["regra_curta"],
+                    "conserto": g.get("conserto") or "", "limiar": float(gt.get("limiar", LIMIAR_PADRAO)),
+                    "modo": "aviso" if gt.get("aprovado") is True else "sombra", "fonte": g.get("fonte")})
+    corpo = {"cartoes": rub}
+    corpo["hash"] = sha(json.dumps(corpo, sort_keys=True, ensure_ascii=False))
+    tmp = os.path.join(out, "juiz-prompt.json.tmp")
+    json.dump(corpo, open(tmp, "w"), ensure_ascii=False, indent=1); os.replace(tmp, os.path.join(out, "juiz-prompt.json"))
+    print(f"juiz-prompt: {len(rub)} pergunta(s) ({sum(r['modo'] == 'aviso' for r in rub)} aviso, resto sombra)")
+
+def compila_pares(cards, out):
+    """pares.json — {id: {errado, certo}} dos cartões cujo Exemplo é par ✗→✓; o regra-jit mostra o par no cartão."""
+    pares = {c["id"]: p for c in cards for p in [par_exemplo(c.get("exemplo"))] if p}
+    tmp = os.path.join(out, "pares.json.tmp")
+    json.dump(pares, open(tmp, "w"), ensure_ascii=False, indent=0); os.replace(tmp, os.path.join(out, "pares.json"))
+    print(f"pares: {len(pares)} cartão(ões) com Exemplo em par ✗→✓")
+
 def compila_gatilhos(cards, out):
     """gatilhos.json: só cartões com gatilho declarado (≠ tema puro) — o que o regra-jit avalia por predicado
     (evento · <superfície> · quando=/re/ [salvo=/re/]) e o que o adas-jit-test.sh roda por hook= (fixtures)."""
@@ -254,6 +294,8 @@ def main():
         print("da-cards: outra compilação em curso — saindo"); return
     cards = extract(home)
     compila_juiz(cards, OUT)
+    compila_juiz_prompt(cards, OUT)
+    compila_pares(cards, OUT)
     compila_gatilhos(cards, OUT)
     if "--so-juiz" in a:
         return

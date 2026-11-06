@@ -52,11 +52,23 @@ def main():
             avisos.append(f"WARN {da} degrau=doc — {h.group(2)[:90]}")
         if g and re.search(r"(^|·)\s*(hook|quando)=", g) and not os.path.exists(os.path.join(fixdir, da + ".jsonl")):
             avisos.append(f"WARN {da} gatilho de máquina sem fixture ({fixdir}/{da}.jsonl)")
+    # 13b — guard de MENSAGEM (superfície reply/prompt) só com regex: script nunca é a única rede (DA proposta 06/11).
+    # Vale pra DA vigente e pra DC (toda DC é vigente); guard de AÇÃO (bash/edit) fica de fora: não é texto de mensagem.
+    so_regex = []
+    for rid, g in sorted(gat.items()):
+        if rid.startswith("DA-") and rid not in vig:
+            continue
+        partes = [x.strip() for x in re.split(r"\s+·\s+", g)]
+        sup = partes[1].replace(" ", "").split(",") if len(partes) > 1 and "=" not in partes[1] else []
+        if any(x.startswith("hook=") for x in partes) and ({"reply", "prompt"} & set(sup)) and "juiz" not in partes:
+            so_regex.append(rid)
+            avisos.append(f"WARN {rid} guard de mensagem só-regex (sem `juiz` no Gatilho) — {next(x for x in partes if x.startswith('hook='))}")
     if lista:
         print("\n".join(avisos))
     sem_fix = sum(1 for x in avisos if "sem fixture" in x)
     print(f"gatilho: {sum(cont.values())} DA normativa(s) vigente(s) — gate {cont['gate']} · ponteiro {cont['ponteiro']} · "
-          f"doc {cont['doc']} (sem Gatilho){f' · {sem_fix} sem fixture' if sem_fix else ''}")
+          f"doc {cont['doc']} (sem Gatilho){f' · {sem_fix} sem fixture' if sem_fix else ''}"
+          f"{f' · {len(so_regex)} guard(s) de mensagem só-regex' if so_regex else ''}")
     return 0
 
 if __name__ == "__main__":

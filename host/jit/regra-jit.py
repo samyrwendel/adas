@@ -219,6 +219,60 @@ def juiz_filtra(sup, alvo, cards):
     return [c for c in cards if c.get("motor") != "evento" or resp.get(c["id"], 1.0) >= JUIZ_LIMIAR], \
         {k: round(v, 2) for k, v in resp.items()}, meta
 
+def juiz_prompt(texto, ja):
+    """Juiz na superfície PROMPT: toda mensagem do dono passa pelas perguntas tipadas de juiz-prompt.json (ex.: "isto é
+    decisão permanente?"). Regex na frente (motor_evento), juiz atrás: a regra que o regex JÁ acendeu (`ja`) não é
+    perguntada de novo. sombra = só ledger; aviso = vira cartão. FALHA = SILÊNCIO (o regex continua na frente).
+    Divide o teto diário com o filtro de evento (STATE/juiz-AAAAMMDD.n). → (cartões, meta)"""
+    meta = {"chamou": False}
+    try:
+        rub = [r for r in (json.load(open(os.path.join(D, "juiz-prompt.json"))).get("cartoes") or []) if r["id"] not in ja]
+    except Exception:
+        return [], meta
+    if not rub or os.environ.get("ADAS_JIT_JUIZ", "on") == "off" or len(texto.strip()) < 12:
+        return [], meta
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+        import juiz_prov
+        if juiz_prov.nivel() < 3 or not juiz_prov.provedores(rede=False):
+            return [], dict(meta, motivo="sem_juiz")
+        cn = os.path.join(STATE, "juiz-" + time.strftime("%Y%m%d") + ".n")
+        try:
+            n = int(open(cn).read() or 0)
+        except (OSError, ValueError):
+            n = 0
+        if n >= JUIZ_TETO:
+            return [], dict(meta, motivo="teto")
+        os.makedirs(STATE, exist_ok=True)
+        open(cn, "w").write(str(n + 1))
+        t0 = time.time()
+        meta["chamou"] = True
+        resp, m = juiz_prov.perguntar(texto[:1500], [{"id": r["id"], "pergunta": r["pergunta"]} for r in rub], t0 + JUIZ_TIMEOUT)
+        meta.update(ms=round((time.time() - t0) * 1000), prov=m.get("prov"), cost=m.get("cost"),
+                    p={k: round(v, 2) for k, v in resp.items()})
+    except Exception as e:
+        return [], dict(meta, erro=type(e).__name__ + ": " + str(e)[:80])
+    hit = [r for r in rub if resp.get(r["id"], 0.0) >= r["limiar"]]
+    meta["sombra"] = [r["id"] for r in hit if r["modo"] != "aviso"]
+    return [{"id": r["id"], "regra_curta": r["regra_curta"], "titulo": r.get("titulo"), "motor": "juiz",
+             "conserto": r.get("conserto")} for r in hit if r["modo"] == "aviso"], meta
+
+
+def linha_cartao(c, par=None, mae=None):
+    """Uma linha do cartão. Com Exemplo em par (pares.json): regra em ≤120 chars + ✗ errado → ✓ certo (exemplo > regra);
+    sem par: a regra_curta de sempre."""
+    if par:
+        r = c["regra_curta"]
+        l = f'• {c["id"]} — {r[:120].rstrip()}{"…" if len(r) > 120 else ""}  ✗ {par["errado"][:140]} → ✓ {par["certo"][:140]}'
+    else:
+        l = f'• {c["id"]} — {c["regra_curta"]}'
+    if mae:
+        l += f'  (regra-mãe: {", ".join(mae)})'
+    if c.get("conserto"):
+        l += f'  ⇒ {c["conserto"]}'
+    return l + f'  → bash ~/scripts/da-index.sh show {c["id"]} ~'
+
+
 def nivel():
     """Nível do JIT (DA-468): env → nivel.fixo → nivel (termostato) → 3. Mesmo contrato do juiz_prov.nivel()."""
     try:
@@ -375,6 +429,10 @@ def main():
         return
     esc = rs().escopos(p.get("cwd") or os.getcwd(), HOME)
     cards = motor_evento(sup, alvo)
+    jpm = {}
+    if sup == "prompt":  # regex na frente, juiz atrás: o que o regex não previu, o juiz pega pelo sentido
+        jpc, jpm = juiz_prompt(texto, {c["id"] for c in cards})
+        cards += jpc
     nivel, vetor = 0, "-"
     if len(cards) < K:
         try:
@@ -401,7 +459,8 @@ def main():
         ledger({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "sid": sid, "superficie": sup, "nivel": nivel, "vetor": vetor,
                 "escopo": ",".join(sorted(esc)), "decisao": decisao, "ms": ms, "payload": red(texto),
                 "cartoes": [{k: c.get(k) for k in ("id", "motor", "l2", "bm25")} for c in mostrar],
-                "omitidos": omitidos, **({"juiz": dict(jmeta, p=pj)} if jmeta.get("chamou") or jmeta.get("erro") or jmeta.get("motivo") else {})})
+                "omitidos": omitidos, **({"juiz": dict(jmeta, p=pj)} if jmeta.get("chamou") or jmeta.get("erro") or jmeta.get("motivo") else {}),
+                **({"juiz_prompt": jpm} if jpm.get("chamou") or jpm.get("erro") or jpm.get("motivo") else {})})
     elif ms > 300:
         ledger({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "sid": sid, "superficie": sup, "nivel": nivel, "vetor": vetor,
                 "decisao": "silencio", "ms": ms})
@@ -423,13 +482,12 @@ def main():
         pass
     linhas = ["📌 ADAS-JIT — regra(s) do diário que tocam ESTA ação (não bloqueia; confira antes de seguir):"]
     mae = rs().regra_mae({c["id"] for c in mostrar}, rs().grafo(D))
-    for c in mostrar:
-        l = f'• {c["id"]} — {c["regra_curta"]}'
-        if mae.get(c["id"]):  # cartão-mecanismo → a regra que ele mecaniza (DA-465 → DA-412), sinapse determinística
-            l += f'  (regra-mãe: {", ".join(mae[c["id"]])})'
-        if c.get("conserto"):
-            l += f'  ⇒ {c["conserto"]}'
-        linhas.append(l + f'  → bash ~/scripts/da-index.sh show {c["id"]} ~')
+    try:
+        pares = json.load(open(os.path.join(D, "pares.json")))
+    except Exception:
+        pares = {}
+    for c in mostrar:  # cartão-mecanismo → a regra que ele mecaniza (DA-465 → DA-412), sinapse determinística
+        linhas.append(linha_cartao(c, pares.get(c["id"]), mae.get(c["id"])))
     ev = "UserPromptSubmit" if sup == "prompt" else "PreToolUse"
     print(json.dumps({"hookSpecificOutput": {"hookEventName": ev, "additionalContext": "\n".join(linhas)}},
                      ensure_ascii=False))
