@@ -163,8 +163,8 @@ for sid, acao, esp in (("a1", "ssh root@nanogo 'restic backup /home/degen/comcri
 import importlib.util as _iu
 _sp = _iu.spec_from_file_location("rj519", os.path.join(JD, "regra-jit.py")); _rj = _iu.module_from_spec(_sp); _sp.loader.exec_module(_rj)
 _ids = lambda sup, t: [c["id"] for c in _rj.motor_evento(sup, t)]
-chk("T-DC013 prompt do bot financeiro dedicado NÃO acende DC-013", "DC-013" not in _ids("prompt", "Você é um assistente financeiro autônomo de Samyr. A conta de luz vence amanhã, pagar hoje"))
-chk("T-DC013 conta vencendo no mainbot continua acendendo", "DC-013" in _ids("prompt", "a conta de luz vence amanhã"))
+chk("T-DC013 prompt do bot financeiro dedicado NÃO acende DC-046", "DC-046" not in _ids("prompt", "Você é um assistente financeiro autônomo de Samyr. A conta de luz vence amanhã, pagar hoje"))
+chk("T-DC013 conta vencendo no mainbot continua acendendo", "DC-046" in _ids("prompt", "a conta de luz vence amanhã"))
 chk("T-DA464 ssh/ls no ComCripto sem backup NÃO acende (DA-548)", "DA-548" not in _ids("bash", "ssh nanogo-ts 'ls -d ~/ComCripto /home/degen/*omcripto*'"))
 chk("T-DA464 ComCripto + restic/.db acende (DA-548)", "DA-548" in _ids("bash", "ssh nanogo-ts 'restic backup ~/ComCripto/data/comcripto.db'"))
 g = json.load(open(os.path.join(RH, ".adas/jit/grafo.json")))

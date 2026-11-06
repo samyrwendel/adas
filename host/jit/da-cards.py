@@ -85,13 +85,16 @@ def extract(home):
     for b in re.split(r"(?m)^(?=## DC-\d)", ctxt)[1:]:
         h = re.match(r"## (DC-\d+) — (.*)", b); r = re.search(r"\*\*Regra:\*\*(.*?)\n", b)
         if not h or not r: continue
-        st = re.search(r"`status:\s*([^`]*)`", (b.split("\n", 2) + ["", ""])[1])
+        tag = (b.split("\n", 2) + ["", ""])[1]
+        st = re.search(r"`status:\s*([^`]*)`", tag)
+        gv = re.search(r"`gravidade:\s*([^`]*)`", tag)  # D11: a gravidade da DC vem da ficha (piso chega ao gravidade.json)
+        grav = gv.group(1).strip().lower() if gv and gv.group(1).strip().lower() in ("piso", "norma", "preferência") else "norma"
         if st and st.group(1).strip().lower() not in ("vigente", ""): continue  # D4: DC aposentada/superada não vira cartão
         why = re.search(r"\*\*Why:\*\*(.*?)(?=\n\*\*|\n##|\Z)", b, re.S)
         cards.append({"id": h.group(1), "titulo": h.group(2).strip(), "regra": " ".join(r.group(1).split()),
                       "motivo": " ".join(why.group(1).split()) if why else "", "escopo": "instância", "saga": "conduta",
                       "refs": " ".join(sorted(set(re.findall(r"\bD[AC]-\d{3}\b", b)) - {h.group(1)})),
-                      "consolida": "", "supersede": "", "tipo": "regra", "gravidade": "norma", "exemplo": exemplos(b), "filhos": []})
+                      "consolida": "", "supersede": "", "tipo": "regra", "gravidade": grav, "exemplo": exemplos(b), "filhos": []})
     gat = gatilhos(home)
     for c in cards:
         c["gatilho"] = gat.get(c["id"], {"tipo": "tema"})
