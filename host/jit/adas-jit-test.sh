@@ -155,26 +155,26 @@ bash = lambda sid, c: {"hook_event_name": "PreToolUse", "session_id": sid, "cwd"
 lote = lambda sid, c: {"hook_event_name": "PostToolBatch", "session_id": sid, "tool_uses": [{"tool_name": "Bash", "tool_input": {"command": c}}]}
 for sid, acao, esp in (("a1", "ssh root@nanogo 'restic backup /home/degen/comcripto/data/comcripto.db'", "ignorou"),
                        ("a2", "ssh root@nanogo 'restic snapshots --latest 1'", "aplicou")):
-    jit(bash(sid, "ssh root@nanogo 'ls /home/degen/comcripto/data/backups'"), tag="ad" + sid)  # mostra DA-444/464
+    jit(bash(sid, "ssh root@nanogo 'ls /home/degen/comcripto/data/backups'"), tag="ad" + sid)  # mostra DA-547/548 (ex-DA-444/464)
     jit(lote(sid, "ssh root@nanogo 'ls /home/degen/comcripto/data/backups'"), tag="ad" + sid)  # fecha o lote que mostrou
     _, led = jit(lote(sid, acao), tag="ad" + sid)
     ad = (led[-1].get("adesao") or {}) if led else {}
-    chk(f"T4 DA-464 mostrado + '{acao[16:60]}…' → {esp}", ad.get("DA-464") == esp and ad.get("DA-444") == "n/a", str(ad))
+    chk(f"T4 DA-548 (ex-DA-464) mostrado + '{acao[16:60]}…' → {esp}", ad.get("DA-548") == esp and ad.get("DA-547") == "n/a", str(ad))
 import importlib.util as _iu
 _sp = _iu.spec_from_file_location("rj519", os.path.join(JD, "regra-jit.py")); _rj = _iu.module_from_spec(_sp); _sp.loader.exec_module(_rj)
 _ids = lambda sup, t: [c["id"] for c in _rj.motor_evento(sup, t)]
 chk("T-DC013 prompt do bot financeiro dedicado NÃO acende DC-013", "DC-013" not in _ids("prompt", "Você é um assistente financeiro autônomo de Samyr. A conta de luz vence amanhã, pagar hoje"))
 chk("T-DC013 conta vencendo no mainbot continua acendendo", "DC-013" in _ids("prompt", "a conta de luz vence amanhã"))
-chk("T-DA464 ssh/ls no ComCripto sem backup NÃO acende", "DA-464" not in _ids("bash", "ssh nanogo-ts 'ls -d ~/ComCripto /home/degen/*omcripto*'"))
-chk("T-DA464 ComCripto + restic/.db acende", "DA-464" in _ids("bash", "ssh nanogo-ts 'restic backup ~/ComCripto/data/comcripto.db'"))
+chk("T-DA464 ssh/ls no ComCripto sem backup NÃO acende (DA-548)", "DA-548" not in _ids("bash", "ssh nanogo-ts 'ls -d ~/ComCripto /home/degen/*omcripto*'"))
+chk("T-DA464 ComCripto + restic/.db acende (DA-548)", "DA-548" in _ids("bash", "ssh nanogo-ts 'restic backup ~/ComCripto/data/comcripto.db'"))
 g = json.load(open(os.path.join(RH, ".adas/jit/grafo.json")))
-chk("T6 grafo.json: DA-468 é regra-mãe da DA-471 (mecanismo-de)", any(e["a"] == "DA-468" and e["b"] == "DA-471" and e["tipo"] == "mecanismo-de" for e in g))
+chk("T6 grafo.json: DA-489 é regra-mãe da DA-493 (mecanismo-de)", any(e["a"] == "DA-489" and e["b"] == "DA-493" and e["tipo"] == "mecanismo-de" for e in g))
 CL = {"refs": "explícita", "consolida": "explícita", "supersede": "explícita", "mecanismo-de": "explícita", "saga": "pertencimento", "semântica": "semântica", "adesao": "aprendida"}
 chk("T6 grafo.json: toda aresta tem classe ∈ {explícita, pertencimento, semântica, aprendida} e casa com o tipo (GLOSSARIO.md)",
     all(e.get("classe") == CL.get(e["tipo"]) for e in g), str([e for e in g if e.get("classe") != CL.get(e["tipo"])][:2]))
 import importlib.machinery, importlib.util
 ld = importlib.machinery.SourceFileLoader("rs", os.path.join(JD, "regra-search")); rs = importlib.util.module_from_spec(importlib.util.spec_from_loader("rs", ld)); ld.exec_module(rs)
-chk("T6 cartão DA-471 mostrado → regra-mãe DA-468", rs.regra_mae({"DA-471"}, g).get("DA-471") == ["DA-468"])
+chk("T6 cartão DA-493 mostrado → regra-mãe DA-489", rs.regra_mae({"DA-493"}, g).get("DA-493") == ["DA-489"])
 chk("T6 adendo em lote (DA-376) não vira regra-mãe", "DA-376" not in rs.regra_mae({"DA-376"}, g))
 
 print("── copiar-guard 1× por reply (task 20261031-031) ──")
@@ -241,7 +241,7 @@ chk("T8 teto/dia estourado = passa sem chamar", len(rj.juiz_filtra("bash", "ls",
 rj.JUIZ_TETO = 400
 ev_ = {"hook_event_name": "PreToolUse", "session_id": "dd", "cwd": RH, "tool_name": "Bash", "tool_input": {"command": "ssh root@nanogo 'restic snapshots'"}}
 o1, _ = jit(ev_, tag="dd"); o2, _ = jit(ev_, tag="dd")
-chk("T8 dedupe: mesmo cartão na mesma sessão não repete (TTL 30 min)", "DA-444" in o1 and "DA-444" not in o2 and rj.TTL_VISTO == 1800, o2[:100])
+chk("T8 dedupe: mesmo cartão na mesma sessão não repete (TTL 30 min)", "DA-547" in o1 and "DA-547" not in o2 and rj.TTL_VISTO == 1800, o2[:100])
 
 print("── D4: cartão lê tipo/gravidade/status da DC, par ❌/✅, Detalhe (task 20261106-010) ──")
 import importlib.util as _iu4
