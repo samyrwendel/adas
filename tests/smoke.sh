@@ -257,6 +257,19 @@ dh="$(bash "$D3/scripts/da-index.sh" draft-head s --ids DA-001 "$D3" 2>&1)"
 case "$dh" in *'`consolida: DA-001`'*) ok "draft-head: grupo de 1 → cabeça com consolida e gatilho herdado";; *) bad "draft-head não montou o rascunho";; esac
 dh="$(bash "$D3/scripts/da-index.sh" draft-head s "$D3" 2>&1)"
 case "$dh" in *"2 gatilhos vivos"*) ok "draft-head: 2 gatilhos vivos → recusa e manda dividir";; *) bad "draft-head aceitou 2 gatilhos vivos";; esac
+# --confere (DA-546): termo em crase de frase com "nunca" que sumiu da cabeça é avisado; cabeça que o mantém passa.
+cat >> "$D3/DECISIONS.md" <<'EOS'
+
+## DA-003 — Gama
+`escopo: produto` · `saga: s` · `data: 2026-01-03` · `refs: —` · `consolida: DA-004` · `supersede: —`
+**Regra:** Hook entra só por script.
+
+## DA-004 — Delta
+`escopo: produto` · `saga: s` · `data: 2026-01-04` · `refs: —` · `consolida: —` · `supersede: —`
+**Regra:** Registrar em `settings.json` só por `register-hook.py`, nunca por Edit.
+EOS
+dh="$(bash "$D3/scripts/da-index.sh" draft-head --confere DA-003 "$D3" 2>&1)"
+case "$dh" in *'`settings.json`'*) ok "draft-head --confere: termo perdido é avisado";; *) bad "--confere não avisou settings.json: $dh";; esac
 mkdir -p "$D3/a/fixtures" "$D3/a/jit"; echo '{"nome":"x"}' > "$D3/a/fixtures/DA-001.jsonl"; echo '{"DA-001":{"aprovado":true}}' > "$D3/a/jit/juiz-gate.json"
 ADAS_DIR="$D3/a" bash "$ROOT/host/jit/da-herda.sh" DA-001 DA-009 >/dev/null 2>&1
 { [ -f "$D3/a/fixtures/DA-009.jsonl" ] && [ -f "$D3/a/fixtures/_herdadas/DA-001.jsonl" ] && grep -q 'herdado de DA-001' "$D3/a/jit/juiz-gate.json"; } \

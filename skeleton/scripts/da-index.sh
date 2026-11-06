@@ -14,6 +14,7 @@
 #   da-index.sh export-saga slug [dir]
 #   da-index.sh gatilhos [dir]                         # TSV id⇥gatilho⇥fonte (ADAS-JIT, DA-468)
 #   da-index.sh draft-head <saga> [--ids DA-a,DA-b] [dir]   # rascunho de cabeça v2 (só lê; recusa >1 gatilho vivo)
+#   da-index.sh draft-head --confere DA-a,DA-b [dir]        # cabeças já escritas: avisa termo distintivo perdido (DA-546)
 # [dir] = onde vivem DECISIONS.md e os gerados (default: $HOME — NUNCA o cwd; DA-196).
 #
 # Determinístico: mesmo DECISIONS.md + membros.tsv ⇒ mesmos gerados byte a byte.
