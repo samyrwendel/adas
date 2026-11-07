@@ -324,6 +324,9 @@ def motor_tema(sup, texto, alvo, esc):
             via = "lexical"
         if via:
             out.append({"id": r["id"], "regra_curta": r["regra_curta"], "motor": via, "l2": r["l2"], "bm25": r["bm25"]})
+    ab = rs().casas_abertas(texto, HOME)  # D-C9: porteiro por nome — top-2 da casa citada, sem limiar
+    for r in rs().forca_casa(idx, texto, ab, {c["id"] for c in out}):
+        out.append({"id": r["id"], "regra_curta": r["regra_curta"], "motor": "casa", "l2": r["l2"], "bm25": r["bm25"]})
     lid = lider(res, lim)
     if lid and lid["id"] not in {c["id"] for c in out}:
         out.append({"id": lid["id"], "regra_curta": lid["regra_curta"], "motor": "lider", "l2": lid["l2"], "bm25": lid["bm25"]})
@@ -587,7 +590,7 @@ def main():
         return par(p, sid)
     if not sup or not texto.strip() or not os.path.exists(os.path.join(D, "regras.db")):
         return
-    esc = rs().escopos(p.get("cwd") or os.getcwd(), HOME)
+    esc = rs().escopos(p.get("cwd") or os.getcwd(), HOME, texto)  # D-C9: casa citada pelo nome entra no escopo
     cards = motor_evento(sup, alvo)
     jpm = {}
     if sup == "prompt":  # regex na frente, juiz atrás: o que o regex não previu, o juiz pega pelo sentido

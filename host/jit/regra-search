@@ -2,8 +2,9 @@
 """regra-search — consulta o índice de cartões de regra (ADAS-JIT F0, task 20261031-018).
 
   regra-search "<payload da ação>" [--superficie prompt|reply|edit|bash|bus] [-k 3] [--json]
-               [--l2 0.65] [--bm25 -25] [--no-vec] [--all] [--cwd DIR] [--espalha]
-  --cwd: só cartões do escopo do diretório (rotas.conf). --espalha: reordena pelo grafo.json (sinapses).
+               [--l2 0.65] [--bm25 -25] [--no-vec] [--all] [--cwd DIR] [--casa REPO] [--espalha]
+  --cwd: só cartões do escopo do diretório (rotas.conf); casa citada pelo apelido no texto abre sozinha (porteiro por nome).
+  --casa REPO: força a casa (nome da pasta). --espalha: reordena pelo grafo.json (sinapses).
 
 Híbrido: vetor (L2, nomic-embed-text via Ollama) + lexical (bm25 FTS5), fusão RRF. O RRF só ORDENA; quem decide
 mostrar é o LIMIAR: l2 <= --l2  OU  bm25 <= --bm25 (RRF não discrimina: ~0,032 em positivo e em ruído).
@@ -74,19 +75,60 @@ class Index:
                         "l2": round(l2[rid], 3) if rid in l2 else None, "bm25": round(bm[rid], 1) if rid in bm else None})
         return out
 
-def escopos(cwd, home=HOME):
-    """Escopos visíveis no cwd — MESMO contrato do adas_da_rotas (adas-lib.sh): prefixo mais longo do
-    ~/.adas/rotas.conf vence; sem rota = produto,instância. DA projeto/* só aparece no cwd do projeto
-    (task 20261031-029 §A.2 #2: 40 DAs projeto/* vazavam pro hook da instância)."""
-    best, blen = "produto,instância", -1
+def _norm(t):
+    """minúsculas, sem acento (porteiro por nome compara texto da ação com apelido)."""
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", (t or "").lower()) if unicodedata.category(c) != "Mn")
+
+def rotas(home=HOME):
+    """rotas.conf → [(prefixo, {escopos}, [apelidos])]; 3ª coluna opcional = apelidos (csv), D-C9 / DA-670."""
+    out = []
     try:
         for l in open(os.path.join(home, ".adas", "rotas.conf"), encoding="utf-8"):
             if "|" not in l or l.lstrip().startswith("#"): continue
-            pre, esc = l.rstrip("\n").split("|", 1)
-            if (cwd == pre or (cwd or "").startswith(pre.rstrip("/") + "/")) and len(pre) > blen: best, blen = esc, len(pre)
+            f = l.rstrip("\n").split("|")
+            out.append((f[0], {e.strip() for e in f[1].split(",") if e.strip()}, [a.strip() for a in (f[2] if len(f) > 2 else "").split(",") if a.strip()]))
     except OSError:
         pass
-    return {e.strip() for e in best.split(",") if e.strip()}
+    return out
+
+def casas_abertas(texto, home=HOME, forca=()):
+    """Porteiro por nome (D-C9, determinístico): casa cujo apelido aparece no texto como palavra inteira (sem acento nem
+    caixa), ou forçada por --casa. → [{"nome", "dir", "projetos"}]. Ação sem nome não abre casa (o vazamento da DA-475 segue barrado)."""
+    nt, abertas = _norm(texto), []
+    for pre, esc, aps in rotas(home):
+        proj = {e for e in esc if e.startswith("projeto/")}
+        nome = os.path.basename(pre.rstrip("/"))
+        if not proj or not os.path.isfile(os.path.join(pre, "DECISIONS.md")): continue
+        if nome in forca or any(re.search(r"(?<![\w-])" + re.escape(_norm(a)) + r"(?![\w-])", nt) for a in aps):
+            abertas.append({"nome": nome, "dir": pre, "projetos": proj})
+    return abertas
+
+def rotas_casas(home=HOME):
+    return [{"nome": os.path.basename(pre.rstrip("/")), "dir": pre} for pre, esc, _ in rotas(home)]
+
+def forca_casa(idx, texto, abertas, ja=(), n=2):
+    """Casa aberta pelo nome entra com o top-N dos cartões DELA, sem limiar: o nome já fez a precisão e o limiar calibrado em
+    ~300 cartões não transfere para um diário de 8 (medido na task 20261107-010)."""
+    if not abertas: return []
+    ja, out = set(ja), []
+    achados = idx.search(texto, n=80)
+    for cs in abertas:
+        mine = [r for r in achados if r["id"].startswith(cs["nome"] + ":") and r["id"] not in ja]
+        out += [dict(r, acima="casa") for r in mine[:n]]
+    return out
+
+def escopos(cwd, home=HOME, texto=""):
+    """Escopos visíveis no cwd — MESMO contrato do adas_da_rotas (adas-lib.sh): prefixo mais longo do
+    ~/.adas/rotas.conf vence; sem rota = produto,instância. DA projeto/* só aparece no cwd do projeto
+    (task 20261031-029 §A.2 #2: 40 DAs projeto/* vazavam pro hook da instância). Com `texto`, casa citada pelo nome
+    (porteiro, D-C9) soma os `projeto/*` dela ao conjunto."""
+    best, blen = {"produto", "instância"}, -1
+    for pre, esc, _ in rotas(home):
+        if (cwd == pre or (cwd or "").startswith(pre.rstrip("/") + "/")) and len(pre) > blen: best, blen = set(esc), len(pre)
+    for cs in casas_abertas(texto, home) if texto else []:
+        best |= cs["projetos"]
+    return best
 
 def no_escopo(card_escopo, esc):
     """Cartão sem escopo declarado passa (fail-open); com escopo, precisa cruzar o conjunto do cwd."""
@@ -139,15 +181,18 @@ def main():
     def opt(n, d, t=str):
         return t(a[a.index(n) + 1]) if n in a else d
     k, l2m, bmm, sup = opt("-k", 3, int), opt("--l2", L2_MAX, float), opt("--bm25", BM25_MAX, float), opt("--superficie", "")
-    skip = {a[i + 1] for i, x in enumerate(a[:-1]) if x in ("-k", "--l2", "--bm25", "--superficie", "--cwd")}
+    skip = {a[i + 1] for i, x in enumerate(a[:-1]) if x in ("-k", "--l2", "--bm25", "--superficie", "--cwd", "--casa")}
     pos = [x for x in a if not x.startswith("-") and x not in skip] if True else []
     q = " ".join(pos) if pos else sys.stdin.read()
     if not q.strip(): sys.exit(0)
     t0 = time.time()
     idx = Index(vec="--no-vec" not in a)
     res = idx.search(q, n=40 if "--espalha" in a else 15)
-    if "--cwd" in a:
-        esc = escopos(opt("--cwd", ""))
+    forca = tuple(a[i + 1] for i, x in enumerate(a[:-1]) if x == "--casa")
+    abertas = casas_abertas(q, HOME, forca)
+    if "--cwd" in a or forca:
+        esc = escopos(opt("--cwd", HOME), HOME, q)
+        for cs in abertas: esc |= cs["projetos"]
         res = [r for r in res if no_escopo(r.get("escopo"), esc)]
     for r in res: r["acima"] = acima(r, l2m, bmm)
     if "--espalha" in a:  # reordena por a1; vizinho que não veio na busca entra abaixo do limiar (nunca dispara sozinho)
@@ -161,13 +206,21 @@ def main():
         for r in res: r["a1"] = round(a1.get(r["id"], 0.0), 3)
         res = sorted(res, key=lambda r: -r["a1"])
     shown = res[:k] if "--all" in a else [r for r in res if r["acima"]][:k]
+    shown += forca_casa(idx, q, abertas, {r["id"] for r in shown})  # porteiro por nome: top-2 da casa, sem limiar
+    nomes = {cs["nome"] for cs in abertas}
+    for r in shown:  # cartão de casa aberta pelo nome conta como "acima" (o nome já fez a precisão)
+        if r["id"].rpartition(":")[0] in nomes and not r.get("acima"): r["acima"] = "casa"
     ms = round((time.time() - t0) * 1000)
     if "--json" in a:
         print(json.dumps({"superficie": sup, "nivel": 2 if idx.vec and not idx.vec_erro else 1,
                           "vetor": idx.vec_erro or ("ok" if idx.vec else "off"), "ms": ms, "cartoes": shown}, ensure_ascii=False))
     else:
+        dirs = {cs["nome"]: cs["dir"] for cs in rotas_casas()}
         for r in shown:
-            print(f'{r["id"]} [{r["acima"] or "abaixo"} l2={r["l2"]} bm25={r["bm25"]}] {r["regra_curta"]}  → da-index.sh show {r["id"]}')
+            casa, _, num = r["id"].rpartition(":")
+            nome = f"{num} ({casa})" if casa else num
+            onde = f" {dirs.get(casa, '/opt/projects/' + casa)}" if casa else ""
+            print(f'{nome} [{r["acima"] or "abaixo"} l2={r["l2"]} bm25={r["bm25"]}] {r["regra_curta"]}  → da-index.sh show {num}{onde}')
 
 if __name__ == "__main__":
     main()

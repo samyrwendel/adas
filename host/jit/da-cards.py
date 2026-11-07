@@ -61,7 +61,7 @@ def casas(home):
         return out
     for l in linhas:
         if "|" not in l or l.lstrip().startswith("#"): continue
-        pre, esc = l.split("|", 1); pre = pre.rstrip("/")
+        pre, esc = l.split("|")[:2]; pre = pre.rstrip("/")  # 3ª coluna = apelidos (porteiro por nome)
         proj = [e.strip() for e in esc.split(",") if e.strip().startswith("projeto/")]
         if not proj or os.path.realpath(pre) == os.path.realpath(home): continue
         if os.path.isfile(os.path.join(pre, "DECISIONS.md")) and os.path.isfile(os.path.join(pre, "scripts/da-index.sh")):

@@ -77,7 +77,7 @@ adas_da_rotas() {
   local cwd="$1" conf="${ADAS_ROTAS_CONF:-$HOME/.adas/rotas.conf}"
   [ -f "$conf" ] || return 0
   local best="" bestlen=-1 prefixo escopos
-  while IFS='|' read -r prefixo escopos; do
+  while IFS='|' read -r prefixo escopos _apelidos; do  # 3ª coluna (apelidos, D-C9) não entra no conjunto de escopos
     case "$prefixo" in ""|"#"*) continue ;; esac
     case "$cwd" in
       "$prefixo"|"$prefixo"/*)
@@ -86,6 +86,22 @@ adas_da_rotas() {
     esac
   done < "$conf"
   printf '%s' "$best"
+}
+
+# adas_casas_map → UMA linha 📦 por casa (rota do rotas.conf com projeto/*, DECISIONS.md e scripts/da-index.sh), de qualquer
+# cwd (D-C9, DA-670): o orquestrador em ~ sabe onde cada app guarda as decisões. Fonte única = rotas.conf (3ª coluna =
+# apelidos); nada escrito à mão no CLAUDE.md. "n vigentes" vem do DECISIONS-INDEX.md da casa (sem rodar o índice).
+adas_casas_map() {
+  local conf="${ADAS_ROTAS_CONF:-$HOME/.adas/rotas.conf}" pre esc ap n
+  [ -f "$conf" ] || return 0
+  while IFS='|' read -r pre esc ap; do
+    case "$pre" in ""|"#"*) continue ;; esac
+    case "$esc" in *projeto/*) ;; *) continue ;; esac
+    [ -f "$pre/DECISIONS.md" ] && [ -f "$pre/scripts/da-index.sh" ] || continue
+    n="$(grep -E '^- DA-' "$pre/DECISIONS-INDEX.md" 2>/dev/null | grep -vcE ' · (📚 em|🔄 por) ')"
+    printf '📦 %s → %s/DECISIONS.md (%s vigentes) · ler: bash ~/scripts/da-index.sh show DA-NNN %s · buscar: regra-search "<assunto>" --casa %s\n' \
+      "${ap:-$(basename "$pre")}" "$pre" "${n:-0}" "$pre" "$(basename "$pre")"
+  done < "$conf"
 }
 
 # adas_emit_block <out_var> <used_var> <budget> <content> — acrescenta <content> a <out>
@@ -126,6 +142,7 @@ adas_da_layer0() {
   # ADAS_JIT=off volta ao comportamento antigo (camada 0 orçada).
   if [ "${ADAS_JIT:-inline}" != "off" ] && [ -f "${ADAS_JIT_DIR:-$HOME/.adas/jit}/regras.db" ]; then
     printf '\n[ADAS-JIT ativo] Regras do diário (~/DECISIONS.md, ~/CONDUCT.md) chegam POR AÇÃO: no prompt do dono, no comando, na edição e na delegação aparecem até 3 cartões com a Regra e "da-index.sh show DA-NNN". Sob demanda: bash ~/scripts/da-index.sh sagas ~ · bash ~/adas/host/jit/regra-search "<assunto>"'
+    printf '\n'; adas_casas_map
     return 0
   fi
   local dec="$HOME/DECISIONS.md" idx="$HOME/scripts/da-index.sh"
