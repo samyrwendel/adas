@@ -39,7 +39,7 @@ def p95(xs):
 
 sup, dec, vet, cart, ades = (collections.Counter() for _ in range(5)); ms = []
 for d in linhas(os.path.join(BUS, "regra-jit.log")):
-    if d.get("superficie") == "par":
+    if d.get("superficie") in ("par", "sombra"):
         for c, v in (d.get("adesao") or {}).items():
             ades[v] += 1
         continue

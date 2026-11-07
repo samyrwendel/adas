@@ -42,6 +42,10 @@ TTL_VISTO = 1800  # dedupe: o mesmo cartão não repete na sessão em <30 min (m
 JUIZ_LIMIAR = float(os.environ.get("ADAS_JIT_JUIZ_LIMIAR", "0.3"))  # prob. mínima de "a regra se aplica a ESTA ação" (calibrado no replay de 30)
 JUIZ_TETO = int(os.environ.get("ADAS_JIT_JUIZ_TETO", "400"))          # chamadas/dia do filtro (custo ~5e-5 USD cada)
 JUIZ_TIMEOUT = float(os.environ.get("ADAS_JIT_JUIZ_TIMEOUT", "2.5"))
+SOMBRA_N = int(os.environ.get("ADAS_JIT_SOMBRA_N", "45"))              # candidatos largos que o Jev julga (bm25+vetor+grafo)
+SOMBRA_LIMIAR = float(os.environ.get("ADAS_JIT_SOMBRA_LIMIAR", "0.5"))  # p mínima pra entrar em 'ids' (o 'p' completo fica no log)
+SOMBRA_TETO = int(os.environ.get("ADAS_JIT_SOMBRA_TETO", "300"))        # chamadas/dia da sombra (≈6e-5 USD cada)
+SOMBRA_PRAZO = float(os.environ.get("ADAS_JIT_SOMBRA_PRAZO", "25"))     # processo solto: não segura o hook, aguenta o vetor lento
 LIMIAR = {"prompt": {"l2": 0.65, "bm25": -25.0, "bm25_max_chars": 300, "lider_l2": 0.82, "lider_bm25": -12.0, "lider_razao": 1.6},
           "bash": {"l2": 0.65, "min_palavras": 8},
           "edit": {"l2": 0.60}}
@@ -426,6 +430,74 @@ def recompila_se_velho():
         pass
 
 
+def candidatos_largos(texto, esc, n=SOMBRA_N):
+    """Top-N LARGO sem limiar: híbrido (bm25+vetor) + espalhamento no grafo.json (regra-search --all --espalha), no escopo do cwd.
+    → (lista de dicts {id,titulo,regra_curta}, vetor ok|off|<erro>). Vetor lento/morto = só bm25+grafo (o protótipo não depende dele)."""
+    R = rs()
+    # vetor DESLIGADO por padrão: medido (13 consultas, N=45) bm25+grafo acendeu 3/7 esperados em p95 0,7 s; com vetor 2/7 e p95 1,3 s
+    # (e 7–25 s sob load — o Ollama disputa 4 cores com o da-cards/brain-graph). ADAS_JIT_SOMBRA_VEC=1 religa.
+    usa_vec = os.environ.get("ADAS_JIT_SOMBRA_VEC") == "1"
+    os.environ["ADAS_EMBED_TIMEOUT"] = os.environ.get("ADAS_JIT_SOMBRA_EMBED", "12")
+    idx = R.Index(path=os.path.join(D, "regras.db"), vec=usa_vec)
+    res = [r for r in idx.search(texto, n=40) if R.no_escopo(r.get("escopo"), esc)]
+    a1 = R.espalha({r["id"]: R.ativacao(r) for r in res}, R.grafo(D))
+    por = {r["id"] for r in res}
+    for key in [k for k in a1 if k not in por and a1[k] > 0]:
+        row = idx.db.execute("select titulo,regra_curta,%s from docs where key=?" % ("escopo" if idx.tem_escopo else "''"), (key,)).fetchone()
+        if row and R.no_escopo(row[2], esc):
+            res.append({"id": key, "titulo": row[0], "regra_curta": row[1]})
+    res.sort(key=lambda r: -a1.get(r["id"], 0.0))
+    return res[:n], (idx.vec_erro or ("ok" if idx.vec else "off"))
+
+
+def sombra_jev(texto, esc, sid, ref):
+    """SOMBRA (task 20261107-016): o Jev decide quais das ~20 regras candidatas acendem pra esta mensagem. NADA vai ao agente:
+    grava uma linha no regra-jit.log com `sombra_jev` {ids, p, ms, custo, vetor}. Roda em processo solto (--sombra), fora do
+    caminho do hook. FALHA = SILÊNCIO (DA-515)."""
+    import juiz_prov
+    if juiz_prov.nivel() < 3 or not juiz_prov.provedores(rede=False):
+        return
+    cn = os.path.join(STATE, "sombra-" + time.strftime("%Y%m%d") + ".n")
+    try:
+        n = int(open(cn).read() or 0)
+    except (OSError, ValueError):
+        n = 0
+    if n >= SOMBRA_TETO:
+        return
+    os.makedirs(STATE, exist_ok=True)
+    open(cn, "w").write(str(n + 1))
+    t0 = time.time()
+    rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "sid": sid, "superficie": "sombra", "ref": ref}
+    try:
+        cand, vetor = candidatos_largos(texto, esc)
+        t1 = time.time()
+        perg = [{"id": c["id"], "pergunta": (
+            f'O dono está pedindo/prestes a fazer algo cujo assunto a regra {c["id"]} — "{c.get("titulo") or ""}" — governa, '
+            f'ou que ela COMPLEMENTA (outra regra do mesmo conjunto, ou da qual depende), de modo que lembrá-la agora evitaria erro? '
+            f'Regra: {c["regra_curta"]} Responda NÃO se o assunto só aparece por acaso ou é de outro projeto.')} for c in cand]
+        resp, m = juiz_prov.perguntar(texto[:1500], perg, t1 + SOMBRA_PRAZO)
+        rec["sombra_jev"] = {"ids": [i for i, v in sorted(resp.items(), key=lambda kv: -kv[1]) if v >= SOMBRA_LIMIAR],
+                             "p": {k: round(v, 2) for k, v in resp.items()}, "n_cand": len(cand), "vetor": vetor,
+                             "ms_cand": round((t1 - t0) * 1000), "ms": round((time.time() - t1) * 1000),
+                             "prov": m.get("prov"), "cost": m.get("cost")}
+    except Exception as e:
+        rec["sombra_jev"] = {"erro": type(e).__name__ + ": " + str(e)[:80]}
+    ledger(rec)
+
+
+def dispara_sombra(sup, texto, esc, sid, ref):
+    """Só na superfície prompt, só se o Jev está ligado. Solta o processo e volta: zero ms no hook."""
+    if sup != "prompt" or os.environ.get("ADAS_JIT_SOMBRA_JEV", "on") == "off" or os.environ.get("ADAS_JIT_JUIZ", "on") == "off":
+        return
+    try:
+        pr = subprocess.Popen([sys.executable, os.path.realpath(__file__), "--sombra"], stdin=subprocess.PIPE,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        pr.stdin.write(json.dumps({"texto": texto[:1500], "esc": sorted(esc), "sid": sid, "ref": ref}, ensure_ascii=False).encode())
+        pr.stdin.close()
+    except Exception:
+        pass
+
+
 def main():
     if os.environ.get("ADAS_JIT", "inline") == "off":
         return
@@ -478,6 +550,7 @@ def main():
     elif ms > 300:
         ledger({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "sid": sid, "superficie": sup, "nivel": nivel, "vetor": vetor,
                 "decisao": "silencio", "ms": ms})
+    dispara_sombra(sup, texto, esc, sid, time.strftime("%Y-%m-%dT%H:%M:%S"))
     if not mostrar or modo == "log":
         return
     for c in mostrar:
@@ -509,7 +582,12 @@ def main():
 
 if __name__ == "__main__":
     try:
-        main()
+        if "--sombra" in sys.argv:
+            sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+            q = json.loads(sys.stdin.read() or "{}")
+            sombra_jev(q["texto"], set(q["esc"]), q.get("sid", ""), q.get("ref"))
+        else:
+            main()
     except Exception:
         pass
     sys.exit(0)

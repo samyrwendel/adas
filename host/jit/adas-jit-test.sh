@@ -249,6 +249,22 @@ ev_ = {"hook_event_name": "PreToolUse", "session_id": "dd", "cwd": RH, "tool_nam
 o1, _ = jit(ev_, tag="dd"); o2, _ = jit(ev_, tag="dd")
 chk("T8 dedupe: mesmo cartão na mesma sessão não repete (TTL 30 min)", "DA-547" in o1 and "DA-547" not in o2 and rj.TTL_VISTO == 1800, o2[:100])
 
+print("── sombra do Jev (task 20261107-016): grava só no log, fail-silent, sem vetor por padrão ──")
+rj.LOG = os.path.join(T, "sombra.log"); rj.STATE = os.path.join(T, "j16"); rj.D = RH + "/.adas/jit" if os.path.isdir(RH + "/.adas/jit") else rj.D
+rj.candidatos_largos = lambda texto, esc, n=45: ([{"id": "DA-1", "titulo": "t", "regra_curta": "r"}, {"id": "DA-2", "titulo": "u", "regra_curta": "s"}], "off")
+jp_.perguntar = lambda texto, cartoes, prazo, fmt=None, provs=None: ({"DA-1": 0.9, "DA-2": 0.1}, {"prov": "stub", "cost": 2e-4})
+rj.sombra_jev("quero fazer trade", {"produto"}, "s16", "r")
+lin = [json.loads(l) for l in open(rj.LOG)]
+chk("S16 grava sombra_jev {ids,p,ms,cost} e só os p≥limiar entram em ids", lin[-1]["superficie"] == "sombra" and lin[-1]["sombra_jev"]["ids"] == ["DA-1"]
+    and lin[-1]["sombra_jev"]["cost"] == 2e-4 and "ms" in lin[-1]["sombra_jev"], str(lin[-1]))
+jp_.perguntar = _boom
+rj.sombra_jev("quero fazer trade", {"produto"}, "s16", "r")
+chk("S16 Jev caído = linha com erro, sem exceção (fail-silent)", "erro" in json.loads(open(rj.LOG).read().splitlines()[-1])["sombra_jev"])
+rj.SOMBRA_TETO = 0; n_ = len(open(rj.LOG).read().splitlines()); rj.sombra_jev("x", {"produto"}, "s16", "r")
+chk("S16 teto/dia estourado não chama nem grava", len(open(rj.LOG).read().splitlines()) == n_); rj.SOMBRA_TETO = 300
+os.environ["ADAS_JIT_JUIZ"] = "off"
+chk("S16 ADAS_JIT_JUIZ=off ou superfície != prompt não dispara processo", rj.dispara_sombra("prompt", "x", {"produto"}, "s", "r") is None and rj.dispara_sombra("bash", "x", {"produto"}, "s", "r") is None)
+
 print("── D4: cartão lê tipo/gravidade/status da DC, par ❌/✅, Detalhe (task 20261106-010) ──")
 import importlib.util as _iu4
 _sp4 = _iu4.spec_from_file_location("dc4", os.path.join(JD, "da-cards.py")); dc4 = _iu4.module_from_spec(_sp4); _sp4.loader.exec_module(dc4)
