@@ -231,6 +231,12 @@ cur == "" { next }
   if (motivo == "" && match(line, /^\*\*Motivo:?\*\*[:]?[ \t]*/)) motivo = substr(line, RLENGTH+1)
   if (tradeoff == "" && match(line, /^\*\*Trade-off:?\*\*[:]?[ \t]*/)) tradeoff = substr(line, RLENGTH+1)
   if (licao == "" && match(line, /^\*\*Li(ção|cao):?\*\*[:]?[ \t]*/)) licao = substr(line, RLENGTH+1)
+  # Lição reescrita por DA posterior ("**Lição de DA-469:** texto"): o corpo da DA antiga é imutável,
+  # então a lição EFETIVA (a que o c6 julga) é a da DA mais recente que a reescreve.
+  if (match(line, /^\*\*Li(ção|cao) de DA-[0-9]+:?\*\*[:]?[ \t]*/)) {
+    lt = substr(line, 1, RLENGTH); lx = substr(line, RLENGTH+1); match(lt, /DA-[0-9]+/)
+    licover[substr(lt, RSTART+3, RLENGTH-3)] = lx
+  }
   # data do corpo: (2) linha "**Data:** YYYY-MM-DD" rotulada — pega o PREFIXO ISO (o resto da
   # linha pode ter hora "20:07", parêntese "(noite autônoma)" etc.; só a data importa aqui)
   if (bodydata_label == "" && match(line, /\*\*Data:?\*\*[:]?[ \t]*/)) {
@@ -270,8 +276,8 @@ cur == "" { next }
     if (!(curraw in supby)) supby[curraw] = tgt
     next
   }
-  # DA com campo `supersede:` no cabeçalho: só o campo conta; "supersede" em PROSA ("emenda (supersede + grandfather)")
-  # não marca ninguém (task 20261106-008).
+  # DA com campo `supersede:` no cabeçalho: só o campo `supersede:` conta; "supersede" em PROSA
+  # ("emenda (supersede + grandfather)", DA-278) não marca ninguém (task 20261106-008).
   if (!supfield_seen && match(line, /[Ss]upersede[a-z]*/)) {
     seg = substr(line, RSTART)
     if (match(seg, /[;.]/)) seg = substr(seg, 1, RSTART-1)
@@ -310,6 +316,7 @@ END {
     mc = (ksuf in conby) ? conby[ksuf] : ((rawnum[i] in conby) ? conby[rawnum[i]] : "")
     re = (ksuf in reesc) ? reesc[ksuf] : ((rawnum[i] in reesc) ? reesc[rawnum[i]] : "")
     rb = (ksuf in reescby) ? reescby[ksuf] : ((rawnum[i] in reescby) ? reescby[rawnum[i]] : "")
+    if (totalcnt[rawnum[i]] == 1 && (rawnum[i] in licover)) licao_a[i] = licover[rawnum[i]]
     out = key_a[i] SEP rawnum[i] SEP lineno[i] SEP title_a[i] SEP \
           escopo_a[i] SEP saga_a[i] SEP data_a[i] SEP refs_a[i] SEP \
           consolida_a[i] SEP supersede_a[i] SEP medido_a[i] SEP \
@@ -665,7 +672,9 @@ _da234_epoch_dias() {  # Howard Hinnant days_from_civil
 run_quality_checks() {
   local dir="$1" warn=0 fail=0
   local c6gf="${DA_INDEX_C6_GRANDFATHER:-276}"  # emenda DA-278: c6 vira FAIL só pra DA > 276 (grandfather); DA<=276 (imutável) segue só WARN
-  local sagas_conf="${ADAS_SAGAS_CONF:-$HOME/.adas/sagas.conf}"
+  # D-C5: conf próprio do repositório quando existe; senão o do servidor
+  local sagas_conf="${ADAS_SAGAS_CONF:-}"
+  [ -n "$sagas_conf" ] || { [ -f "$dir/.adas/sagas.conf" ] && sagas_conf="$dir/.adas/sagas.conf" || sagas_conf="$HOME/.adas/sagas.conf"; }
   local i
   # c1: teto de corpo (120 WARN / 300 seria FAIL — ainda não ligado)
   for ((i=0; i<N; i++)); do
@@ -932,6 +941,11 @@ cmd_show() {
   load_records "$dir"
   case "$mode" in
     da)
+      if [[ "$arg" =~ ^DC-[0-9]+$ ]]; then  # D10: conduta mora no CONDUCT.md, não no diário
+        local dcb; dcb="$(awk -v id="$arg" '/^## DC-[0-9]+ — /{f=(index($0,"## " id " — ")==1)} f' "$dir/CONDUCT.md" 2>/dev/null)"
+        [ -n "$dcb" ] || { echo "✗ da-index show: $arg não encontrada"; exit 1; }
+        printf '%s\n' "$dcb"; return 0
+      fi
       local i found=-1
       for ((i=0; i<N; i++)); do [ "${KEY[i]}" = "$arg" ] && { found=$i; break; }; done
       [ "$found" = -1 ] && { echo "✗ da-index show: $arg não encontrada"; exit 1; }
