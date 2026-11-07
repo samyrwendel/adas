@@ -270,7 +270,7 @@ cur == "" { next }
   if (index(line, "Efficiency meter") > 0) efficiency_seen = 1
   if (index(line,"────")>0 || index(line,"━━━━")>0 || index(line,"════")>0 || index(line,"░░░░")>0 || index(line,"▓▓▓▓")>0 || index(line,"█████")>0) tablelines++
   if (line ~ /(NÃO|não|nao|Não) supersede/) next
-  if (match(line, /[Ss]upersed(ida|ed)[a-z]* (pela|por) DA-[0-9]+/)) {
+  if (!inhist && match(line, /[Ss]upersed(ida|ed)[a-z]* (pela|por) DA-[0-9]+/)) {  # D-C4: Histórico (título copiado das DAs antigas) não marca ninguém
     seg = substr(line, RSTART, RLENGTH); match(seg, /DA-[0-9]+/)
     tgt = substr(seg, RSTART+3, RLENGTH-3)
     if (!(curraw in supby)) supby[curraw] = tgt
@@ -278,7 +278,7 @@ cur == "" { next }
   }
   # DA com campo `supersede:` no cabeçalho: só o campo `supersede:` conta; "supersede" em PROSA
   # ("emenda (supersede + grandfather)", DA-278) não marca ninguém (task 20261106-008).
-  if (!supfield_seen && match(line, /[Ss]upersede[a-z]*/)) {
+  if (!supfield_seen && !inhist && match(line, /[Ss]upersede[a-z]*/)) {
     seg = substr(line, RSTART)
     if (match(seg, /[;.]/)) seg = substr(seg, 1, RSTART-1)
     r = refs_in_plain(seg)
@@ -764,7 +764,8 @@ run_quality_checks() {
   declare -A exists
   for ((i=0; i<N; i++)); do exists["$(nv "${RAWNUM[i]}")"]=1; done
   local cited unknown=""
-  for cited in $(grep -oE 'DA-[0-9]+' "$dec" 2>/dev/null | sort -u); do
+  # D-C4 (DA-670): id de origem em `passa-a-limpo:` e id de outra casa ("📦 <repo> DA-NNN") não são citação a este diário
+  for cited in $(sed -E 's/`passa-a-limpo:[^`]*`//g; s/📦 [a-z0-9-]+ DA-[0-9]+//g' "$dec" 2>/dev/null | grep -oE 'DA-[0-9]+' | sort -u); do
     [ -n "${FANTASMA_REF[$cited]:-}" ] && continue
     local num; num="$(nv "${cited#DA-}")"
     [ -z "${exists[$num]:-}" ] && unknown+="$cited "
@@ -951,6 +952,20 @@ cmd_show() {
       [ "$found" = -1 ] && { echo "✗ da-index show: $arg não encontrada"; exit 1; }
       local start="${LINE[found]}" end
       if [ $((found+1)) -lt "$N" ]; then end=$(( ${LINE[$((found+1))]} - 1 )); else end='$'; fi
+      # D-C1 (DA-670): DA 📚 num ponteiro 📦 (tipo registro com linha "📦 casa:") diz onde a regra viva mora
+      local mk; mk="$(mark_of "$found")"
+      if [ "${mk%%:*}" = con ]; then
+        local hid="DA-${mk#*:}" hi=-1 j hb alvo cdir
+        for ((j=0; j<N; j++)); do [ "${KEY[j]}" = "$hid" ] && { hi=$j; break; }; done
+        if [ "$hi" -ge 0 ]; then
+          if [ $((hi+1)) -lt "$N" ]; then hb="$(sed -n "${LINE[hi]},$(( ${LINE[$((hi+1))]} - 1 ))p" "$dir/DECISIONS.md")"; else hb="$(sed -n "${LINE[hi]},\$p" "$dir/DECISIONS.md")"; fi
+          if grep -q '📦 casa:' <<<"$hb"; then
+            alvo="$(grep -m1 -E "^- $arg — .*→ 📦 " <<<"$hb" | sed -E 's/.*→ 📦 ([a-z0-9-]+) (DA-[0-9]+).*/\1 \2/')"
+            cdir="$(grep -m1 -oE '📦 casa: [^ ]+' <<<"$hb" | sed -E 's/^📦 casa: //; s#/DECISIONS\.md$##')"
+            [ -n "$alvo" ] && [ -n "$cdir" ] && echo "📦 mudou de casa: ${alvo% *} ${alvo#* } (bash ~/scripts/da-index.sh show ${alvo#* } $cdir) — ponteiro $hid"
+          fi
+        fi
+      fi
       sed -n "${start},${end}p" "$dir/DECISIONS.md" | collapse_paste
       ;;
     saga)

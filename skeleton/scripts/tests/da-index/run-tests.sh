@@ -193,6 +193,37 @@ chmod 644 "$UNREADABLE/DECISIONS.md"
 echo "$out_unreadable" | grep -qF "$UNREADABLE/DECISIONS.md" && pass "erro de ilegível cita o caminho tentado" || fail "erro de ilegível não cita o caminho tentado"
 echo "$out_unreadable" | grep -qi "não encontrada" && fail "erro de diário ilegível usa 'não encontrada'" || pass "erro de diário ilegível NÃO usa 'não encontrada'"
 
+echo "== D-C1/D-C4 (mudança de casa, DA-670): ponteiro 📦, show com a casa, c11 e Histórico sem ruído =="
+CASA="$TMP/casa"; mkdir -p "$CASA"
+cat > "$CASA/DECISIONS.md" <<'MD'
+# diário de teste
+
+## DA-001 — Regra antiga do app (será ponteiro)
+`escopo: projeto/app` · `saga: nova/x` · `data: 2026-11-01` · `refs: —` · `consolida: —` · `supersede: —`
+**Regra:** Margem de 3% nos dois sentidos.
+**Motivo:** teste.
+
+## DA-002 — Outra regra, esta supersede em prosa de verdade? não
+`escopo: produto` · `saga: nova/y` · `data: 2026-11-02` · `refs: —` · `consolida: —` · `supersede: —`
+**Regra:** Regra independente que deve continuar vigente.
+**Motivo:** teste.
+
+## DA-003 — 📦 Mudança de casa: o app vive em /tmp/app
+`escopo: projeto/app` · `saga: nova/casa-app` · `data: 2026-11-03` · `tipo: registro` · `refs: —` · `consolida: DA-001` · `supersede: —` · `passa-a-limpo: DAS-777`
+**Regra:** Decisão do app nasce no repositório dele.
+**Detalhe operacional:** 📦 casa: /tmp/app/DECISIONS.md · ler: `bash ~/scripts/da-index.sh show DA-NNN /tmp/app`
+### Histórico
+- DA-001 — Margem de 3%, supersede parcial da DA-002 (título copiado) → 📦 app DA-009
+MD
+bash "$DAIDX" update "$CASA" >/dev/null 2>&1
+sh1="$(bash "$DAIDX" show DA-001 "$CASA" 2>&1 | head -1)"; vg="$(bash "$DAIDX" list --vigentes "$CASA" 2>&1)"; ck="$(bash "$DAIDX" check "$CASA" 2>&1)"
+[ "$sh1" = "📦 mudou de casa: app DA-009 (bash ~/scripts/da-index.sh show DA-009 /tmp/app) — ponteiro DA-003" ] \
+  && pass "D-C1: show de DA 📚 em ponteiro imprime a casa" || fail "D-C1: show da DA 📚 não imprime a linha 📦 ($sh1)"
+grep -q '^- DA-002' <<< "$vg" \
+  && pass "D-C4: título copiado no Histórico ('supersede') não marca a DA-002" || fail "D-C4: Histórico marcou a DA-002 como superada"
+grep -E 'c11' <<< "$ck" | grep -qE 'DA-(777|009)' \
+  && fail "D-C4: c11 acusa id de passa-a-limpo/📦" || pass "D-C4: c11 ignora passa-a-limpo e '📦 <repo> DA-NNN'"
+
 echo
 if [ "$FAIL" = 0 ]; then
   echo "✓✓✓ harness da-index: TODOS OS TESTES PASSARAM"

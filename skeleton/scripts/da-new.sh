@@ -20,6 +20,28 @@ ESCOPO="$1"; SAGA="$2"; TITULO="$3"; DIR="${4:-$HOME}"
 DEC="$DIR/DECISIONS.md"
 [ -f "$DEC" ] || { echo "✗ da-new: $DEC não existe"; exit 2; }
 
+# D-C6 (DA-670, mudança de casa): DA só de projeto nasce no DECISIONS.md do repositório do app, não no do servidor.
+# Só trava quando há casa de fato (rota do ~/.adas/rotas.conf com o projeto, DECISIONS.md e scripts/da-new.sh);
+# projeto sem repositório próprio segue aqui. Ponteiro 📦 (saga nova/casa-*) é a exceção. Escopo composto (produto/instância + projeto) fica.
+if [ "$(readlink -f "$DIR")" = "$(readlink -f "$HOME")" ] && [[ "$SAGA" != nova/casa-* ]]; then
+  _so_proj=1; _casa=""
+  IFS=',' read -ra _esc <<< "$ESCOPO"
+  for _e in "${_esc[@]}"; do
+    _e="${_e// /}"
+    [[ "$_e" == projeto/* ]] || { _so_proj=0; break; }
+    [ -n "$_casa" ] && continue
+    while IFS='|' read -r _pre _escs _; do
+      [[ "$_pre" == \#* || -z "$_pre" ]] && continue
+      [[ ",$_escs," == *",$_e,"* && -f "$_pre/DECISIONS.md" && -f "$_pre/scripts/da-new.sh" ]] && { _casa="$_pre"; break; }
+    done < "${ADAS_ROTAS_CONF:-$HOME/.adas/rotas.conf}" 2>/dev/null
+  done
+  if [ "$_so_proj" = 1 ] && [ -n "$_casa" ]; then
+    echo "✗ da-new: DA só de projeto nasce no repositório do app (DA-670). Use: bash $_casa/scripts/da-new.sh $ESCOPO $SAGA '<título>' $_casa" >&2
+    echo "  no servidor só o ponteiro 📦 (saga nova/casa-<repo>, tipo registro); DA transversal leva as duas etiquetas (ex.: produto,projeto/x)." >&2
+    exit 2
+  fi
+fi
+
 # ADAS_DIR default segue o [dir] alvo (nunca $HOME) — senão um da-new.sh contra uma cópia de
 # teste ainda grava snapshot/lock no ~/.adas/ do servidor real. Produção usa dir=$HOME por
 # default, então o comportamento real não muda; só o caso [dir] ≠ $HOME passa a se isolar.
