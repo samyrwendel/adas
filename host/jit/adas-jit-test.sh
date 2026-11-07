@@ -70,7 +70,7 @@ def veredito(out, rc, rid, via):
     if ctx and (via != "regra-jit.py" or rid in ctx or vis in ctx): return "aviso"
     return "passa"
 
-arqs = sorted(glob.glob(os.path.join(FIX, "D[AC]-*.jsonl")) + glob.glob(os.path.join(FIX, "*:D[AC]-*.jsonl")))  # D-C3: <casa>:DA-NNN.jsonl
+arqs = sorted(glob.glob(os.path.join(FIX, "D[AC]-*.jsonl")) + [x for x in glob.glob(os.path.join(FIX, "*:D[AC]-*.jsonl")) if not os.path.basename(x).startswith("juiz-")])  # D-C3: <casa>:DA-NNN.jsonl
 print(f"── fixtures ({len(arqs)} regra(s) em {FIX}) ──")
 for a in arqs:
     rid = os.path.basename(a)[:-6]
@@ -153,8 +153,10 @@ out, led = jit(pr(os.path.join(RH, "rampa-pix"), RAMPA, "e1c"), tag="esc1c")
 chk("D-C3 cwd=rampa-pix: cartão da casa aparece como 'DA-0NN (rampa-pix)' com show apontando pro repositório", "(rampa-pix)" in out and "da-index.sh show DA-" in out and "rampa-pix" in out.split("show", 1)[-1], out[:200])
 out, led = jit(pr(RH, RAMPA, "e1d"), tag="esc1d")
 chk("D-C3 cwd=home: cartão do rampa-pix NÃO aparece", "(rampa-pix)" not in out, out[:200])
-out, led = jit(pr(os.path.join(RH, "tradingagents"), "no card do TradingDegens o eixo temporal da tela mostra a hora de Manaus ou da bolsa de NY?", "e2"), tag="esc2")
-chk("T2 cwd=tradingagents: cartão projeto/tradingdegens aparece (DA-193)", "DA-193" in out, out[:160])
+out, led = jit(pr(os.path.join(RH, "tradingagents"), "cada eixo da tela do TradingDegens tem um produtor e um nome: setup, frame, fase, veredito", "e2"), tag="esc2")
+chk("T2 cwd=tradingagents: cartão do TradingDegens aparece (DA-003 da casa tradingagents; a DA-193 do servidor virou 📚 em 07/11)", "DA-003 (tradingagents)" in out, out[:160])
+out, led = jit(pr(RH, "cada eixo da tela do TradingDegens tem um produtor e um nome: setup, frame, fase, veredito", "e2b"), tag="esc2b")
+chk("T2 cwd=home: cartão do TradingDegens NÃO aparece", "(tradingagents)" not in out, out[:160])
 out, led = jit(pr(RH, "qual o custo do duto da cozinha", "e3"), {"ADAS_EMBED_TIMEOUT": "0.001"}, tag="vec")
 chk("T3 vetor morto → ledger vetor=<exceção> e nivel 1", led and led[-1].get("vetor") not in ("ok", None, "-") and led[-1].get("nivel") == 1, str(led[-1:])[:160])
 bash = lambda sid, c: {"hook_event_name": "PreToolUse", "session_id": sid, "cwd": RH, "tool_name": "Bash", "tool_input": {"command": c}}
