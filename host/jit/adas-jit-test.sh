@@ -262,6 +262,16 @@ rj.sombra_jev("quero fazer trade", {"produto"}, "s16", "r")
 chk("S16 Jev caído = linha com erro, sem exceção (fail-silent)", "erro" in json.loads(open(rj.LOG).read().splitlines()[-1])["sombra_jev"])
 rj.SOMBRA_TETO = 0; n_ = len(open(rj.LOG).read().splitlines()); rj.sombra_jev("x", {"produto"}, "s16", "r")
 chk("S16 teto/dia estourado não chama nem grava", len(open(rj.LOG).read().splitlines()) == n_); rj.SOMBRA_TETO = 300
+import tempfile as _tf
+_cd = _tf.mkdtemp(dir=T); rj.D = _cd
+json.dump([{"id": "DA-1", "titulo": "t1", "regra_curta": "r1", "saga": "sa", "escopo": "instância"}, {"id": "DA-2", "titulo": "t2", "regra_curta": "r2", "saga": "sb", "escopo": "instância"},
+           {"id": "DA-3", "titulo": "t3", "regra_curta": "r3", "saga": "sb", "escopo": "instância"}], open(_cd + "/cards.json", "w"))
+json.dump({"arestas": [{"a": "DA-1", "b": "DA-3", "w": 0.9, "tipo": "complementa"}]}, open(_cd + "/grafo-jev.json", "w"))
+def _jv(texto, cartoes, prazo, **kw):
+    ids = {c["id"] for c in cartoes}
+    return ({i: (0.9 if i in ("sa", "DA-1", "DA-3") else 0.1) for i in ids}, {"cost": 1e-4})
+rc = rj.sombra_cascata("x", {"instância"}, juiz=_jv)
+chk("S16 cascata: saga acende → DA acende → vizinha (grafo-jev) entra; saga apagada fica fora", rc["ids"] == ["DA-1", "DA-3"] and rc["sagas"] == ["sa"] and rc["ids_n2"] == ["DA-1"] and rc["cost"] == 3e-4, str(rc))
 os.environ["ADAS_JIT_JUIZ"] = "off"
 chk("S16 ADAS_JIT_JUIZ=off ou superfície != prompt não dispara processo", rj.dispara_sombra("prompt", "x", {"produto"}, "s", "r") is None and rj.dispara_sombra("bash", "x", {"produto"}, "s", "r") is None)
 

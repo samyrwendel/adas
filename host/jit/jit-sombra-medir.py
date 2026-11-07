@@ -25,6 +25,15 @@ CARDS = json.load(open(os.path.expanduser("~/.adas/jit/cards.json"))) if "--cata
 out = []
 for label, q, exp in qs:
     t0 = time.time()
+    if "--cascata" in a:
+        try:
+            r = rj.sombra_cascata(q, esc)
+        except Exception as e:
+            out.append({"label": label, "erro": str(e)[:80]}); continue
+        out.append({"label": label, "esperado": exp, "nos_candidatos": [e for e in exp if e in r["p"]], "acendeu": [e for e in exp if e in r["ids"]], "ids": r["ids"],
+                    "vetor": "-", "ms_cand": 0, "ms_jev": r["ms"], "cost": r["cost"], "sagas": r["sagas"], "n": r["n"]})
+        print(f'- {label[:44]:44s} esp {exp} acendeu {out[-1]["acendeu"]} | {len(r["ids"])} ids | n {r["n"]} | {r["ms"]}ms ${r["cost"]}')
+        continue
     if "--catalogo" in a:  # todos os cartões do escopo, só título (sem vetor): o Jev lê o catálogo inteiro
         cand, vetor = [{"id": c["id"], "titulo": c["titulo"][:110], "regra_curta": ""} for c in CARDS if rj.rs().no_escopo(c.get("escopo"), esc)], "-"
     else:

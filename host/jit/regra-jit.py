@@ -44,6 +44,7 @@ JUIZ_TETO = int(os.environ.get("ADAS_JIT_JUIZ_TETO", "400"))          # chamadas
 JUIZ_TIMEOUT = float(os.environ.get("ADAS_JIT_JUIZ_TIMEOUT", "2.5"))
 SOMBRA_N = int(os.environ.get("ADAS_JIT_SOMBRA_N", "45"))              # candidatos largos que o Jev julga (bm25+vetor+grafo)
 SOMBRA_LIMIAR = float(os.environ.get("ADAS_JIT_SOMBRA_LIMIAR", "0.5"))  # p mínima pra entrar em 'ids' (o 'p' completo fica no log)
+SOMBRA_L1 = float(os.environ.get("ADAS_JIT_SOMBRA_L1", "0.25"))        # cascata nível 1 é porta larga (o Jev dá ~0,3 a assunto vizinho); o nível 2 é quem apaga
 SOMBRA_TETO = int(os.environ.get("ADAS_JIT_SOMBRA_TETO", "300"))        # chamadas/dia da sombra (≈6e-5 USD cada)
 SOMBRA_PRAZO = float(os.environ.get("ADAS_JIT_SOMBRA_PRAZO", "25"))     # processo solto: não segura o hook, aguenta o vetor lento
 LIMIAR = {"prompt": {"l2": 0.65, "bm25": -25.0, "bm25_max_chars": 300, "lider_l2": 0.82, "lider_bm25": -12.0, "lider_razao": 1.6},
@@ -450,6 +451,64 @@ def candidatos_largos(texto, esc, n=SOMBRA_N):
     return res[:n], (idx.vec_erro or ("ok" if idx.vec else "off"))
 
 
+def _pergunta_da(c):
+    return (f'O dono está pedindo/prestes a fazer algo cujo assunto a regra {c["id"]} — "{c.get("titulo") or ""}" — governa, '
+            f'ou que ela COMPLEMENTA (outra regra do mesmo conjunto, ou da qual depende), de modo que lembrá-la agora evitaria erro? '
+            f'Regra: {c.get("regra_curta") or ""} Responda NÃO se o assunto só aparece por acaso ou é de outro projeto.')
+
+
+def sombra_cascata(texto, esc, juiz=None):
+    """Cascata do Jev (Samyr msg 12935: 'acende e vai apagando'): NÍVEL 1 quais sagas (assuntos) acendem — uma linha por saga;
+    NÍVEL 2 dentro das sagas acesas, quais DAs ficam; NÍVEL 3 vizinhas do grafo-jev/grafo (depende/complementa/refs) das DAs
+    acesas, e o Jev apaga as que não servem. Sem busca por palavra e sem vetor. → dict (ids, p, ms por nível, cost, n por nível).
+    ponytail: 3 chamadas em série; se o p95 pesar, nível 3 vira opcional."""
+    juiz = juiz or __import__("juiz_prov").perguntar
+    cards = [c for c in json.load(open(os.path.join(D, "cards.json"))) if rs().no_escopo(c.get("escopo"), esc)]
+    por = {c["id"]: c for c in cards}
+    sagas = {}
+    for c in cards:
+        sagas.setdefault(c.get("saga") or "sem-saga", []).append(c)
+    for nome in [n for n, m in sagas.items() if len(m) > 20]:  # mega-saga (ex.: quantfury-relay, 69) mistura assuntos: vira blocos de 10 pra o nível 1 enxergar
+        mem = sagas.pop(nome)
+        for k in range(0, len(mem), 10):
+            sagas[f"{nome}#{k // 10 + 1}"] = mem[k:k + 10]
+    t0, custo, ms = time.time(), 0.0, {}
+    def chama(perg, nivel):
+        nonlocal custo
+        t = time.time()
+        resp, m = juiz(f"MENSAGEM DO DONO:\n{texto[:1500]}", perg, time.time() + SOMBRA_PRAZO)
+        custo += m.get("cost") or 0
+        ms[nivel] = round((time.time() - t) * 1000)
+        return resp
+    # nível 1
+    perg1 = [{"id": nome, "pergunta": f'O ASSUNTO "{nome.replace("nova/", "")}" (regras como: ' + "; ".join(c["titulo"][:60] for c in mem[:6]) +
+              ") tem a ver com o que o dono está pedindo/prestes a fazer, de modo que as regras dele valem aqui? NÃO se só aparece por acaso."} for nome, mem in sagas.items()]
+    r1 = chama(perg1, "n1")
+    acesas = [n for n, v in sorted(r1.items(), key=lambda kv: -kv[1]) if v >= SOMBRA_L1][:8]
+    # nível 2
+    cand2 = [c for n in acesas for c in sagas.get(n, [])][:80]
+    r2 = chama([{"id": c["id"], "pergunta": _pergunta_da(c)} for c in cand2], "n2") if cand2 else {}
+    ids2 = [i for i, v in r2.items() if v >= SOMBRA_LIMIAR]
+    # nível 3
+    viz = set()
+    arestas = []
+    for f in ("grafo-jev.json", "grafo.json"):
+        try:
+            g = json.load(open(os.path.join(D, f)))
+            arestas += g["arestas"] if isinstance(g, dict) else [e for e in g if e.get("tipo") != "saga"]
+        except Exception:
+            pass
+    for e in arestas:
+        for u, v in ((e["a"], e["b"]), (e["b"], e["a"])):
+            if u in ids2 and v in por and v not in r2:
+                viz.add(v)
+    r3 = chama([{"id": i, "pergunta": _pergunta_da(por[i])} for i in sorted(viz)[:40]], "n3") if viz else {}
+    ids3 = [i for i, v in r3.items() if v >= SOMBRA_LIMIAR]
+    p = {**{k: round(v, 2) for k, v in r2.items()}, **{k: round(v, 2) for k, v in r3.items()}}
+    return {"ids": sorted(ids2 + ids3, key=lambda i: -p[i]), "p": p, "sagas": acesas, "n": [len(perg1), len(cand2), len(viz)],
+            "ids_n2": ids2, "ms": round((time.time() - t0) * 1000), "ms_nivel": ms, "cost": round(custo, 6)}
+
+
 def sombra_jev(texto, esc, sid, ref):
     """SOMBRA (task 20261107-016): o Jev decide quais das ~20 regras candidatas acendem pra esta mensagem. NADA vai ao agente:
     grava uma linha no regra-jit.log com `sombra_jev` {ids, p, ms, custo, vetor}. Roda em processo solto (--sombra), fora do
@@ -471,10 +530,7 @@ def sombra_jev(texto, esc, sid, ref):
     try:
         cand, vetor = candidatos_largos(texto, esc)
         t1 = time.time()
-        perg = [{"id": c["id"], "pergunta": (
-            f'O dono está pedindo/prestes a fazer algo cujo assunto a regra {c["id"]} — "{c.get("titulo") or ""}" — governa, '
-            f'ou que ela COMPLEMENTA (outra regra do mesmo conjunto, ou da qual depende), de modo que lembrá-la agora evitaria erro? '
-            f'Regra: {c["regra_curta"]} Responda NÃO se o assunto só aparece por acaso ou é de outro projeto.')} for c in cand]
+        perg = [{"id": c["id"], "pergunta": _pergunta_da(c)} for c in cand]
         resp, m = juiz_prov.perguntar(texto[:1500], perg, t1 + SOMBRA_PRAZO)
         rec["sombra_jev"] = {"ids": [i for i, v in sorted(resp.items(), key=lambda kv: -kv[1]) if v >= SOMBRA_LIMIAR],
                              "p": {k: round(v, 2) for k, v in resp.items()}, "n_cand": len(cand), "vetor": vetor,
@@ -482,6 +538,10 @@ def sombra_jev(texto, esc, sid, ref):
                              "prov": m.get("prov"), "cost": m.get("cost")}
     except Exception as e:
         rec["sombra_jev"] = {"erro": type(e).__name__ + ": " + str(e)[:80]}
+    try:  # variante em CASCATA (sagas → DAs → vizinhas), lado a lado com o top-N; uma não derruba a outra
+        rec["sombra_jev_cascata"] = sombra_cascata(texto, esc)
+    except Exception as e:
+        rec["sombra_jev_cascata"] = {"erro": type(e).__name__ + ": " + str(e)[:80]}
     ledger(rec)
 
 
