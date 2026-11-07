@@ -168,13 +168,19 @@ chk("T-DC013 conta vencendo no mainbot continua acendendo", "DC-046" in _ids("pr
 chk("T-DA464 ssh/ls no ComCripto sem backup NÃO acende (DA-548)", "DA-548" not in _ids("bash", "ssh nanogo-ts 'ls -d ~/ComCripto /home/degen/*omcripto*'"))
 chk("T-DA464 ComCripto + restic/.db acende (DA-548)", "DA-548" in _ids("bash", "ssh nanogo-ts 'restic backup ~/ComCripto/data/comcripto.db'"))
 g = json.load(open(os.path.join(RH, ".adas/jit/grafo.json")))
-chk("T6 grafo.json: DA-489 é regra-mãe da DA-493 (mecanismo-de)", any(e["a"] == "DA-489" and e["b"] == "DA-493" and e["tipo"] == "mecanismo-de" for e in g))
+# T6: fixture própria (DA-524, lote 05): par vivo do diário some quando as DAs são consolidadas; aqui a aresta nasce de um adendo sintético
+import importlib.machinery as _im
+_dc = _im.SourceFileLoader("dcg", os.path.join(JD, "da-cards.py")).load_module()
+_gt = os.path.join(T, "gfix"); os.makedirs(_gt, exist_ok=True)
+_dc.compila_grafo([{"id": "DA-901", "hash": "h1"}, {"id": "DA-902", "hash": "h2", "filhos": ["DA-901"]}], _gt, {})
+gfix = json.load(open(os.path.join(_gt, "grafo.json")))
+chk("T6 grafo (fixture): adendo que mecaniza DA-901 gera aresta mecanismo-de", any(e["a"] == "DA-902" and e["b"] == "DA-901" and e["tipo"] == "mecanismo-de" for e in gfix), str(gfix))
 CL = {"refs": "explícita", "consolida": "explícita", "supersede": "explícita", "mecanismo-de": "explícita", "saga": "pertencimento", "semântica": "semântica", "adesao": "aprendida"}
 chk("T6 grafo.json: toda aresta tem classe ∈ {explícita, pertencimento, semântica, aprendida} e casa com o tipo (GLOSSARIO.md)",
     all(e.get("classe") == CL.get(e["tipo"]) for e in g), str([e for e in g if e.get("classe") != CL.get(e["tipo"])][:2]))
 import importlib.machinery, importlib.util
 ld = importlib.machinery.SourceFileLoader("rs", os.path.join(JD, "regra-search")); rs = importlib.util.module_from_spec(importlib.util.spec_from_loader("rs", ld)); ld.exec_module(rs)
-chk("T6 cartão DA-493 mostrado → regra-mãe DA-489", rs.regra_mae({"DA-493"}, g).get("DA-493") == ["DA-489"])
+chk("T6 cartão mecanismo mostrado → regra-mãe (fixture)", rs.regra_mae({"DA-901"}, gfix).get("DA-901") == ["DA-902"])
 chk("T6 adendo em lote (DA-376) não vira regra-mãe", "DA-376" not in rs.regra_mae({"DA-376"}, g))
 
 print("── copiar-guard 1× por reply (task 20261031-031) ──")
