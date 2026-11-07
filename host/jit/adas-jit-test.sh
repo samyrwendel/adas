@@ -66,10 +66,11 @@ def veredito(out, rc, rid, via):
     hs = o.get("hookSpecificOutput") or {}
     if hs.get("permissionDecision") == "deny" or o.get("decision") == "block": return "deny"
     ctx = hs.get("additionalContext") or ""
-    if ctx and (via != "regra-jit.py" or rid in ctx): return "aviso"
+    vis = rid if ":" not in rid else "%s (%s)" % (rid.split(":", 1)[1], rid.split(":", 1)[0])  # D-C3: cartão da casa aparece como "DA-066 (nest-egg)"
+    if ctx and (via != "regra-jit.py" or rid in ctx or vis in ctx): return "aviso"
     return "passa"
 
-arqs = sorted(glob.glob(os.path.join(FIX, "D[AC]-*.jsonl")))
+arqs = sorted(glob.glob(os.path.join(FIX, "D[AC]-*.jsonl")) + glob.glob(os.path.join(FIX, "*:D[AC]-*.jsonl")))  # D-C3: <casa>:DA-NNN.jsonl
 print(f"── fixtures ({len(arqs)} regra(s) em {FIX}) ──")
 for a in arqs:
     rid = os.path.basename(a)[:-6]
@@ -147,6 +148,11 @@ OLIVUM = "calcular o custo in-house do duto de exaustão peça a peça com a dob
 pr = lambda cwd, q, sid: {"hook_event_name": "UserPromptSubmit", "session_id": sid, "cwd": cwd, "prompt": q}
 out, led = jit(pr(RH, OLIVUM, "e1"), tag="esc1")
 chk("T2 cwd=home: DA-611 (projeto/olivum) NÃO aparece", "DA-611" not in out and led and led[-1].get("escopo") == "instância,produto", out[:120])
+RAMPA = "qual a margem do rampa na compra de USDT pela Bras Pay e o que o cliente paga a mais que o mercado"
+out, led = jit(pr(os.path.join(RH, "rampa-pix"), RAMPA, "e1c"), tag="esc1c")
+chk("D-C3 cwd=rampa-pix: cartão da casa aparece como 'DA-0NN (rampa-pix)' com show apontando pro repositório", "(rampa-pix)" in out and "da-index.sh show DA-" in out and "rampa-pix" in out.split("show", 1)[-1], out[:200])
+out, led = jit(pr(RH, RAMPA, "e1d"), tag="esc1d")
+chk("D-C3 cwd=home: cartão do rampa-pix NÃO aparece", "(rampa-pix)" not in out, out[:200])
 out, led = jit(pr(os.path.join(RH, "tradingagents"), "no card do TradingDegens o eixo temporal da tela mostra a hora de Manaus ou da bolsa de NY?", "e2"), tag="esc2")
 chk("T2 cwd=tradingagents: cartão projeto/tradingdegens aparece (DA-193)", "DA-193" in out, out[:160])
 out, led = jit(pr(RH, "qual o custo do duto da cozinha", "e3"), {"ADAS_EMBED_TIMEOUT": "0.001"}, tag="vec")
@@ -204,7 +210,7 @@ if os.environ.get("JUIZ") == "1":
     # espera: deny | aviso (do próprio ID) | passa | "aviso:outro" (aviso de OUTRO cartão, não deste). "gap": medido e
     # registrado — mostrado, não conta.
     print("── juiz: fixtures de paráfrase (T7, --juiz) ──")
-    for a in sorted(glob.glob(os.path.join(FIX, "juiz-D[AC]-*.jsonl"))):
+    for a in sorted(glob.glob(os.path.join(FIX, "juiz-D[AC]-*.jsonl")) + glob.glob(os.path.join(FIX, "juiz-*:D[AC]-*.jsonl"))):  # D-C3: juiz-<casa>:DA-NNN
         rid = os.path.basename(a)[5:-6]
         for l in open(a, encoding="utf-8"):
             if not l.strip(): continue

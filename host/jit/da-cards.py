@@ -50,12 +50,32 @@ def embed(texts):
 def f32(v): return struct.pack("%df" % len(v), *v)
 def sha(t): return hashlib.sha1(t.encode()).hexdigest()[:16]
 
-def extract(home):
+def casas(home):
+    """D-C3 (mudança de casa, DA-670): repositórios de app com diário próprio. Vêm do rotas.conf do HOME: rota com
+    `projeto/*`, diretório ≠ home e DECISIONS.md → casa. Cartão da casa nasce com id `<casa>:DA-NNN` (ids colidem entre
+    diários), escopo = o `projeto/*` da rota (a etiqueta da DA não vaza o cartão pro cwd errado)."""
+    out = []
+    try:
+        linhas = open(os.path.join(home, ".adas", "rotas.conf"), encoding="utf-8").read().splitlines()
+    except OSError:
+        return out
+    for l in linhas:
+        if "|" not in l or l.lstrip().startswith("#"): continue
+        pre, esc = l.split("|", 1); pre = pre.rstrip("/")
+        proj = [e.strip() for e in esc.split(",") if e.strip().startswith("projeto/")]
+        if not proj or os.path.realpath(pre) == os.path.realpath(home): continue
+        if os.path.isfile(os.path.join(pre, "DECISIONS.md")) and os.path.isfile(os.path.join(pre, "scripts/da-index.sh")):
+            out.append({"nome": os.path.basename(pre), "dir": pre, "escopo": proj[0]})
+    return out
+
+def das_de(dirn, home, casa=None):
+    """Cartões das DAs vigentes de UM diário (dirn/DECISIONS.md); `casa` = dict de casas() ou None (servidor)."""
+    pre = (lambda i: f'{casa["nome"]}:{i}') if casa else (lambda i: i)
     vig = set(re.findall(r"^- (DA-\d+[a-z]?)", subprocess.run(
-        ["bash", os.path.join(home, "scripts/da-index.sh"), "list", "--vigentes", home],
+        ["bash", os.path.join(home, "scripts/da-index.sh"), "list", "--vigentes", dirn],
         capture_output=True, text=True).stdout, re.M))
     cards = []
-    txt = open(os.path.join(home, "DECISIONS.md"), encoding="utf-8").read()
+    txt = open(os.path.join(dirn, "DECISIONS.md"), encoding="utf-8").read()
     # mecanismo-de: DA cujo título é 'Mecanismo da DA-NNN' ou que traz '**Mecanismo da DA-NNN:**' MECANIZA a citada
     # (DA-465 → DA-412). '**Gatilho da DA-NNN:**' só declara gatilho (já vai pro cartão da citada) — vira refs.
     filhos = {}
@@ -77,10 +97,16 @@ def extract(home):
             if md["tipo"] == "registro": continue  # D4: registro é fato, não ordem — fica no diário/show, não vira cartão
             ad = re.match(r"Adendo (?:à|a|ao|às) ((?:D[AC]-\d+[a-z]?[/,\s]*(?:e\s+)?)+)", h.group(2))
             if ad: md["refs"] = (md["refs"] + " " + ad.group(1)).strip()  # 'Adendo à DA-444/451' = refs
-            cards.append({"id": h.group(1), "titulo": h.group(2).strip(), "regra": regra, "motivo": campo("Motivo"),
-                          **md, "exemplo": exemplos(b), "filhos": filhos.get(h.group(1), []),
-                          "padrao_sem_adas": " ".join(re.findall(r"(?m)^\*\*Padrão sem ADAS:\*\*(.*)$", b)[-1:]),
-                          "detalhe": campo("Detalhe operacional")})
+            c = {"id": pre(h.group(1)), "titulo": h.group(2).strip(), "regra": regra, "motivo": campo("Motivo"),
+                 **md, "exemplo": exemplos(b), "filhos": [pre(f) for f in filhos.get(h.group(1), [])],
+                 "padrao_sem_adas": " ".join(re.findall(r"(?m)^\*\*Padrão sem ADAS:\*\*(.*)$", b)[-1:]),
+                 "detalhe": campo("Detalhe operacional")}
+            if casa: c.update(casa=casa["nome"], casa_dir=casa["dir"], escopo=casa["escopo"])
+            cards.append(c)
+    return cards
+
+def extract(home):
+    cards = das_de(home, home)
     ctxt = open(os.path.join(home, "CONDUCT.md"), encoding="utf-8").read()
     for b in re.split(r"(?m)^(?=## DC-\d)", ctxt)[1:]:
         h = re.match(r"## (DC-\d+) — (.*)", b); r = re.search(r"\*\*Regra:\*\*(.*?)\n", b)
@@ -96,6 +122,9 @@ def extract(home):
                       "refs": " ".join(sorted(set(re.findall(r"\bD[AC]-\d{3}\b", b)) - {h.group(1)})),
                       "consolida": "", "supersede": "", "tipo": "regra", "gravidade": grav, "exemplo": exemplos(b), "filhos": []})
     gat = gatilhos(home)
+    for cs in casas(home):  # D-C3: cada repositório de app com diário próprio; gatilho compilado pelo da-index dele
+        cards += das_de(cs["dir"], home, cs)
+        gat.update(gatilhos(cs["dir"], cs["nome"]))
     for c in cards:
         c["gatilho"] = gat.get(c["id"], {"tipo": "tema"})
         c["regra_curta"] = c["regra"] if len(c["regra"]) <= 240 else c["regra"][:237].rstrip() + "…"
@@ -174,9 +203,9 @@ def compila_grafo(cards, out, cache):
     saga = {}
     for c in cards:
         for fld in ("refs", "consolida", "supersede"):
-            for v in ids_de(c.get(fld)): add(c["id"], v, 1.0, fld)
+            for v in ids_de(c.get(fld)): add(c["id"], f'{c["casa"]}:{v}' if c.get("casa") else v, 1.0, fld)
         for v in c.get("filhos") or []: add(c["id"], v, 1.0, "mecanismo-de")
-        if c.get("saga") and c["saga"] != "conduta": saga.setdefault(c["saga"], []).append(c["id"])
+        if c.get("saga") and c["saga"] != "conduta": saga.setdefault((c.get("casa"), c["saga"]), []).append(c["id"])
     for mem in saga.values():
         for i, u in enumerate(mem):
             for v in mem[i + 1:]: add(u, v, 0.3, "saga")
@@ -205,7 +234,7 @@ def parse_gatilho(spec):
             g[k.strip().lower()] = v.strip().strip('"').strip("'")
     return g
 
-def gatilhos(home):
+def gatilhos(home, casa=None):
     r = subprocess.run(["bash", os.path.join(home, "scripts/da-index.sh"), "gatilhos", home], capture_output=True, text=True)
     if r.returncode != 0 or not r.stdout.strip():  # da-index local sem o subcomando → o do servidor
         r = subprocess.run(["bash", os.path.join(HOME, "scripts/da-index.sh"), "gatilhos", home], capture_output=True, text=True)
@@ -213,7 +242,9 @@ def gatilhos(home):
     for l in r.stdout.splitlines():
         f = l.split("\t")
         if len(f) >= 2:
-            g = parse_gatilho(f[1]); g["fonte"] = f[2] if len(f) > 2 else f[0]; out[f[0]] = g
+            k = f"{casa}:{f[0]}" if casa else f[0]
+            g = parse_gatilho(f[1]); g["fonte"] = f[2] if len(f) > 2 else k; out[k] = g
+            if casa: g.pop("hook", None)  # hook= de repositório roda no settings do app; a bancada do servidor não o executa
     return out
 
 def hook_path(h):

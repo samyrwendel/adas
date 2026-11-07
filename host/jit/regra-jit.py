@@ -266,16 +266,30 @@ def juiz_prompt(texto, ja):
 def linha_cartao(c, par=None, mae=None):
     """Uma linha do cartão. Com Exemplo em par (pares.json): regra em ≤120 chars + ✗ errado → ✓ certo (exemplo > regra);
     sem par: a regra_curta de sempre."""
+    casa, _, num = c["id"].rpartition(":")  # D-C3: "nest-egg:DA-066" → "DA-066 (nest-egg)"
+    nome = f"{num} ({casa})" if casa else num
     if par:
         r = c["regra_curta"]
-        l = f'• {c["id"]} — {r[:120].rstrip()}{"…" if len(r) > 120 else ""}  ✗ {par["errado"][:140]} → ✓ {par["certo"][:140]}'
+        l = f'• {nome} — {r[:120].rstrip()}{"…" if len(r) > 120 else ""}  ✗ {par["errado"][:140]} → ✓ {par["certo"][:140]}'
     else:
-        l = f'• {c["id"]} — {c["regra_curta"]}'
+        l = f'• {nome} — {c["regra_curta"]}'
     if mae:
         l += f'  (regra-mãe: {", ".join(mae)})'
     if c.get("conserto"):
         l += f'  ⇒ {c["conserto"]}'
-    return l + f'  → bash ~/scripts/da-index.sh show {c["id"]} ~'
+    return l + f'  → bash ~/scripts/da-index.sh show {num} {casa_dir(casa) if casa else "~"}'
+
+
+def casa_dir(casa):
+    """D-C3: diretório do repositório de app (basename da rota em rotas.conf); sem rota → /opt/projects/<casa>."""
+    try:
+        for l in open(os.path.join(HOME, ".adas", "rotas.conf"), encoding="utf-8"):
+            if "|" in l and not l.lstrip().startswith("#"):
+                pre = l.split("|", 1)[0].rstrip("/")
+                if os.path.basename(pre) == casa: return pre
+    except OSError:
+        pass
+    return f"/opt/projects/{casa}"
 
 
 def nivel():

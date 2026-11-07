@@ -6,9 +6,9 @@
 # DA-antiga e DA-antiga@prompt → id novo, com nota "herdado de DA-antiga em <data>".
 # ADAS_DIR (default ~/.adas) permite testar numa cópia.
 set -uo pipefail
-[ $# -eq 2 ] || { echo "uso: da-herda.sh <DA-antiga> <DA-nova>"; exit 2; }
+[ $# -eq 2 ] || { echo "uso: da-herda.sh <DA-antiga> <DA-nova|casa:DA-nova>   (casa = repositório do app, ex.: nest-egg:DA-066)"; exit 2; }
 OLD="$1"; NEW="$2"; A="${ADAS_DIR:-$HOME/.adas}"
-for f in "$OLD" "$NEW"; do [[ "$f" =~ ^D[AC]-[0-9]+[a-z]?$ ]] || { echo "✗ id inválido: $f"; exit 2; }; done
+for f in "$OLD" "$NEW"; do [[ "$f" =~ ^([a-z0-9][a-z0-9-]*:)?D[AC]-[0-9]+[a-z]?$ ]] || { echo "✗ id inválido: $f"; exit 2; }; done
 fez=0
 for pre in "" "juiz-"; do
   s="$A/fixtures/${pre}${OLD}.jsonl"; d="$A/fixtures/${pre}${NEW}.jsonl"
