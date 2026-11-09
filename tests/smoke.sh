@@ -831,6 +831,11 @@ o="$(printf '%s' "$JR" | HOME="$T" ADAS_JIT_NIVEL=2 JUIZ_REPLY_RUBRICA="$T/rub.j
 [ -z "$o" ] && [ ! -s "$T/jl.log" ] && ok "juiz: nível < 3 não roda (nem ledger)" || bad "juiz rodou no nível 2"
 o="$(printf '%s' "$JR" | env -u OPENROUTER_API_KEY -u EXPERIENTIALLABS_API_KEY HOME="$T" JUIZ_REPLY_CRED="$T/nao-existe.sh" JUIZ_REPLY_RUBRICA="$T/rub.json" JUIZ_REPLY_LEDGER="$T/jl.log" JUIZ_REPLY_CACHE="$T/jc.json" python3 "$ROOT/host/jit/juiz-reply.py")"; rc=$?
 [ -z "$o" ] && [ "$rc" = 0 ] && grep -q '"decisao": "erro"' "$T/jl.log" && ok "juiz sem chave: fail-open (mensagem sai) e ledger registra o erro" || bad "juiz sem chave não fez fail-open (rc=$rc): $o"
+jaus(){ printf '{"tool_name":"mcp__plugin_telegram_telegram__reply","tool_input":{"chat_id":"1","text":"%s"}}' "$1" | HOME="$T" ADAS_JIT_NIVEL=2 JUIZ_REPLY_RUBRICA="$T/rub.json" JUIZ_REPLY_LEDGER="$T/ja.log" python3 "$ROOT/host/jit/juiz-reply.py"; }
+case "$(jaus 'Roda no usuário degen, e eu não tenho acesso de leitura lá.')" in *DA-544*additionalContext*|*additionalContext*DA-544*) ok "ausência sem prova (msg 13135) → aviso DA-544, em qualquer nível";; *) bad "ausência sem prova não avisou";; esac
+case "$(jaus 'Não temos chave da xAI cadastrada, conferi agora: precisaria criar.')" in *DA-544*) ok "'conferi agora' sozinho não é prova (msg 13122)";; *) bad "'conferi agora' passou como prova";; esac
+[ -z "$(jaus 'Sem acesso: sudo -n -u degen ls deu permission denied.')" ] && ok "ausência com comando citado passa calada" || bad "ausência com comando avisou"
+[ -z "$(jaus 'Errei ao dizer que não temos chave da xAI.')" ] && [ -z "$(jaus 'A fase 2 ainda não existe.')" ] && ok "relato do próprio erro e 'ainda não existe' passam calados" || bad "falso positivo de ausência"
 
 echo "== ADAS-JIT no Hermes (host/jit/hermes-jit.py)"
 HJ="$T/hj"; mkdir -p "$HJ/governanca"

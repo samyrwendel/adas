@@ -187,9 +187,67 @@ def main():
         print(json.dumps(saida(violados, resp), ensure_ascii=False))
 
 
+# Afirmação de AUSÊNCIA sem prova (DA-544, task 20261109-011): o Jev deu 0,45 a "eu não tenho acesso de leitura lá"
+# (msg 13135, sem ter tentado sudo) e baixar o limiar pra 0,45 marcaria 47% dos replies (48/102 em 48h). Regex por
+# FRASE: ausência no presente sem comando, caminho, código HTTP ou ressalva ("não conferi") na mesma frase → aviso.
+# Medido em 1039 replies (28/10–09/11): 18 hits (1,7%), ~1 conceitual. "conferi agora" sozinho NÃO é prova (msg 13122).
+AUS = re.compile(r"\bn[ãa]o\s+(?:tenho|temos|h[áa])\s+(?:\w+\s+){0,2}?(?:acesso|chave|conta|permiss[ãa]o|credencial|token|senha|login|sudo|cadastr\w*)"
+                 r"|\bn[ãa]o\s+tem\s+(?:\w+\s+){0,2}?(?:acesso|chave|credencial|token|senha|login|sudo|permiss[ãa]o)"
+                 r"|(?<!ainda )\bn[ãa]o\s+exist(?:e|em)\s+(?:mais|(?:no|na|nos|nas)\s+(?:servidor|cofre|repo|c[óo]digo|disco|sistema|pasta|banco|container)"
+                 r"|(?:o\s+|a\s+|um\s+|uma\s+)?(?:repo|arquivo|pasta|chave|token|endpoint|servi[çc]o|unit|timer|cron|tabela|conta|credencial|script|hook)\b)"
+                 r"|\bsem\s+acesso|\bn[ãa]o\s+consigo\s+(?:acessar|ler|entrar|logar)|\bn[ãa]o\s+est[áa]\s+(?:no\s+cofre|cadastrad\w*|instalad\w*)", re.I)
+PROVA = re.compile(r"`|\b(?:ssh|sudo|ls|grep|find|cat|curl|systemctl|journalctl|get-credential\S*|bw|git|ps|pgrep|stat|which|docker|pm2)\b"
+                   r"|(?:^|\s)[~/][\w.@-]+/|\.env\b|\b[1-5]\d\d\b|permission denied|n[ãa]o\s+(?:conferi|testei|verifiquei|chequei|olhei|vi)\b", re.I)
+RELATO = re.compile(r"\b(?:disse|dizer|dizia|dizendo|falei|afirmar|afirmei|escrevi|achava)\s+que\b|\berrei\b|[\"“«]", re.I)
+
+
+def ausencia_sem_prova(texto):
+    hits = []
+    for f in re.split(r"(?<=[.!?;])\s+|\n+", texto):
+        m = AUS.search(f)
+        if m and not PROVA.search(f) and not RELATO.search(f[:m.start()]):
+            hits.append(f.strip()[:140])
+    return hits
+
+
+def com_ausencia(out, texto):
+    """Junta o aviso de ausência à saída do main: deny fica como está (o reply reescrito passa de novo aqui)."""
+    try:
+        hits = ausencia_sem_prova(texto)
+    except Exception:
+        return out
+    if not hits or '"deny"' in out:
+        return out
+    ledger({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "decisao": "ausencia", "len": len(texto), "frases": hits})
+    av = ("DA-544 (afirmação de ausência sem prova): " + " | ".join(f"«{h}»" for h in hits)
+          + " — Regra: afirmar que algo não existe ou que não há acesso exige o comando que mostrou isso agora"
+          " (ssh direto, sudo -n, aliases do ~/.ssh/config, cofre E .env do projeto). Conserto: cite o comando"
+          " e a saída, ou escreva 'não conferi'; se errou, corrija na próxima mensagem.")
+    try:
+        o = json.loads(out) if out.strip() else None
+    except ValueError:
+        return out
+    if o and "additionalContext" in (o.get("hookSpecificOutput") or {}):
+        o["hookSpecificOutput"]["additionalContext"] += " | ⚠️ " + av
+    elif o:
+        return out
+    else:
+        o = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": "⚠️ JUIZ-REPLY (aviso, a mensagem JÁ SAIU): " + av}}
+    return json.dumps(o, ensure_ascii=False) + "\n"
+
+
 if __name__ == "__main__":
+    import io
+    raw_in = sys.stdin.read()
+    sys.stdin, real_out, sys.stdout = io.StringIO(raw_in), sys.stdout, io.StringIO()
     try:
         main()
     except Exception:
         pass
+    out, sys.stdout = sys.stdout.getvalue(), real_out
+    try:
+        out = com_ausencia(out, ((json.loads(raw_in).get("tool_input") or {}).get("text") or "").strip())
+    except Exception:
+        pass
+    sys.stdout.write(out)
     sys.exit(0)

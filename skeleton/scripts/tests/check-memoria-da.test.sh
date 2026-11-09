@@ -25,6 +25,9 @@ check RULE  "commit por path, nunca add -A"     "Sempre commitar por path explí
 check RULE  "sempre conferir antes de despachar" "Sempre verificar o modelo do worker antes de despachar a task no bus."
 
 # --- lado AMBÍGUO (regra de trabalho + interação → MAYBE, dono decide) ---
+check RULE  "antes de afirmar sem acesso, tentar sudo" "Antes de afirmar falta de acesso, tentar ssh direto, sudo -n e os aliases do ~/.ssh/config."
+check CLEAN "fato de acesso (sem normativo)"   "No nanogo o sudo alcança o usuário degen."
+check MAYBE "acesso + preferência do dono"     "Sempre responder curto quando o Samyr pedir acesso ao servidor pelo celular."
 check MAYBE "regra de trabalho com termo de interação" "Sempre responder a task do bus confirmando o escopo antes de commitar."
 
 [ "$fail" = 0 ] && echo "TODOS OK" || echo "FALHOU"

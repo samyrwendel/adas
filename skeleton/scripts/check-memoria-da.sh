@@ -33,7 +33,7 @@ RE_A='\bnunca\b|\bjamais\b|\bsempre\b|antes de |depois de |toda vez|sempre que|\
 # NÃO inclui "DA-NNN"/"decisions"/"diário de decisões": citar uma DA é o comportamento
 # CERTO da DA-199 (deixar o ponteiro) — não pode virar sinal de INFRAÇÃO. W mira AÇÃO
 # de processo (task/commit/deploy/test/bus/…), não a meta-referência ao registro.
-RE_W='\btask\b|\btarefa\b|injet|despach|delegar|\bcommit|\bpush\b|deploy|\bPR\b|\bmerge\b|\bbranch\b|rebase|\bbus\b|worker|\bagente\b|frota|pytest|\bteste?s?\b|su[ií]te|\brepo\b|reposit|\bscript\b|\bcron\b|\bhook\b|escopo|requeue|axon-|\bstash\b|git add|worktree|headless|timeout|\bmodelo\b|\bclaim\b|heartbeat|dispatch|\bmanifest\b|\bpre-commit\b|\bgate\b'
+RE_W='\btask\b|\btarefa\b|injet|despach|delegar|\bcommit|\bpush\b|deploy|\bPR\b|\bmerge\b|\bbranch\b|rebase|\bbus\b|worker|\bagente\b|frota|pytest|\bteste?s?\b|su[ií]te|\brepo\b|reposit|\bscript\b|\bcron\b|\bhook\b|escopo|requeue|axon-|\bstash\b|git add|worktree|headless|timeout|\bmodelo\b|\bclaim\b|heartbeat|dispatch|\bmanifest\b|\bpre-commit\b|\bgate\b|\bssh\b|\bsudo\b|\bacesso\b|\bafirm(ar|ei|o)\b|credencia|\bcofre\b|\.env\b|\bsystemctl\b|\bservidor\b'
 
 # --- eixo P: preferência / identidade / interação (memória é o lugar certo) ---
 # NÃO inclui "samyr/dono/chefe": nesses arquivos eles são ATRIBUIÇÃO ("Samyr, 04/09:")
