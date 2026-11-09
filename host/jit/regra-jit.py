@@ -47,7 +47,9 @@ SOMBRA_LIMIAR = float(os.environ.get("ADAS_JIT_SOMBRA_LIMIAR", "0.5"))  # p mín
 SOMBRA_L1 = float(os.environ.get("ADAS_JIT_SOMBRA_L1", "0.25"))        # cascata nível 1 é porta larga (o Jev dá ~0,3 a assunto vizinho); o nível 2 é quem apaga
 SOMBRA_TETO = int(os.environ.get("ADAS_JIT_SOMBRA_TETO", "300"))        # chamadas/dia da sombra (≈6e-5 USD cada)
 SOMBRA_PRAZO = float(os.environ.get("ADAS_JIT_SOMBRA_PRAZO", "25"))     # processo solto: não segura o hook, aguenta o vetor lento
-LIMIAR = {"prompt": {"l2": 0.65, "bm25": -25.0, "bm25_max_chars": 300, "lider_l2": 0.82, "lider_bm25": -12.0, "lider_razao": 1.6},
+LISTA = int(os.environ.get("ADAS_JIT_LISTA", "0") or 0)                # >0: superfície de LISTA entrega até N TÍTULOS (task 20261109-017)
+LISTA_SUP = set(os.environ.get("ADAS_JIT_LISTA_SUP", "prompt").split(","))
+LIMIAR = {"prompt":{"l2": 0.65, "bm25": -25.0, "bm25_max_chars": 300, "lider_l2": 0.82, "lider_bm25": -12.0, "lider_razao": 1.6},
           "bash": {"l2": 0.65, "min_palavras": 8},
           "edit": {"l2": 0.60}}
 LEDGERS = re.compile(r"(^|/)(DECISIONS[^/]*|CONDUCT[^/]*|DECISIONS-INDEX)\.md$")
@@ -323,13 +325,13 @@ def motor_tema(sup, texto, alvo, esc):
         elif bm_ok and r["bm25"] is not None and r["bm25"] <= lim["bm25"]:
             via = "lexical"
         if via:
-            out.append({"id": r["id"], "regra_curta": r["regra_curta"], "motor": via, "l2": r["l2"], "bm25": r["bm25"]})
+            out.append({"id": r["id"], "regra_curta": r["regra_curta"], "titulo": r.get("titulo"), "motor": via, "l2": r["l2"], "bm25": r["bm25"]})
     ab = rs().casas_abertas(texto, HOME)  # D-C9: porteiro por nome — top-2 da casa citada, sem limiar
     for r in rs().forca_casa(idx, texto, ab, {c["id"] for c in out}):
-        out.append({"id": r["id"], "regra_curta": r["regra_curta"], "motor": "casa", "l2": r["l2"], "bm25": r["bm25"]})
+        out.append({"id": r["id"], "regra_curta": r["regra_curta"], "titulo": r.get("titulo"), "motor": "casa", "l2": r["l2"], "bm25": r["bm25"]})
     lid = lider(res, lim)
     if lid and lid["id"] not in {c["id"] for c in out}:
-        out.append({"id": lid["id"], "regra_curta": lid["regra_curta"], "motor": "lider", "l2": lid["l2"], "bm25": lid["bm25"]})
+        out.append({"id": lid["id"], "regra_curta": lid["regra_curta"], "titulo": lid.get("titulo"), "motor": "lider", "l2": lid["l2"], "bm25": lid["bm25"]})
     erro = getattr(idx, "vec_erro", None)
     return out, (2 if idx.vec and not erro else 1), (erro or ("ok" if idx.vec else "off"))
 
@@ -466,6 +468,39 @@ def candidatos_largos(texto, esc, n=SOMBRA_N):
             res.append({"id": key, "titulo": row[0], "regra_curta": row[1]})
     res.sort(key=lambda r: -a1.get(r["id"], 0.0))
     return res[:n], (idx.vec_erro or ("ok" if idx.vec else "off"))
+
+
+def lista_fill(texto, esc, n):
+    """Modo LISTA (task 20261109-017): candidatos largos (bm25+grafo, 0 token) intercalados com o ranking do Jev sobre os
+    mesmos candidatos (1 chamada, teto diário do juiz). Medição: o Jev põe no topo o que o grafo enterra (DA-629 1º × 12º)
+    e o grafo o que o Jev nega (DA-622 3º × 22º). FALHA do Jev = só a ordem do grafo. → (dicts {id,titulo}, meta)."""
+    cand, vetor = candidatos_largos(texto, esc)
+    meta = {"n_cand": len(cand), "vetor": vetor, "jev": "off"}
+    ordem_j = []
+    try:
+        import juiz_prov
+        cn = os.path.join(STATE, "juiz-" + time.strftime("%Y%m%d") + ".n")
+        try:
+            k = int(open(cn).read() or 0)
+        except (OSError, ValueError):
+            k = 0
+        if juiz_prov.nivel() >= 3 and juiz_prov.provedores(rede=False) and k < JUIZ_TETO and os.environ.get("ADAS_JIT_JUIZ", "on") != "off":
+            os.makedirs(STATE, exist_ok=True)
+            open(cn, "w").write(str(k + 1))
+            t0 = time.time()
+            resp, m = juiz_prov.perguntar(texto[:1500], [{"id": c["id"], "pergunta": _pergunta_da(c)} for c in cand], t0 + JUIZ_TIMEOUT)
+            ordem_j = [i for i, _ in sorted(resp.items(), key=lambda kv: -kv[1])]
+            meta.update(jev="ok", ms=round((time.time() - t0) * 1000), cost=m.get("cost"))
+    except Exception as e:
+        meta["jev"] = type(e).__name__
+    por = {c["id"]: c for c in cand}
+    out = []
+    for a, b in zip(ordem_j + [None] * len(cand), [c["id"] for c in cand]):  # Jev, grafo, Jev, grafo…
+        for i in (a, b):
+            if i and i in por and i not in out:
+                out.append(i)
+    # ponytail: intercalação 1:1 calibrada em 5 esperados; peso Jev×grafo vira parâmetro se a amostra crescer
+    return [por[i] for i in out][:n], meta
 
 
 def _pergunta_da(c):
@@ -614,7 +649,17 @@ def main():
         cand.append(c)
     vivos, pj, jmeta = juiz_filtra(sup, alvo, cand)
     omitidos += [(c["id"], "juiz") for c in cand if c not in vivos]
-    mostrar = corta_k(vivos)
+    mostrar, lmeta = corta_k(vivos), {}
+    lista = LISTA > 0 and sup in LISTA_SUP
+    if lista:  # título só, até LISTA itens: os cartões dos motores na frente, o resto do lista_fill; quem age decide qual abrir
+        try:
+            fill, lmeta = lista_fill(texto, esc, LISTA)
+        except Exception as e:
+            fill, lmeta = [], {"erro": type(e).__name__ + ": " + str(e)[:80]}
+        ja = {c["id"] for c in vivos}
+        fill = [dict(c, motor="lista") for c in fill if c["id"] not in ja and "lista:" + c["id"] not in vd
+                and not re.search(r"\b%s\b" % re.escape(c["id"]), texto)]
+        mostrar = (vivos + fill)[:max(LISTA, len(vivos))]
     modo = os.environ.get("ADAS_JIT", "inline")
     decisao = ("inline" if modo != "log" else "sombra") if mostrar else "silencio"
     ms = round((time.time() - t0) * 1000)
@@ -623,15 +668,16 @@ def main():
                 "escopo": ",".join(sorted(esc)), "decisao": decisao, "ms": ms, "payload": red(texto),
                 "cartoes": [{k: c.get(k) for k in ("id", "motor", "l2", "bm25")} for c in mostrar],
                 "omitidos": omitidos, **({"juiz": dict(jmeta, p=pj)} if jmeta.get("chamou") or jmeta.get("erro") or jmeta.get("motivo") else {}),
-                **({"juiz_prompt": jpm} if jpm.get("chamou") or jpm.get("erro") or jpm.get("motivo") else {})})
+                **({"juiz_prompt": jpm} if jpm.get("chamou") or jpm.get("erro") or jpm.get("motivo") else {}),
+                **({"lista": lmeta} if lista else {})})
     elif ms > 300:
         ledger({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "sid": sid, "superficie": sup, "nivel": nivel, "vetor": vetor,
                 "decisao": "silencio", "ms": ms})
     dispara_sombra(sup, texto, esc, sid, time.strftime("%Y-%m-%dT%H:%M:%S"))
     if not mostrar or modo == "log":
         return
-    for c in mostrar:
-        vd[c["id"]] = now
+    for c in mostrar:  # item só-título não cala o cartão inteiro que o edit/bash mostraria depois
+        vd[("lista:" if c.get("motor") == "lista" else "") + c["id"]] = now
     salvar(vp, vd)
     try:  # acumula até o próximo PostToolBatch (mais de uma ação pode mostrar cartão no mesmo lote)
         pp = os.path.join(STATE, re.sub(r"[^\w-]", "_", sid or "nosid") + ".pend")
@@ -644,6 +690,16 @@ def main():
         json.dump(prev, open(pp, "w"))
     except OSError:
         pass
+    if lista:
+        linhas = [f"📌 ADAS-JIT — {len(mostrar)} regra(s) do diário que podem tocar ESTA mensagem (só título; abra a que valer: "
+                  "bash ~/scripts/da-index.sh show DA-NNN [casa]):"]
+        for c in mostrar:
+            casa, _, num = c["id"].rpartition(":")
+            t = (c.get("titulo") or c.get("regra_curta") or "").replace("\n", " ")
+            linhas.append(f'• {num} — {t[:100].rstrip()}{"…" if len(t) > 100 else ""}' + (f"  [{casa_dir(casa)}]" if casa else ""))
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit" if sup == "prompt" else "PreToolUse",
+                                                 "additionalContext": "\n".join(linhas)}}, ensure_ascii=False))
+        return
     linhas = ["📌 ADAS-JIT — regra(s) do diário que tocam ESTA ação (não bloqueia; confira antes de seguir):"]
     mae = rs().regra_mae({c["id"] for c in mostrar}, rs().grafo(D))
     try:

@@ -17,6 +17,7 @@ D = os.environ.get("ADAS_JIT_DIR") or os.path.join(HOME, ".adas", "jit")
 OLL = os.environ.get("ADAS_OLLAMA", "http://127.0.0.1:11434/api/embed")
 MODEL = os.environ.get("ADAS_EMBED_MODEL", "nomic-embed-text")
 L2_MAX, BM25_MAX = 0.65, -25.0
+KEEP = os.environ.get("ADAS_EMBED_KEEPALIVE", "24h")  # task 20261109-017: o default 5 min do Ollama esfria o modelo; frio = 2,0 s > prazo 1,5 s do hook (19 de 83 timeouts em 7 d vieram após ≥5 min ocioso)
 EMBED_Q = int(os.environ.get("ADAS_EMBED_Q", "400"))  # só o começo do payload vai pro vetor (CPU: ~0,9 s a 400 chars vs ~2,6 s a 2000)
 
 def f32(v): return struct.pack("%df" % len(v), *v)
@@ -42,7 +43,8 @@ class Index:
         return " OR ".join('"%s"' % t for t in terms)
 
     def embed(self, q):
-        req = urllib.request.Request(OLL, data=json.dumps({"model": MODEL, "input": [q[:EMBED_Q]]}).encode(),
+        req = urllib.request.Request(OLL, data=json.dumps({"model": MODEL, "input": [q[:EMBED_Q]],
+                                                         "keep_alive": KEEP}).encode(),
                                      headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=float(os.environ.get("ADAS_EMBED_TIMEOUT", "3"))) as r:
             return json.loads(r.read())["embeddings"][0]

@@ -292,6 +292,19 @@ chk("S16 cascata: saga acende → DA acende → vizinha (grafo-jev) entra; saga 
 os.environ["ADAS_JIT_JUIZ"] = "off"
 chk("S16 ADAS_JIT_JUIZ=off ou superfície != prompt não dispara processo", rj.dispara_sombra("prompt", "x", {"produto"}, "s", "r") is None and rj.dispara_sombra("bash", "x", {"produto"}, "s", "r") is None)
 
+print("── LISTA de títulos (task 20261109-017): Jev e grafo intercalados, Jev caído = ordem do grafo ──")
+rj.candidatos_largos = lambda texto, esc, n=45: ([{"id": f"DA-{i}", "titulo": f"t{i}", "regra_curta": ""} for i in (1, 2, 3, 4)], "off")
+l_, m_ = rj.lista_fill("x", {"produto"}, 3)
+chk("LISTA sem juiz = ordem do grafo", [c["id"] for c in l_] == ["DA-1", "DA-2", "DA-3"] and m_["jev"] == "off", str(m_))
+os.environ["ADAS_JIT_JUIZ"] = "on"; _nv, _pv = jp_.nivel, jp_.provedores
+jp_.nivel = lambda: 3; jp_.provedores = lambda rede=True: [{"nome": "stub"}]
+jp_.perguntar = lambda texto, cartoes, prazo, fmt=None, provs=None: ({"DA-1": .1, "DA-2": .2, "DA-3": .3, "DA-4": .9}, {"cost": 0})
+l_, m_ = rj.lista_fill("x", {"produto"}, 3)
+chk("LISTA intercala Jev 1º, grafo 1º, Jev 2º…", [c["id"] for c in l_] == ["DA-4", "DA-1", "DA-3"] and m_["jev"] == "ok", str([c["id"] for c in l_]))
+jp_.perguntar = _boom
+chk("LISTA Jev caído = só grafo, sem exceção", [c["id"] for c in rj.lista_fill("x", {"produto"}, 2)[0]] == ["DA-1", "DA-2"])
+jp_.nivel, jp_.provedores = _nv, _pv; os.environ["ADAS_JIT_JUIZ"] = "off"
+
 print("── D4: cartão lê tipo/gravidade/status da DC, par ❌/✅, Detalhe (task 20261106-010) ──")
 import importlib.util as _iu4
 _sp4 = _iu4.spec_from_file_location("dc4", os.path.join(JD, "da-cards.py")); dc4 = _iu4.module_from_spec(_sp4); _sp4.loader.exec_module(dc4)
