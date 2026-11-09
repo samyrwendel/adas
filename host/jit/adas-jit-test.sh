@@ -305,6 +305,36 @@ jp_.perguntar = _boom
 chk("LISTA Jev caído = só grafo, sem exceção", [c["id"] for c in rj.lista_fill("x", {"produto"}, 2)[0]] == ["DA-1", "DA-2"])
 jp_.nivel, jp_.provedores = _nv, _pv; os.environ["ADAS_JIT_JUIZ"] = "off"
 
+print("── juiz externo (task 20261109-022): segredo não sai, texto é DADO, saída só probabilidade ──")
+import importlib.util as _iuj
+_spj = _iuj.spec_from_file_location("jp_limpo", os.path.join(JD, "juiz_prov.py")); jpl = _iuj.module_from_spec(_spj); _spj.loader.exec_module(jpl)
+_RH_RED = os.path.join(os.path.expanduser("~"), "claude-tg-tmux", "scripts", "lib", "redact-secrets.py")
+if os.path.exists(_RH_RED):
+    jpl.REDATOR = _RH_RED; os.environ["REDACT_FONTES"] = os.path.join(T, "nada")  # só a metade de padrões; cofre real fora do teste
+    _a = "abcdefghij0123456789ABCDEFGHIJ0123456789"  # chaves falsas montadas em runtime (o pre-commit reprova literal)
+    _falsas = ["sk-" + "proj" + _a[:30], "gh" + "p_" + _a[:36], "AI" + "za" + _a[:35], "AK" + "IA" + "ABCDEFGHIJ012345",
+               "xox" + "b-" + _a[:20], "1234567890:" + "AA" + _a[:33], "ro:" + "1:abc:2:" + "ab12" * 8,
+               "-----BEGIN " + "PRIVATE KEY-----\n" + _a + "\n-----END " + "PRIVATE KEY-----"]
+    _corpo = []
+    jpl._post = lambda url, corpo, key, prazo: (_corpo.append(corpo), {"answers": {"DA-1": {"noul": 0.9}, "DA-X": {"noul": 1}, "DA-2": {"noul": "lixo"}}})[1]
+    _txt = "faz o deploy. " + " ".join(_falsas) + " Bearer " + _a + " api_key=" + _a
+    r_, m_ = jpl.perguntar(_txt, [{"id": "DA-1", "pergunta": "p1"}, {"id": "DA-2", "pergunta": "p2"}], time.time() + 5,
+                           provs=[{"nome": "stub", "tipo": "systemone", "url": "x", "model": "m", "key": "k"}])
+    _env = json.dumps(_corpo[-1], ensure_ascii=False)
+    chk("JUIZ nenhuma chave falsa (8 formatos + Bearer + api_key=) sai no payload", not any(f[:24] in _env for f in _falsas) and _a not in _env, _env[:300])
+    chk("JUIZ texto vai como DADO: toda pergunta leva a instrução de ignorar ordem dentro da mensagem",
+        all("DADO" in q["instructions"] for q in _corpo[-1]["questions"].values()))
+    chk("JUIZ saída: só id perguntado e só probabilidade (DA-X e 'lixo' descartados)", r_ == {"DA-1": 0.9}, str(r_))
+    jpl._RED = None; jpl.REDATOR = os.path.join(T, "nao-existe.py"); _corpo.clear()
+    try:
+        jpl.perguntar("x", [{"id": "DA-1", "pergunta": "p"}], time.time() + 5, provs=[{"nome": "stub", "tipo": "systemone", "url": "x", "model": "m", "key": "k"}]); _ok = False
+    except RuntimeError as e:
+        _ok = "redator" in str(e)
+    chk("JUIZ redator ausente = RuntimeError e nada sai (quem chama pula o juiz)", _ok and not _corpo)
+    os.environ.pop("REDACT_FONTES", None)
+else:
+    print("  (pulado: redator da instância ausente)")
+
 print("── D4: cartão lê tipo/gravidade/status da DC, par ❌/✅, Detalhe (task 20261106-010) ──")
 import importlib.util as _iu4
 _sp4 = _iu4.spec_from_file_location("dc4", os.path.join(JD, "da-cards.py")); dc4 = _iu4.module_from_spec(_sp4); _sp4.loader.exec_module(dc4)
