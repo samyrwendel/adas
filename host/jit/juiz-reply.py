@@ -11,7 +11,8 @@ hash (texto + rubrica). 3) provedores do juiz_prov.py, na ordem configurada: Jev
 direto na TypeSafe, pela OpenRouter, pela ExperientialLabs ou pelo Vercel Gateway, ou qualquer endpoint OpenAI-compatível
 (Ollama local). Pergunta com probabilidade ≥ limiar do cartão = violação.
 Saída: cartão em modo `deny` → permissionDecision deny citando DA-NNN + Regra + conserto; modo `aviso`
-(rótulo ainda não aprovado, ou reprovado no replay) → additionalContext (a mensagem sai).
+(rótulo ainda não aprovado, ou reprovado no replay) → additionalContext (a mensagem sai); modo `silencioso`
+(DA-699, precisão rotulada baixa) → só o campo `silencioso` no ledger, sem saída.
 
 FAIL-OPEN: erro, timeout (4 s no total), teto diário, rubrica ausente → exit 0 sem saída. Bot mudo é pior
 que bot errado. Ledger: ~/.claude/bus/juiz-reply.log (uma linha JSON por chamada).
@@ -179,6 +180,10 @@ def main():
     else:
         reg["cache"] = True
     violados = veredito(resp, cartoes)
+    silenc = [c["id"] for c in violados if c.get("modo") == "silencioso"]  # DA-699: grava, não avisa nem nega
+    violados = [c for c in violados if c.get("modo") != "silencioso"]
+    if silenc:
+        reg["silencioso"] = silenc
     reg.update(resp={k: round(v, 3) for k, v in resp.items()}, ms=round((time.time() - t0) * 1000),
                decisao=("deny" if any(nega_(c, resp) for c in violados) else "aviso" if violados else "ok"),
                cartoes=[c["id"] for c in violados])

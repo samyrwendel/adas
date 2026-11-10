@@ -10,6 +10,7 @@ Níveis (compatível com os 3 do produto):
     da rubrica juiz-reply.json (derivada da Regra, ou `pergunta="…"` do próprio Gatilho). DA nova com esse
     Gatilho = pergunta nova, sem código. `forma · reply · hook=<guard>` entra na lista de guards que o juiz
     roda ANTES. Modo `deny` só com `modo=deny` no Gatilho E aprovado no replay (juiz-gate.json); o resto é aviso.
+    juiz-gate.json `"modo": "fora"` tira a pergunta da rubrica; `"silencioso"` pergunta e só grava no ledger (DA-699).
 Gatilho vem de `da-index.sh gatilhos` (última linha de cada id vale; ausência = tema).
 `**Padrão sem ADAS:** <o que o modelo faria por default> [resposta=/re/]` entra no texto indexado (a regra casa também
 pela reação default que ela substitui); o `resposta=` é lido pelo post do Hermes (hermes-jit.py), task 20261101-007.
@@ -266,6 +267,8 @@ def compila_juiz(cards, out):
         if not g.get("juiz"):
             continue
         gt = gate.get(c["id"]) or {}
+        if gt.get("modo") == "fora":  # tirado do juiz por precisão medida (DA-699): nem pergunta
+            continue
         aprovado = gt.get("aprovado") is True
         rub.append({"id": c["id"], "titulo": c["titulo"],
                     "pergunta": g.get("pergunta") or f'A mensagem desrespeita esta regra? Regra: {c["regra"][:500]}',
@@ -273,14 +276,15 @@ def compila_juiz(cards, out):
                     "conserto": g.get("conserto") or "reescreva cumprindo a Regra (ou diga explicitamente o que não conferiu).",
                     "limiar": float(gt.get("limiar", LIMIAR_PADRAO)),
                     "limiar_aviso": float(gt["limiar_aviso"]) if gt.get("limiar_aviso") else None,  # faixa de aviso abaixo do deny
-                    "modo": "deny" if g.get("modo") == "deny" and aprovado else "aviso",
+                    "modo": "silencioso" if gt.get("modo") == "silencioso" else  # avalia e grava no ledger, não avisa
+                            "deny" if g.get("modo") == "deny" and aprovado else "aviso",
                     "modo_pedido": g.get("modo", "aviso"), "replay": "aprovado" if aprovado else ("reprovado" if gt else "pendente"),
                     "fonte": g.get("fonte")})
     corpo = {"cartoes": rub, "hooks": hooks}
     corpo["hash"] = sha(json.dumps(corpo, sort_keys=True, ensure_ascii=False))
     tmp = os.path.join(out, "juiz-reply.json.tmp")
     json.dump(corpo, open(tmp, "w"), ensure_ascii=False, indent=1); os.replace(tmp, os.path.join(out, "juiz-reply.json"))
-    print(f"juiz-reply: {len(rub)} pergunta(s) ({sum(r['modo']=='deny' for r in rub)} deny), {len(hooks)} guard(s) antes")
+    print(f"juiz-reply: {len(rub)} pergunta(s) ({sum(r['modo']=='deny' for r in rub)} deny, {sum(r['modo']=='silencioso' for r in rub)} silenciosa), {len(hooks)} guard(s) antes")
 
 def compila_juiz_prompt(cards, out):
     """Rubrica do juiz da superfície PROMPT (mensagem do dono). Entra o cartão com `juiz` + `pergunta=` cujo Gatilho lista
