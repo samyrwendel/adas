@@ -40,7 +40,7 @@ def p95(xs):
 sup, dec, vet, cart, ades = (collections.Counter() for _ in range(5)); ms = []
 lst, lpar = [], collections.Counter()  # modo LISTA (task 20261109-017/021): itens por prompt e se o agente abriu algum
 npt, ppar = 0, collections.Counter()   # PONTE diário→casa (task 20261110-009): fora dos itens da lista, par próprio
-PJ = os.path.join(H, ".adas", "jit", "pesos-aprendidos.json")  # plasticidade (DA-704)
+PJ = os.path.join(os.environ.get("ADAS_JIT_DIR") or os.path.join(H, ".adas", "jit"), "pesos-aprendidos.json")  # plasticidade (DA-704)
 try:
     PA = json.load(open(PJ))
 except (OSError, ValueError):
