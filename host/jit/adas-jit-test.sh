@@ -324,7 +324,6 @@ chk("PONTE por entidade na mensagem ('Send Trade' = @sendtrades_bot) vem antes, 
 chk("PONTE teto e já-visto na sessão", len(rj.pontes(_ms, "x", {}, n=1)) == 1 and "ne:DA-02" not in [c["id"] for c in rj.pontes(_ms, "x", {"lista:ne:DA-02": 1})])
 chk("PONTE sem grafo/entidades = nada, sem exceção", rj.pontes([{"id": "DA-7"}], "x", {}) == [])
 rj.D = _D0
-chk("OCR fora do inbox do Telegram não roda (e sem image_path = vazio)", rj.ocr('<channel image_path="/etc/hostname">x') == "" and rj.ocr("<channel>x") == "")
 
 print("── juiz externo (task 20261109-022): segredo não sai, texto é DADO, saída só probabilidade ──")
 import importlib.util as _iuj

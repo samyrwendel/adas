@@ -50,8 +50,6 @@ SOMBRA_PRAZO = float(os.environ.get("ADAS_JIT_SOMBRA_PRAZO", "25"))     # proces
 LISTA = int(os.environ.get("ADAS_JIT_LISTA", "0") or 0)                # >0: superfície de LISTA entrega até N TÍTULOS (task 20261109-017)
 LISTA_SUP = set(os.environ.get("ADAS_JIT_LISTA_SUP", "prompt").split(","))
 PONTE_N = int(os.environ.get("ADAS_JIT_PONTE", "3"))                   # itens de PONTE diário→casa além da LISTA (task 20261110-009)
-OCR_TETO = float(os.environ.get("ADAS_JIT_OCR_TETO", "1.5"))           # s do tesseract no print anexado; estourou = sem OCR
-INBOX = os.path.join(HOME, ".claude", "channels", "telegram", "inbox")
 LIMIAR = {"prompt":{"l2": 0.65, "bm25": -25.0, "bm25_max_chars": 300, "lider_l2": 0.82, "lider_bm25": -12.0, "lider_razao": 1.6},
           "bash": {"l2": 0.65, "min_palavras": 8},
           "edit": {"l2": 0.60}}
@@ -98,9 +96,6 @@ def superficie_e_texto(p):
                 return None, "", ""
             m = re.search(r"<channel[^>]*>(.*?)(</channel>|$)", pr, re.S)
             body = (m.group(1) if m else pr).strip()
-            o = ocr(pr)  # o print entra só na CONSULTA (tema/lista/Jev); o predicado de evento segue lendo a mensagem
-            if o:
-                return "prompt", body[:2000] + "\n[print] " + o, body[:2000]
         elif os.environ.get("AXON_HEADLESS") or pr.lstrip().startswith(("[", "<")):
             return None, "", ""
         else:
@@ -119,23 +114,6 @@ def superficie_e_texto(p):
     if ev == "PostToolBatch":
         return "par", "", ""
     return None, "", ""
-
-
-def ocr(pr):
-    """Texto do print anexado à mensagem (image_path da tag <channel>), tesseract local em português, teto OCR_TETO s
-    (medido: ~0,8 s num print de celular em 4 cores). Só arquivo de dentro do inbox do Telegram. FALHA = '' (fail-open)."""
-    m = re.search(r'<channel[^>]*\bimage_path="([^"]+)"', pr)
-    if not m or os.environ.get("ADAS_JIT_OCR", "on") == "off":
-        return ""
-    f = os.path.realpath(m.group(1))
-    if not f.startswith(os.path.realpath(INBOX) + os.sep):
-        return ""
-    try:
-        r = subprocess.run(["tesseract", f, "-", "-l", "por"], capture_output=True, text=True, timeout=OCR_TETO,
-                           env=dict(os.environ, OMP_THREAD_LIMIT="1"))
-        return " ".join(r.stdout.split())[:1200] if r.returncode == 0 else ""
-    except Exception:
-        return ""
 
 
 def pontes(mostrar, texto, vd, n=PONTE_N):
@@ -676,15 +654,21 @@ def dispara_sombra(sup, texto, esc, sid, ref):
         pass
 
 
-def main():
-    if os.environ.get("ADAS_JIT", "inline") == "off":
+def main(consulta=None):
+    """consulta="nomes" (task 20261110-010): mesma LISTA+pontes do gancho de prompt, sem estado de sessão (nada vira
+    'visto', sem ledger/sombra/pend) — o mainbot roda depois de ler um print e nomear o que viu."""
+    if os.environ.get("ADAS_JIT", "inline") == "off" and not consulta:
         return
     recompila_se_velho()
     t0 = time.time()
-    try:
-        p = json.loads(sys.stdin.read() or "{}")
-    except Exception:
-        return
+    if consulta:
+        p = {"hook_event_name": "UserPromptSubmit", "session_id": "", "cwd": HOME,
+             "prompt": '<channel source="plugin:telegram" user_id="%s">%s</channel>' % (dono() or "0", consulta)}
+    else:
+        try:
+            p = json.loads(sys.stdin.read() or "{}")
+        except Exception:
+            return
     sid = p.get("session_id") or ""
     sup, texto, alvo = superficie_e_texto(p)
     if sup == "par":
@@ -716,16 +700,16 @@ def main():
     vivos, pj, jmeta = juiz_filtra(sup, alvo, cand)
     omitidos += [(c["id"], "juiz") for c in cand if c not in vivos]
     mostrar, lmeta = corta_k(vivos), {}
-    lista = LISTA > 0 and sup in LISTA_SUP
+    lista = (LISTA > 0 or bool(consulta)) and sup in LISTA_SUP
     if lista:  # título só, até LISTA itens: os cartões dos motores na frente, o resto do lista_fill; quem age decide qual abrir
         try:
-            fill, lmeta = lista_fill(texto, esc, LISTA)
+            fill, lmeta = lista_fill(texto, esc, LISTA or 8)
         except Exception as e:
             fill, lmeta = [], {"erro": type(e).__name__ + ": " + str(e)[:80]}
         ja = {c["id"] for c in vivos}
         fill = [dict(c, motor="lista") for c in fill if c["id"] not in ja and "lista:" + c["id"] not in vd
                 and not re.search(r"\b%s\b" % re.escape(c["id"]), texto)]
-        mostrar = (vivos + fill)[:max(LISTA, len(vivos))]
+        mostrar = (vivos + fill)[:max(LISTA or 8, len(vivos))]
         try:  # ponte diário→casa: além dos LISTA, até PONTE_N (o filtro de escopo não vale pra elas)
             pt = pontes(mostrar, texto, vd)
         except Exception as e:
@@ -734,7 +718,9 @@ def main():
     modo = os.environ.get("ADAS_JIT", "inline")
     decisao = ("inline" if modo != "log" else "sombra") if mostrar else "silencio"
     ms = round((time.time() - t0) * 1000)
-    if cards or sup == "prompt":
+    if consulta:
+        decisao = "silencio"
+    elif cards or sup == "prompt":
         ledger({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "sid": sid, "superficie": sup, "nivel": nivel, "vetor": vetor,
                 "escopo": ",".join(sorted(esc)), "decisao": decisao, "ms": ms, "payload": red(texto),
                 "cartoes": [{k: c.get(k) for k in ("id", "motor", "l2", "bm25", "via") if k != "via" or c.get(k)} for c in mostrar],
@@ -744,13 +730,18 @@ def main():
     elif ms > 300:
         ledger({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "sid": sid, "superficie": sup, "nivel": nivel, "vetor": vetor,
                 "decisao": "silencio", "ms": ms})
-    dispara_sombra(sup, texto, esc, sid, time.strftime("%Y-%m-%dT%H:%M:%S"))
-    if not mostrar or modo == "log":
+    if not consulta:
+        dispara_sombra(sup, texto, esc, sid, time.strftime("%Y-%m-%dT%H:%M:%S"))
+    if not mostrar or (modo == "log" and not consulta):
         return
-    for c in mostrar:  # item só-título não cala o cartão inteiro que o edit/bash mostraria depois
+    for c in ([] if consulta else mostrar):  # item só-título não cala o cartão inteiro que o edit/bash mostraria depois
         vd[("lista:" if c.get("motor") in ("lista", "ponte") else "") + c["id"]] = now
-    salvar(vp, vd)
-    try:  # acumula até o próximo PostToolBatch (mais de uma ação pode mostrar cartão no mesmo lote)
+    if not consulta:
+        salvar(vp, vd)
+    try:
+        if consulta:
+            raise OSError
+        # acumula até o próximo PostToolBatch (mais de uma ação pode mostrar cartão no mesmo lote)
         pp = os.path.join(STATE, re.sub(r"[^\w-]", "_", sid or "nosid") + ".pend")
         try:
             prev = json.load(open(pp))
@@ -790,7 +781,9 @@ def main():
 
 if __name__ == "__main__":
     try:
-        if "--sombra" in sys.argv:
+        if "--consulta" in sys.argv:
+            main(" ".join(sys.argv[sys.argv.index("--consulta") + 1:]))
+        elif "--sombra" in sys.argv:
             sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
             q = json.loads(sys.stdin.read() or "{}")
             sombra_jev(q["texto"], set(q["esc"]), q.get("sid", ""), q.get("ref"))
