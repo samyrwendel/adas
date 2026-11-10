@@ -267,7 +267,7 @@ def pontes(mostrar, texto, vd, n=PONTE_N):
     caminho. Sem filtro de escopo e sem Jev: quem julga é o agente. Aresta pesa × fator aprendido (DA-704);
     'aprend' diz se o aprendizado mudou a posição. → dicts {id, titulo, motor: ponte, via, caminho, ativ, arestas, fator, aprend}."""
     ja = {c["id"] for c in mostrar}
-    sem = {}
+    sem, tema = {}, set()
     try:
         g = json.load(open(os.path.join(D, "grafo.json")))
     except Exception:
@@ -281,8 +281,13 @@ def pontes(mostrar, texto, vd, n=PONTE_N):
             if x.get("rx") and x.get("das") and re.search(x["rx"], texto, re.I):
                 tipo, _, val = nome.partition(":")
                 for i in x["das"]:
-                    if sem.get(i, (0,))[0] < 1 / len(x["das"]) ** 0.5:
-                        sem[i] = (1 / len(x["das"]) ** 0.5, f"@{val}_bot" if tipo == "bot" else val)
+                    # tema curado (task 20261110-014): a DA que a frase decide aparece ELA mesma (ordem à frente) e semeia fraco —
+                    # 0,5 fixo, pra não afogar com os vizinhos o que o bm25 já trouxe
+                    if tipo == "tema":
+                        tema.add(i)
+                    w = 0.5 if tipo == "tema" else 1 / len(x["das"]) ** 0.5
+                    if sem.get(i, (0,))[0] < w:
+                        sem[i] = (w, f"@{val}_bot" if tipo == "bot" else val)
         except re.error:
             continue
     try:
@@ -308,7 +313,7 @@ def pontes(mostrar, texto, vd, n=PONTE_N):
             a, p = at.get(v, (0.0, []))
             cand[v] = (a0 + a, [rot, v] if a0 else p, bool(a0))  # semente mostra o PRÓPRIO motivo (entidade/mensagem)
         # nó alcançado pela propagação vem antes; semente de entidade/mensagem só completa (já aparece no caminho dos outros)
-        return [i for i, (a, _, s0) in sorted(cand.items(), key=lambda kv: (kv[1][2], -kv[1][0]))
+        return [i for i, (a, _, s0) in sorted(cand.items(), key=lambda kv: (kv[0] not in tema, kv[1][2], -kv[1][0]))
                 if a >= PONTE_PISO and "lista:" + i not in vd and not re.search(r"\b%s\b" % re.escape(i), texto)], cand
     ordem, cand = ordena(ativa(sem, g, P=P))
     base = ordena(ativa(sem, g))[0] if P.get("arestas") else ordem  # sem peso aprendido: mede se o aprendizado mudou a posição

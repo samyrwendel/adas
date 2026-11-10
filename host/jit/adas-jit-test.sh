@@ -326,6 +326,12 @@ chk("PONTE caminho visível com casa só na troca", _p[2]["caminho"] == "@sendtr
     and _p[2]["via"] == "@sendtrades_bot → ne DA-04 → DA-05", str(_p[2]))
 chk("PONTE teto e já-visto na sessão", len(rj.pontes(_ms, "Send Trade", {}, n=1)) == 1
     and "ne:DA-05" not in [c["id"] for c in rj.pontes(_ms, "Send Trade", {"lista:ne:DA-05": 1})])
+_ej = os.path.join(_pd, "entidades.json"); _en = json.load(open(_ej))
+_en["tema:x"] = {"rx": r"contra[\s-]+tend[eê]ncia", "das": ["ne:DA-06"]}
+json.dump(_en, open(_ej, "w"))
+_t = rj.pontes([], "compra contra tendencia", {}, n=3)
+chk("PONTE tema curado (task 20261110-014): a DA do tema aparece ELA mesma, na frente; mensagem sem a frase não a traz",
+    _t and _t[0]["id"] == "ne:DA-06" and not [c for c in rj.pontes([], "reinicia o mainbot", {}, n=3) if c["id"] == "ne:DA-06"], str(_t))
 chk("PONTE sem grafo/entidades = nada, sem exceção", rj.pontes([{"id": "DA-7"}], "x", {}) == [])
 
 print("── PLASTICIDADE e PODA (DA-704): peso aprendido fora do grafo.json, medido junto ──")

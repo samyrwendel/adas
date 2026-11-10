@@ -197,6 +197,12 @@ ENT_W = {"bot": 0.95, "unit": 0.9, "arq": 0.88, "app": 0.82}
 ARQ_GENERICO = {"server.py", "app.js", "config.json", "index.html", "main.py", "settings.json", "package.json", "test.py",
                 "__init__.py", "cli.py", "utils.py", "state.json", "run.sh", "install.sh", "setup.sh", "conftest.py",
                 "da-new.sh", "da-index.sh", "check-adas.sh", "adas-init.sh", "check-da-refs.sh", "bus-inject.sh"}
+# Tema curado (task 20261110-014, dono msg 13311): a mensagem do dono fala de COMPRA CONTRA A TENDÊNCIA com as palavras dela, e a
+# DA que decide isso (nest-egg DA-042: ionita sem filtro de regime) não as usa — o bm25 não alcança. Frase específica → DA de casa;
+# entra no entidades.json como as demais (semente 1/√n).
+# ponytail: lista curada de 1 tema; virar CLASSE (tema declarado na própria DA, ex.: `temas: …` no cabeçalho) quando passar de 3.
+TEMAS = {"tema:contra-tendencia": {"rx": r"contra[\s-]+(?:a[\s-]+)?tend[eê]ncia|filtro\s+de\s+(?:tend[eê]ncia|regime)|\bsma[\s-]?200\b|\bregime\s+de\s+(?:tend[eê]ncia|mercado)",
+                                   "das": ["nest-egg:DA-042"]}}
 UNIT_RX = r"\b([\w@-]+(?:\.[\w@-]+)*\.(?:service|timer))\b"
 ARQ_RX = r"\b([\w-]+\.(?:py|sh|js|ts|jsonl?|html|ya?ml|toml))\b"
 
@@ -284,6 +290,10 @@ def compila_grafo(cards, out, cache, home=HOME):
     # entidades.json: o gancho casa a entidade na MENSAGEM (bot/unit/arquivo) e abre a DA da casa que a cita
     ent_all = {e: {"rx": rx.get(e), "das": sorted(i for i in ids_e if casa.get(i))} for e, ids_e in por_ent.items()
                if e.split(":", 1)[0] in ("bot", "unit", "arq") and rx.get(e) and any(casa.get(i) for i in ids_e)}
+    for e, x in TEMAS.items():  # só DA que existe nos cartões: tema órfão não vira entrada
+        das = [i for i in x["das"] if i in ids]
+        if das:
+            ent_all[e] = {"rx": x["rx"], "das": das}
     tmp = os.path.join(out, "entidades.json.tmp")
     json.dump(ent_all, open(tmp, "w"), ensure_ascii=False); os.replace(tmp, os.path.join(out, "entidades.json"))
     arestas = [{"a": u, "b": v, "w": w, "tipo": t, "classe": CLASSE[t]} for (w, t, u, v) in E.values()]
