@@ -309,19 +309,23 @@ print("── PONTE diário→casa (task 20261110-009): sinapse e entidade atrav
 import sqlite3 as _sq
 _pd = os.path.join(T, "ponte"); os.makedirs(_pd); _D0 = rj.D; rj.D = _pd
 _db = _sq.connect(os.path.join(_pd, "regras.db")); _db.execute("create table docs(key text, titulo text)")
-_db.executemany("insert into docs values(?,?)", [(f"ne:DA-0{i}", f"t{i}") for i in range(1, 6)]); _db.commit(); _db.close()
-json.dump([{"a": "DA-1", "b": "ne:DA-01", "w": 0.8}, {"a": "ne:DA-02", "b": "DA-1", "w": 0.9}, {"a": "DA-2", "b": "ne:DA-03", "w": 0.85},
-           {"a": "DA-9", "b": "ne:DA-05", "w": 0.99}], open(os.path.join(_pd, "grafo.json"), "w"))
-json.dump({"bot:sendtrades": {"rx": r"(?<![\w@])(?:@sendtrades(?:_?bot)?|sendtrades_?bot|s[\s_-]?e[\s_-]?n[\s_-]?d[\s_-]?t[\s_-]?r[\s_-]?a[\s_-]?d[\s_-]?e[\s_-]?s?(?:[\s_-]?bot)?)\b", "das": ["ne:DA-04", "ne:DA-01"]}},
+_db.executemany("insert into docs values(?,?)", [(f"ne:DA-0{i}", f"t{i}") for i in range(1, 9)]); _db.commit(); _db.close()
+_E = lambda a, b, w, c: {"a": a, "b": b, "w": w, "classe": c}
+json.dump([_E("ne:DA-04", "ne:DA-05", 1.0, "explícita"), _E("ne:DA-05", "ne:DA-06", 0.9, "semântica"),
+           _E("ne:DA-04", "ne:DA-07", 0.3, "pertencimento"), _E("DA-1", "ne:DA-01", 0.83, "semântica"),
+           _E("DA-1", "ne:DA-08", 0.88, "entidade"), _E("ne:DA-04", "ne:DA-08", 0.85, "semântica")],
+          open(os.path.join(_pd, "grafo.json"), "w"))
+json.dump({"bot:sendtrades": {"rx": r"(?<![\w@])(?:@sendtrades(?:_?bot)?|sendtrades_?bot|s[\s_-]?e[\s_-]?n[\s_-]?d[\s_-]?t[\s_-]?r[\s_-]?a[\s_-]?d[\s_-]?e[\s_-]?s?(?:[\s_-]?bot)?)\b", "das": ["ne:DA-04"]}},
           open(os.path.join(_pd, "entidades.json"), "w"))
 _ms = [{"id": "DA-1"}, {"id": "DA-2"}]
-_p = rj.pontes(_ms, "texto qualquer", {})
-chk("PONTE pela sinapse de DA mostrada, ordem pelo peso; DA não mostrada (DA-9) não puxa", [c["id"] for c in _p] == ["ne:DA-02", "ne:DA-03", "ne:DA-01"]
-    and _p[0]["via"] == "DA-1" and _p[0]["motor"] == "ponte", str(_p))
-_p = rj.pontes(_ms, "o print do Send Trade", {})
-chk("PONTE por entidade na mensagem ('Send Trade' = @sendtrades_bot) vem antes, via o bot", [c["id"] for c in _p] == ["ne:DA-04", "ne:DA-01", "ne:DA-02"]
-    and _p[0]["via"] == "@sendtrades_bot", str(_p))
-chk("PONTE teto e já-visto na sessão", len(rj.pontes(_ms, "x", {}, n=1)) == 1 and "ne:DA-02" not in [c["id"] for c in rj.pontes(_ms, "x", {"lista:ne:DA-02": 1})])
+chk("PONTE (DA-703): DA da lista sem eco na mensagem + sinapse semântica fraca não passa do piso", rj.pontes(_ms, "texto qualquer", {}) == [])
+_p = rj.pontes(_ms, "o print do Send Trade", {}, n=4)
+chk("PONTE 2 saltos a partir da entidade, convergência soma (DA-08: lista+entidade), pertencimento sozinho (DA-07) fora, semente só completa",
+    [c["id"] for c in _p] == ["ne:DA-05", "ne:DA-08", "ne:DA-06", "ne:DA-04"] and _p[0]["motor"] == "ponte", str([(c["id"], c["ativ"]) for c in _p]))
+chk("PONTE caminho visível com casa só na troca", _p[2]["caminho"] == "@sendtrades_bot → ne DA-04 → DA-05 → DA-06"
+    and _p[2]["via"] == "@sendtrades_bot → ne DA-04 → DA-05", str(_p[2]))
+chk("PONTE teto e já-visto na sessão", len(rj.pontes(_ms, "Send Trade", {}, n=1)) == 1
+    and "ne:DA-05" not in [c["id"] for c in rj.pontes(_ms, "Send Trade", {"lista:ne:DA-05": 1})])
 chk("PONTE sem grafo/entidades = nada, sem exceção", rj.pontes([{"id": "DA-7"}], "x", {}) == [])
 rj.D = _D0
 

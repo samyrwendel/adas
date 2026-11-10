@@ -116,43 +116,125 @@ def superficie_e_texto(p):
     return None, "", ""
 
 
+PONTE_FATOR = {"explícita": 0.9, "entidade": 0.9, "semântica": 0.8, "pertencimento": 0.25}  # classe da sinapse (DA-703)
+PONTE_PISO = float(os.environ.get("ADAS_JIT_PONTE_PISO", "0.5"))    # ativação mínima pra virar item de ponte
+PONTE_LISTA = float(os.environ.get("ADAS_JIT_PONTE_LISTA", "0.3"))  # semente da lista sem eco no texto da mensagem
+PONTE_HUB = 4.0  # grau (soma dos fatores; mediana do grafo ~5) a partir do qual a aresta encolhe: (4²/(gₐ·g_b))^¼
+PONTE_TEXTO = float(os.environ.get("ADAS_JIT_PONTE_TEXTO", "0.45"))  # DA de casa que a própria mensagem nomeia (bm25 ≤ −18) vira semente
+
+
+def _peso(e):
+    """Peso efetivo da sinapse: semântica reescalada (o grafo só guarda ≥ 0,80: 0,80 vale 0 e 0,90 vale 1)."""
+    w = e["w"]
+    if e.get("classe") == "semântica":
+        w = min(1.0, max(0.0, (w - 0.80) / 0.10))
+    return w * PONTE_FATOR.get(e.get("classe"), 0.5)
+
+
+def ativa(sementes, g, saltos=2, beta=0.7):
+    """Ativação propagada (DA-703): sementes {id: (a0, rótulo)} → {nó: (ativação, caminho)}. Por semente vale o MELHOR
+    caminho até o nó (2 saltos, β no 2º); entre sementes SOMA — várias sementes convergindo no mesmo nó o acendem.
+    Aresta normalizada pelo grau dos dois lados (hub de saga não espalha pra todo lado); nó alcançado SÓ por
+    pertencimento não conta."""
+    deg = {}
+    for e in g:
+        f = PONTE_FATOR.get(e.get("classe"), 0.5)
+        deg[e["a"]] = deg.get(e["a"], 0) + f
+        deg[e["b"]] = deg.get(e["b"], 0) + f
+    adj = {}
+    for e in g:
+        x = _peso(e) * min(1.0, (PONTE_HUB ** 2 / (deg[e["a"]] * deg[e["b"]])) ** 0.25)  # só penaliza hub, nunca amplifica
+        forte = e.get("classe") != "pertencimento"
+        adj.setdefault(e["a"], []).append((e["b"], x, forte))
+        adj.setdefault(e["b"], []).append((e["a"], x, forte))
+    soma, cam = {}, {}
+    for s, (a0, rot) in sementes.items():
+        melhor, front = {}, {s: (a0, [s], False)}
+        for h in range(saltos):
+            nf = {}
+            for u, (au, p, ff) in front.items():
+                for v, x, forte in adj.get(u, ()):
+                    val = au * x * (beta if h else 1.0)
+                    if v not in p and val > nf.get(v, (0,))[0]:
+                        nf[v] = (val, p + [v], ff or forte)
+            for v, (val, p, ff) in nf.items():
+                if ff and val > melhor.get(v, (0,))[0]:
+                    melhor[v] = (val, ([rot] if rot != s else []) + p)
+            front = nf
+        for v, (val, p) in melhor.items():
+            soma[v] = soma.get(v, 0.0) + val
+            if val > cam.get(v, (0,))[0]:
+                cam[v] = (val, p)
+    return {v: (soma[v], cam[v][1]) for v in soma}
+
+
+def caminho(p):
+    """['DA-629', 'nest-egg:DA-024', 'nest-egg:DA-035'] → 'DA-629 → nest-egg DA-024 → DA-035' (casa só na troca)."""
+    out, casa0 = [], None
+    for x in p:
+        casa, _, num = x.rpartition(":")
+        if not num.startswith(("DA-", "DC-")):
+            out.append(x); casa0 = None; continue
+        out.append(num if casa == casa0 or not casa else f"{casa} {num}")
+        casa0 = casa
+    return " → ".join(out)
+
+
 def pontes(mostrar, texto, vd, n=PONTE_N):
-    """Itens de PONTE (task 20261110-009, dono msgs 13278-13282: 'toda sinapse deveria ser julgada pelo mainbot'): DA de
-    casa (projeto) ligada a uma DA do diário MOSTRADA na lista por sinapse do grafo.json, ou citada por uma entidade que a
-    MENSAGEM traz (entidades.json: @bot/nome de exibição, unit, arquivo). Sem filtro de escopo e sem Jev: quem julga é o
-    agente. Ordem: peso da sinapse (entidade na mensagem = 1,0). → dicts {id, titulo, motor: ponte, via}."""
+    """Itens de PONTE diário→casa por ATIVAÇÃO PROPAGADA (DA-703, parcial sobre a DA-701; dono msg 13289: 'sinapses').
+    Sementes: DAs MOSTRADAS na lista (1,0), DAs de casa citadas por uma entidade da mensagem (entidades.json:
+    @bot, unit, arquivo — 1/√n quando a entidade cita n DAs) e DA de casa que a mensagem nomeia (bm25, os nomes que o
+    mainbot dá no --consulta). Entram os n nós de casa de maior ativação fora da lista, acima do piso, com o
+    caminho. Sem filtro de escopo e sem Jev: quem julga é o agente. → dicts {id, titulo, motor: ponte, via, ativ}."""
     ja = {c["id"] for c in mostrar}
-    cand = {}
+    sem = {}
     try:
         g = json.load(open(os.path.join(D, "grafo.json")))
     except Exception:
         g = []
-    for e in g:
-        for u, v in ((e["a"], e["b"]), (e["b"], e["a"])):
-            if u in ja and ":" not in u and ":" in v and e["w"] > cand.get(v, (0, ""))[0]:
-                cand[v] = (e["w"], u)
     try:
         ents = json.load(open(os.path.join(D, "entidades.json")))
     except Exception:
         ents = {}
     for nome, x in ents.items():
         try:
-            if x.get("rx") and re.search(x["rx"], texto, re.I):
+            if x.get("rx") and x.get("das") and re.search(x["rx"], texto, re.I):
                 tipo, _, val = nome.partition(":")
-                for k, i in enumerate(x["das"]):  # DAs da entidade em ordem de número: a mais antiga é a que a funda
-                    if cand.get(i, (0, ""))[0] < 1.0 - k * 1e-3:
-                        cand[i] = (1.0 - k * 1e-3, f"@{val}_bot" if tipo == "bot" else val)
+                for i in x["das"]:
+                    if sem.get(i, (0,))[0] < 1 / len(x["das"]) ** 0.5:
+                        sem[i] = (1 / len(x["das"]) ** 0.5, f"@{val}_bot" if tipo == "bot" else val)
         except re.error:
             continue
-    ordem = [i for i, _ in sorted(cand.items(), key=lambda kv: -kv[1][0])
-             if i not in ja and "lista:" + i not in vd and not re.search(r"\b%s\b" % re.escape(i), texto)]
+    try:
+        R = rs()
+        idx = R.Index(path=os.path.join(D, "regras.db"), vec=False)
+        txt = {r["id"]: R.ativacao(r) for r in idx.search(texto[:1500], n=60)}
+    except Exception:
+        txt = {}
+    for i in ja:  # DA da lista semeia na medida em que a MENSAGEM a toca: lista de "sim" não espalha
+        sem[i] = (PONTE_LISTA + (1 - PONTE_LISTA) * txt.get(i, 0.0), i)
+    for i, a in txt.items():
+        if ":" in i and a >= PONTE_TEXTO and a > sem.get(i, (0,))[0]:
+            sem[i] = (a, "mensagem")
+    at = ativa(sem, g)
+    cand = {}
+    for v in set(at) | set(sem):
+        if ":" not in v or v in ja:
+            continue
+        a0, rot = sem.get(v, (0.0, v))
+        a, p = at.get(v, (0.0, []))
+        cand[v] = (a0 + a, [rot, v] if a0 else p, bool(a0))  # semente mostra o PRÓPRIO motivo (entidade/mensagem)
+    # nó alcançado pela propagação vem antes; semente de entidade/mensagem só completa (ela já aparece no caminho dos outros)
+    ordem = [i for i, (a, _, s0) in sorted(cand.items(), key=lambda kv: (kv[1][2], -kv[1][0]))
+             if a >= PONTE_PISO and "lista:" + i not in vd and not re.search(r"\b%s\b" % re.escape(i), texto)][:n * 3]
     if not ordem:
         return []
     import sqlite3
     db = sqlite3.connect(os.path.join(D, "regras.db"))
     tit = dict(db.execute("select key, titulo from docs where key in (%s)" % ",".join("?" * len(ordem)), ordem).fetchall())
     db.close()
-    return [{"id": i, "titulo": tit[i], "motor": "ponte", "via": cand[i][1]} for i in ordem if i in tit][:n]
+    return [{"id": i, "titulo": tit[i], "motor": "ponte", "via": caminho(cand[i][1][:-1]), "caminho": caminho(cand[i][1]),
+             "ativ": round(cand[i][0], 3)} for i in ordem if i in tit][:n]
 
 
 def rx(v):
@@ -760,7 +842,7 @@ def main(consulta=None):
             casa, _, num = c["id"].rpartition(":")
             t = (c.get("titulo") or c.get("regra_curta") or "").replace("\n", " ")
             if c.get("motor") == "ponte":
-                linhas.append(f'↳ via {c["via"]} · {casa} {num} — {t[:100].rstrip()}{"…" if len(t) > 100 else ""}  [{casa_dir(casa)}]')
+                linhas.append(f'↳ {c.get("caminho") or c["via"]} — {t[:100].rstrip()}{"…" if len(t) > 100 else ""}  [{casa_dir(casa)}]')
                 continue
             linhas.append(f'• {num} — {t[:100].rstrip()}{"…" if len(t) > 100 else ""}' + (f"  [{casa_dir(casa)}]" if casa else ""))
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit" if sup == "prompt" else "PreToolUse",
