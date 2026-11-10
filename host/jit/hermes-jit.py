@@ -285,9 +285,10 @@ def post(p):
     if not resp:
         rec["decisao"] = "erro" if rec["chamou"] else "sem_chave"; return ledger(rec)
     viol = [c for c in cartoes if resp.get(c["id"], 0.0) >= min(c.get("limiar", 0.8), c.get("limiar_aviso") or 9)]
-    if any(c.get("modo") == "silencioso" for c in viol):  # DA-699: grava, não avisa
-        rec["silencioso"] = [c["id"] for c in viol if c.get("modo") == "silencioso"]
-        viol = [c for c in viol if c.get("modo") != "silencioso"]
+    cala = lambda c: c.get("modo") == "silencioso" or resp.get(c["id"], 0.0) <= (c.get("limiar_abstem") or 0)  # DA-699 + P1 (abstenção conformal)
+    if any(cala(c) for c in viol):  # grava, não avisa
+        rec["silencioso"] = [c["id"] for c in viol if cala(c)]
+        viol = [c for c in viol if not cala(c)]
     rec.update(resp={a: round(b, 3) for a, b in resp.items()}, decisao="aviso" if viol else "ok", cartoes=[c["id"] for c in viol])
     ledger(rec)
     if viol:

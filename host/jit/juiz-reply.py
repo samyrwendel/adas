@@ -180,8 +180,9 @@ def main():
     else:
         reg["cache"] = True
     violados = veredito(resp, cartoes)
-    silenc = [c["id"] for c in violados if c.get("modo") == "silencioso"]  # DA-699: grava, não avisa nem nega
-    violados = [c for c in violados if c.get("modo") != "silencioso"]
+    cala = lambda c: c.get("modo") == "silencioso" or resp.get(c["id"], 0.0) <= (c.get("limiar_abstem") or 0)  # DA-699 + P1 (abstenção conformal)
+    silenc = [c["id"] for c in violados if cala(c)]  # grava, não avisa nem nega
+    violados = [c for c in violados if not cala(c)]
     if silenc:
         reg["silencioso"] = silenc
     reg.update(resp={k: round(v, 3) for k, v in resp.items()}, ms=round((time.time() - t0) * 1000),

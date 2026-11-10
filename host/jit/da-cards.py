@@ -270,12 +270,15 @@ def compila_juiz(cards, out):
         if gt.get("modo") == "fora":  # tirado do juiz por precisão medida (DA-699): nem pergunta
             continue
         aprovado = gt.get("aprovado") is True
+        cf = gate.get("_conformal") or {}  # P1 (task 20261110-006): score ≤ limiar_abstem = abstenção (silencioso)
+        abst = (gt.get("limiar_conformal") or cf.get("global")) if cf.get("ligado") else None
         rub.append({"id": c["id"], "titulo": c["titulo"],
                     "pergunta": g.get("pergunta") or f'A mensagem desrespeita esta regra? Regra: {c["regra"][:500]}',
                     "regra_curta": c["regra_curta"],
                     "conserto": g.get("conserto") or "reescreva cumprindo a Regra (ou diga explicitamente o que não conferiu).",
                     "limiar": float(gt.get("limiar", LIMIAR_PADRAO)),
                     "limiar_aviso": float(gt["limiar_aviso"]) if gt.get("limiar_aviso") else None,  # faixa de aviso abaixo do deny
+                    "limiar_abstem": float(abst) if abst else None,
                     "modo": "silencioso" if gt.get("modo") == "silencioso" else  # avalia e grava no ledger, não avisa
                             "deny" if g.get("modo") == "deny" and aprovado else "aviso",
                     "modo_pedido": g.get("modo", "aviso"), "replay": "aprovado" if aprovado else ("reprovado" if gt else "pendente"),
