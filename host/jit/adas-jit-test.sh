@@ -192,8 +192,8 @@ _gt = os.path.join(T, "gfix"); os.makedirs(_gt, exist_ok=True)
 _dc.compila_grafo([{"id": "DA-901", "hash": "h1"}, {"id": "DA-902", "hash": "h2", "filhos": ["DA-901"]}], _gt, {})
 gfix = json.load(open(os.path.join(_gt, "grafo.json")))
 chk("T6 grafo (fixture): adendo que mecaniza DA-901 gera aresta mecanismo-de", any(e["a"] == "DA-902" and e["b"] == "DA-901" and e["tipo"] == "mecanismo-de" for e in gfix), str(gfix))
-CL = {"refs": "explícita", "consolida": "explícita", "supersede": "explícita", "mecanismo-de": "explícita", "saga": "pertencimento", "semântica": "semântica", "adesao": "aprendida"}
-chk("T6 grafo.json: toda aresta tem classe ∈ {explícita, pertencimento, semântica, aprendida} e casa com o tipo (GLOSSARIO.md)",
+CL = {"refs": "explícita", "consolida": "explícita", "supersede": "explícita", "mecanismo-de": "explícita", "saga": "pertencimento", "semântica": "semântica", "adesao": "aprendida", "entidade": "entidade"}
+chk("T6 grafo.json: toda aresta tem classe ∈ {explícita, pertencimento, semântica, aprendida, entidade} e casa com o tipo (GLOSSARIO.md)",
     all(e.get("classe") == CL.get(e["tipo"]) for e in g), str([e for e in g if e.get("classe") != CL.get(e["tipo"])][:2]))
 import importlib.machinery, importlib.util
 ld = importlib.machinery.SourceFileLoader("rs", os.path.join(JD, "regra-search")); rs = importlib.util.module_from_spec(importlib.util.spec_from_loader("rs", ld)); ld.exec_module(rs)
@@ -305,6 +305,27 @@ jp_.perguntar = _boom
 chk("LISTA Jev caído = só grafo, sem exceção", [c["id"] for c in rj.lista_fill("x", {"produto"}, 2)[0]] == ["DA-1", "DA-2"])
 jp_.nivel, jp_.provedores = _nv, _pv; os.environ["ADAS_JIT_JUIZ"] = "off"
 
+print("── PONTE diário→casa (task 20261110-009): sinapse e entidade atravessam o escopo; quem julga é o agente ──")
+import sqlite3 as _sq
+_pd = os.path.join(T, "ponte"); os.makedirs(_pd); _D0 = rj.D; rj.D = _pd
+_db = _sq.connect(os.path.join(_pd, "regras.db")); _db.execute("create table docs(key text, titulo text)")
+_db.executemany("insert into docs values(?,?)", [(f"ne:DA-0{i}", f"t{i}") for i in range(1, 6)]); _db.commit(); _db.close()
+json.dump([{"a": "DA-1", "b": "ne:DA-01", "w": 0.8}, {"a": "ne:DA-02", "b": "DA-1", "w": 0.9}, {"a": "DA-2", "b": "ne:DA-03", "w": 0.85},
+           {"a": "DA-9", "b": "ne:DA-05", "w": 0.99}], open(os.path.join(_pd, "grafo.json"), "w"))
+json.dump({"bot:sendtrades": {"rx": r"(?<![\w@])(?:@sendtrades(?:_?bot)?|sendtrades_?bot|s[\s_-]?e[\s_-]?n[\s_-]?d[\s_-]?t[\s_-]?r[\s_-]?a[\s_-]?d[\s_-]?e[\s_-]?s?(?:[\s_-]?bot)?)\b", "das": ["ne:DA-04", "ne:DA-01"]}},
+          open(os.path.join(_pd, "entidades.json"), "w"))
+_ms = [{"id": "DA-1"}, {"id": "DA-2"}]
+_p = rj.pontes(_ms, "texto qualquer", {})
+chk("PONTE pela sinapse de DA mostrada, ordem pelo peso; DA não mostrada (DA-9) não puxa", [c["id"] for c in _p] == ["ne:DA-02", "ne:DA-03", "ne:DA-01"]
+    and _p[0]["via"] == "DA-1" and _p[0]["motor"] == "ponte", str(_p))
+_p = rj.pontes(_ms, "o print do Send Trade", {})
+chk("PONTE por entidade na mensagem ('Send Trade' = @sendtrades_bot) vem antes, via o bot", [c["id"] for c in _p] == ["ne:DA-04", "ne:DA-01", "ne:DA-02"]
+    and _p[0]["via"] == "@sendtrades_bot", str(_p))
+chk("PONTE teto e já-visto na sessão", len(rj.pontes(_ms, "x", {}, n=1)) == 1 and "ne:DA-02" not in [c["id"] for c in rj.pontes(_ms, "x", {"lista:ne:DA-02": 1})])
+chk("PONTE sem grafo/entidades = nada, sem exceção", rj.pontes([{"id": "DA-7"}], "x", {}) == [])
+rj.D = _D0
+chk("OCR fora do inbox do Telegram não roda (e sem image_path = vazio)", rj.ocr('<channel image_path="/etc/hostname">x') == "" and rj.ocr("<channel>x") == "")
+
 print("── juiz externo (task 20261109-022): segredo não sai, texto é DADO, saída só probabilidade ──")
 import importlib.util as _iuj
 _spj = _iuj.spec_from_file_location("jp_limpo", os.path.join(JD, "juiz_prov.py")); jpl = _iuj.module_from_spec(_spj); _spj.loader.exec_module(jpl)
@@ -340,6 +361,11 @@ import importlib.util as _iu4
 _sp4 = _iu4.spec_from_file_location("dc4", os.path.join(JD, "da-cards.py")); dc4 = _iu4.module_from_spec(_sp4); _sp4.loader.exec_module(dc4)
 chk("D4 par aceita ❌/✅", dc4.par_exemplo(["❌ disse fiz sem fazer → ✅ conferiu e citou o comando"]) == {"errado": "disse fiz sem fazer", "certo": "conferiu e citou o comando"})
 chk("D4 par ✗/✓ segue valendo", dc4.par_exemplo(["✗ a → ✓ b"]) == {"errado": "a", "certo": "b"})
+import re as _re4
+_br = _re4.compile(dc4.bot_rx("sendtrades"), _re4.I); _bn = _re4.compile(dc4.bot_rx("nanogo"), _re4.I)
+chk("ENTIDADE bot: @x_bot, x_bot e nome de exibição ('Send Trade'); nome curto solto não (nanogo é host)",
+    all(_br.search(t) for t in ("@sendtrades_bot", "o Send Trade", "sendtrades")) and _bn.search("@nanogo_bot")
+    and not _bn.search("ssh nanogo") and not _br.search("mysendtrades"))
 m4 = dc4.meta_da("## DA-1 — t\n`tipo: registro` · `gravidade: piso`\n")
 chk("D4 meta lê tipo e gravidade", m4["tipo"] == "registro" and m4["gravidade"] == "piso")
 m4 = dc4.meta_da("## DA-1 — t\n`escopo: produto`\n")

@@ -39,15 +39,19 @@ def p95(xs):
 
 sup, dec, vet, cart, ades = (collections.Counter() for _ in range(5)); ms = []
 lst, lpar = [], collections.Counter()  # modo LISTA (task 20261109-017/021): itens por prompt e se o agente abriu algum
+npt, ppar = 0, collections.Counter()   # PONTE diário→casa (task 20261110-009): fora dos itens da lista, par próprio
 for d in linhas(os.path.join(BUS, "regra-jit.log")):
     if d.get("superficie") in ("par", "sombra"):
         for c, v in (d.get("adesao") or {}).items():
             ades[v] += 1
         if d.get("mostrado_em") == "prompt":
             lpar["abriu" if d.get("leu_da") else "nao_abriu"] += 1
+            if d.get("pontes"):
+                ppar["abriu" if d.get("leu_ponte") else "nao_abriu"] += 1
         continue
     if "lista" in d:
-        lst.append(len(d.get("cartoes") or []))
+        lst.append(sum(c.get("motor") != "ponte" for c in d.get("cartoes") or []))
+        npt += sum(c.get("motor") == "ponte" for c in d.get("cartoes") or [])
     sup[d.get("superficie")] += 1
     dec[d.get("decisao")] += 1
     if d.get("vetor") not in (None, "ok", "-"):
@@ -63,6 +67,8 @@ print("vetor degradado (embed falhou, caiu pra FTS): " + (" · ".join(f"{k} {v}"
 print("cartões mais mostrados: " + (", ".join(f"{k}×{v}" for k, v in cart.most_common(8)) or "nenhum"))
 print(f"lista (prompt): {len(lst)} prompts · {round(sum(lst) / len(lst), 1) if lst else 0} itens/prompt · par do prompt: "
       + (" · ".join(f"{k} {v}" for k, v in lpar.most_common()) or "sem par") + " — 'abriu' = o lote seguinte citou um id mostrado")
+print(f"ponte (prompt): {npt} itens diário→casa · par da ponte: " + (" · ".join(f"{k} {v}" for k, v in ppar.most_common()) or "sem par")
+      + " — 'abriu' = o lote seguinte citou o número E a casa")
 print("adesão (par cartão × ação seguinte): " + (" · ".join(f"{k} {v}" for k, v in ades.most_common()) or "sem par")
       + " — 'ignorou' só existe em cartão com viola=")
 

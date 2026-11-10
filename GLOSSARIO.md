@@ -61,6 +61,7 @@ O campo `classe` de cada aresta do `grafo.json` diz a espécie. O campo `tipo` c
 | **pertencimento** | `saga` (mesmo grupo) | 0,3 | compilador |
 | **semântica** | `semântica` (cosseno ≥ 0,80, top-5) | o cosseno | compilador; no cérebro, `## Relacionadas` (≥ 0,60) |
 | **aprendida** | `adesao` | w ∈ [0,1] | ledger de adesão. **Pendente (B1): o nome está reservado e o campo nasce com o dado** |
+| **entidade** | `entidade` (bot, unit systemd, arquivo ou app citado nas duas DAs) | 0,95 bot · 0,9 unit · 0,88 arquivo · 0,82 app | compilador; só aresta diário↔projeto, entidade citada por ≤ 8 DAs de cada lado. O gancho também casa a entidade na mensagem (`entidades.json`) |
 
 ## Aposentado da prosa
 

@@ -187,9 +187,60 @@ def cosseno():
 
 # espécie da sinapse (GLOSSARIO.md): `tipo` diz a ORIGEM da aresta, `classe` a espécie. `aprendida` nasce com o B1.
 CLASSE = {"refs": "explícita", "consolida": "explícita", "supersede": "explícita", "mecanismo-de": "explícita",
-          "saga": "pertencimento", "semântica": "semântica", "adesao": "aprendida"}
+          "saga": "pertencimento", "semântica": "semântica", "adesao": "aprendida", "entidade": "entidade"}
 
-def compila_grafo(cards, out, cache):
+# Ponte por ENTIDADE (task 20261110-009): bot, unit systemd, arquivo e app citados no texto da DA viram nó que liga
+# diário↔projeto. Só aresta que ATRAVESSA (servidor ↔ casa) e só entidade específica (≤ ENT_TETO DAs de CADA lado):
+# "nest egg" cita metade do diário do app e viraria hub. Arquivo genérico e ferramenta do próprio ADAS não contam.
+ENT_TETO = 8
+ENT_W = {"bot": 0.95, "unit": 0.9, "arq": 0.88, "app": 0.82}
+ARQ_GENERICO = {"server.py", "app.js", "config.json", "index.html", "main.py", "settings.json", "package.json", "test.py",
+                "__init__.py", "cli.py", "utils.py", "state.json", "run.sh", "install.sh", "setup.sh", "conftest.py",
+                "da-new.sh", "da-index.sh", "check-adas.sh", "adas-init.sh", "check-da-refs.sh", "bus-inject.sh"}
+UNIT_RX = r"\b([\w@-]+(?:\.[\w@-]+)*\.(?:service|timer))\b"
+ARQ_RX = r"\b([\w-]+\.(?:py|sh|js|ts|jsonl?|html|ya?ml|toml))\b"
+
+def bot_rx(nome):
+    """@sendtrades_bot, sendtrades_bot, @sendtrades; nome com ≥ 9 letras casa também solto e no nome de exibição
+    ('sendtrades', 'Send Trade', send-trades). Nome curto solto é host ou palavra ('nanogo' é a máquina): só com @/_bot."""
+    n = re.escape(nome)
+    formas = [r"@" + n + r"(?:_?bot)?", n + r"_?bot"]
+    if len(nome) >= 9:
+        formas.append(r"[\s_-]?".join(map(re.escape, nome.rstrip("s"))) + r"s?(?:[\s_-]?bot)?")
+    return r"(?<![\w@])(?:" + "|".join(formas) + r")\b"
+
+def entidades_de(cards, home):
+    """→ ({id: {entidade}}, {entidade: regex}) — bots (de @x_bot em qualquer DA), units, arquivos e apelidos de app
+    (3ª coluna do rotas.conf)."""
+    texto = {c["id"]: " ".join(str(c.get(k) or "") for k in ("titulo", "regra", "motivo", "detalhe")) for c in cards}
+    rx = {}
+    for t in texto.values():
+        for m in re.finditer(r"@(\w+?)_?bot\b", t, re.I):
+            rx["bot:" + m.group(1).lower()] = bot_rx(m.group(1).lower())
+    try:
+        for l in open(os.path.join(home, ".adas", "rotas.conf"), encoding="utf-8"):
+            if l.count("|") >= 2 and not l.lstrip().startswith("#"):
+                pre = l.split("|", 1)[0].rstrip("/")
+                for a in l.strip().split("|")[2].split(","):
+                    # apelido de uma palavra só ('orçamento', 'lighter', 'td') é palavra comum: app só com hífen/espaço/
+                    # dígito ou o nome da pasta do repo
+                    if a.strip() and (re.search(r"[\s\d-]", a.strip()) or a.strip() == os.path.basename(pre)):
+                        rx["app:" + a.strip().lower()] = r"\b" + re.escape(a.strip()) + r"\b"
+    except OSError:
+        pass
+    comp = {e: re.compile(r, re.I) for e, r in rx.items()}
+    out = {}
+    for i, t in texto.items():
+        e = {k for k, r in comp.items() if r.search(t)}
+        e |= {"unit:" + m.lower() for m in re.findall(UNIT_RX, t)}
+        e |= {"arq:" + m for m in re.findall(ARQ_RX, t) if m not in ARQ_GENERICO}
+        out[i] = e
+    for e in set().union(*out.values()) if out else ():
+        if e.startswith(("unit:", "arq:")):
+            rx[e] = r"\b" + re.escape(e.split(":", 1)[1]) + r"\b"
+    return out, rx
+
+def compila_grafo(cards, out, cache, home=HOME):
     """grafo.json — sinapse DA↔DA (task 20261031-029 §B.2). Explícita: refs/consolida/supersede/mecanismo-de = 1,0;
     mesma saga = 0,3. Semântica: cosseno de cartão (mesmo critério do brain-linker: top-5 ≥ 0,80).
     Lido por regra-jit (regra-mãe), regra-search --espalha e bus-preflight (vizinhos). Só REORDENA/ANEXA:
@@ -215,11 +266,32 @@ def compila_grafo(cards, out, cache):
         top = sorted(((cos(vec[u], vec[v]), v) for v in vec if v != u), reverse=True)[:5]
         for s, v in top:
             if s >= 0.80: add(u, v, round(s, 3), "semântica")
+    ents, rx = entidades_de(cards, home)
+    casa = {c["id"]: c.get("casa") for c in cards}
+    por_ent = {}
+    for i, es in ents.items():
+        for e in es:
+            por_ent.setdefault(e, []).append(i)
+    ent_out = {}
+    for e, ids_e in por_ent.items():
+        srv, cs = [i for i in ids_e if not casa.get(i)], [i for i in ids_e if casa.get(i)]
+        if not srv or not cs or len(cs) > ENT_TETO or len(srv) > ENT_TETO:
+            continue
+        ent_out[e] = {"rx": rx.get(e), "das": cs}
+        for u in srv:
+            for v in cs:
+                add(u, v, ENT_W[e.split(":", 1)[0]], "entidade")
+    # entidades.json: o gancho casa a entidade na MENSAGEM (bot/unit/arquivo) e abre a DA da casa que a cita
+    ent_all = {e: {"rx": rx.get(e), "das": sorted(i for i in ids_e if casa.get(i))} for e, ids_e in por_ent.items()
+               if e.split(":", 1)[0] in ("bot", "unit", "arq") and rx.get(e) and any(casa.get(i) for i in ids_e)}
+    tmp = os.path.join(out, "entidades.json.tmp")
+    json.dump(ent_all, open(tmp, "w"), ensure_ascii=False); os.replace(tmp, os.path.join(out, "entidades.json"))
     arestas = [{"a": u, "b": v, "w": w, "tipo": t, "classe": CLASSE[t]} for (w, t, u, v) in E.values()]
     tmp = os.path.join(out, "grafo.json.tmp")
     json.dump(arestas, open(tmp, "w"), ensure_ascii=False); os.replace(tmp, os.path.join(out, "grafo.json"))
     print(f"grafo: {len(arestas)} arestas ({sum(e['tipo'] == 'mecanismo-de' for e in arestas)} mecanismo-de, "
-          f"{sum(e['tipo'] == 'semântica' for e in arestas)} semânticas)")
+          f"{sum(e['tipo'] == 'semântica' for e in arestas)} semânticas, {sum(e['tipo'] == 'entidade' for e in arestas)} entidade — "
+          f"{len(ent_out)} entidades atravessam)")
 
 def parse_gatilho(spec):
     """'forma · reply · juiz · modo=deny · pergunta="…"' → dict. Tolerante: token desconhecido é ignorado."""
@@ -380,7 +452,7 @@ def main():
             print(f"embeddings novos: {len(todo)}")
         except Exception as e:
             print(f"Ollama indisponível ({e.__class__.__name__}) — índice só FTS (nível 1)"); vec_ok = False
-    compila_grafo(cards, OUT, cache)
+    compila_grafo(cards, OUT, cache, home)
     db_p = os.path.join(OUT, "regras.db.tmp")
     if os.path.exists(db_p): os.remove(db_p)
     db = sqlite3.connect(db_p)

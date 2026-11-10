@@ -49,6 +49,9 @@ SOMBRA_TETO = int(os.environ.get("ADAS_JIT_SOMBRA_TETO", "300"))        # chamad
 SOMBRA_PRAZO = float(os.environ.get("ADAS_JIT_SOMBRA_PRAZO", "25"))     # processo solto: não segura o hook, aguenta o vetor lento
 LISTA = int(os.environ.get("ADAS_JIT_LISTA", "0") or 0)                # >0: superfície de LISTA entrega até N TÍTULOS (task 20261109-017)
 LISTA_SUP = set(os.environ.get("ADAS_JIT_LISTA_SUP", "prompt").split(","))
+PONTE_N = int(os.environ.get("ADAS_JIT_PONTE", "3"))                   # itens de PONTE diário→casa além da LISTA (task 20261110-009)
+OCR_TETO = float(os.environ.get("ADAS_JIT_OCR_TETO", "1.5"))           # s do tesseract no print anexado; estourou = sem OCR
+INBOX = os.path.join(HOME, ".claude", "channels", "telegram", "inbox")
 LIMIAR = {"prompt":{"l2": 0.65, "bm25": -25.0, "bm25_max_chars": 300, "lider_l2": 0.82, "lider_bm25": -12.0, "lider_razao": 1.6},
           "bash": {"l2": 0.65, "min_palavras": 8},
           "edit": {"l2": 0.60}}
@@ -95,6 +98,9 @@ def superficie_e_texto(p):
                 return None, "", ""
             m = re.search(r"<channel[^>]*>(.*?)(</channel>|$)", pr, re.S)
             body = (m.group(1) if m else pr).strip()
+            o = ocr(pr)  # o print entra só na CONSULTA (tema/lista/Jev); o predicado de evento segue lendo a mensagem
+            if o:
+                return "prompt", body[:2000] + "\n[print] " + o, body[:2000]
         elif os.environ.get("AXON_HEADLESS") or pr.lstrip().startswith(("[", "<")):
             return None, "", ""
         else:
@@ -113,6 +119,62 @@ def superficie_e_texto(p):
     if ev == "PostToolBatch":
         return "par", "", ""
     return None, "", ""
+
+
+def ocr(pr):
+    """Texto do print anexado à mensagem (image_path da tag <channel>), tesseract local em português, teto OCR_TETO s
+    (medido: ~0,8 s num print de celular em 4 cores). Só arquivo de dentro do inbox do Telegram. FALHA = '' (fail-open)."""
+    m = re.search(r'<channel[^>]*\bimage_path="([^"]+)"', pr)
+    if not m or os.environ.get("ADAS_JIT_OCR", "on") == "off":
+        return ""
+    f = os.path.realpath(m.group(1))
+    if not f.startswith(os.path.realpath(INBOX) + os.sep):
+        return ""
+    try:
+        r = subprocess.run(["tesseract", f, "-", "-l", "por"], capture_output=True, text=True, timeout=OCR_TETO,
+                           env=dict(os.environ, OMP_THREAD_LIMIT="1"))
+        return " ".join(r.stdout.split())[:1200] if r.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+def pontes(mostrar, texto, vd, n=PONTE_N):
+    """Itens de PONTE (task 20261110-009, dono msgs 13278-13282: 'toda sinapse deveria ser julgada pelo mainbot'): DA de
+    casa (projeto) ligada a uma DA do diário MOSTRADA na lista por sinapse do grafo.json, ou citada por uma entidade que a
+    MENSAGEM traz (entidades.json: @bot/nome de exibição, unit, arquivo). Sem filtro de escopo e sem Jev: quem julga é o
+    agente. Ordem: peso da sinapse (entidade na mensagem = 1,0). → dicts {id, titulo, motor: ponte, via}."""
+    ja = {c["id"] for c in mostrar}
+    cand = {}
+    try:
+        g = json.load(open(os.path.join(D, "grafo.json")))
+    except Exception:
+        g = []
+    for e in g:
+        for u, v in ((e["a"], e["b"]), (e["b"], e["a"])):
+            if u in ja and ":" not in u and ":" in v and e["w"] > cand.get(v, (0, ""))[0]:
+                cand[v] = (e["w"], u)
+    try:
+        ents = json.load(open(os.path.join(D, "entidades.json")))
+    except Exception:
+        ents = {}
+    for nome, x in ents.items():
+        try:
+            if x.get("rx") and re.search(x["rx"], texto, re.I):
+                tipo, _, val = nome.partition(":")
+                for k, i in enumerate(x["das"]):  # DAs da entidade em ordem de número: a mais antiga é a que a funda
+                    if cand.get(i, (0, ""))[0] < 1.0 - k * 1e-3:
+                        cand[i] = (1.0 - k * 1e-3, f"@{val}_bot" if tipo == "bot" else val)
+        except re.error:
+            continue
+    ordem = [i for i, _ in sorted(cand.items(), key=lambda kv: -kv[1][0])
+             if i not in ja and "lista:" + i not in vd and not re.search(r"\b%s\b" % re.escape(i), texto)]
+    if not ordem:
+        return []
+    import sqlite3
+    db = sqlite3.connect(os.path.join(D, "regras.db"))
+    tit = dict(db.execute("select key, titulo from docs where key in (%s)" % ",".join("?" * len(ordem)), ordem).fetchall())
+    db.close()
+    return [{"id": i, "titulo": tit[i], "motor": "ponte", "via": cand[i][1]} for i in ordem if i in tit][:n]
 
 
 def rx(v):
@@ -408,6 +470,9 @@ def par(p, sid):
         pass
     lote = re.sub(r"📌 ADAS-JIT[^\"]*", "", json.dumps(p, ensure_ascii=False))  # o texto injetado não conta como leitura
     leu = [c for c in mostrado["cartoes"] if re.search(r"\b%s\b" % re.escape(c), lote)]
+    # ponte: o agente abre por 'da-index.sh show DA-NNN <dir da casa>' — conta o número + o nome da casa no mesmo lote
+    leu_p = [c for c in mostrado.get("pontes") or [] if re.search(r"\b%s\b" % re.escape(c.rpartition(":")[2]), lote)
+             and c.rpartition(":")[0] in lote]
     ferr = sorted(set(re.findall(r'"tool_name":\s*"([^"]+)"', lote)))
     # adesão por PREDICADO (task 029 §A.2 #4): cartão com `viola=/re/` no Gatilho → a ação seguinte casa? ignorou : aplicou.
     # Sem viola= → n/a (menção do id não prova cumprimento). Ações = tool_input dos tool_uses do lote.
@@ -425,6 +490,7 @@ def par(p, sid):
         adesao[c] = ("ignorou" if v.search(acoes) else "aplicou") if v else "n/a"
     ledger({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "sid": sid, "superficie": "par",
             "mostrado_em": mostrado.get("superficie"), "cartoes": mostrado["cartoes"], "leu_da": leu, "adesao": adesao,
+            **({"pontes": mostrado["pontes"], "leu_ponte": leu_p} if mostrado.get("pontes") else {}),
             "ferramentas": ferr[:6], "atraso_s": round(time.time() - mostrado.get("t", time.time()), 1)})
 
 
@@ -660,13 +726,18 @@ def main():
         fill = [dict(c, motor="lista") for c in fill if c["id"] not in ja and "lista:" + c["id"] not in vd
                 and not re.search(r"\b%s\b" % re.escape(c["id"]), texto)]
         mostrar = (vivos + fill)[:max(LISTA, len(vivos))]
+        try:  # ponte diário→casa: além dos LISTA, até PONTE_N (o filtro de escopo não vale pra elas)
+            pt = pontes(mostrar, texto, vd)
+        except Exception as e:
+            pt, lmeta = [], dict(lmeta, ponte_erro=type(e).__name__)
+        mostrar += pt
     modo = os.environ.get("ADAS_JIT", "inline")
     decisao = ("inline" if modo != "log" else "sombra") if mostrar else "silencio"
     ms = round((time.time() - t0) * 1000)
     if cards or sup == "prompt":
         ledger({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "sid": sid, "superficie": sup, "nivel": nivel, "vetor": vetor,
                 "escopo": ",".join(sorted(esc)), "decisao": decisao, "ms": ms, "payload": red(texto),
-                "cartoes": [{k: c.get(k) for k in ("id", "motor", "l2", "bm25")} for c in mostrar],
+                "cartoes": [{k: c.get(k) for k in ("id", "motor", "l2", "bm25", "via") if k != "via" or c.get(k)} for c in mostrar],
                 "omitidos": omitidos, **({"juiz": dict(jmeta, p=pj)} if jmeta.get("chamou") or jmeta.get("erro") or jmeta.get("motivo") else {}),
                 **({"juiz_prompt": jpm} if jpm.get("chamou") or jpm.get("erro") or jpm.get("motivo") else {}),
                 **({"lista": lmeta} if lista else {})})
@@ -677,7 +748,7 @@ def main():
     if not mostrar or modo == "log":
         return
     for c in mostrar:  # item só-título não cala o cartão inteiro que o edit/bash mostraria depois
-        vd[("lista:" if c.get("motor") == "lista" else "") + c["id"]] = now
+        vd[("lista:" if c.get("motor") in ("lista", "ponte") else "") + c["id"]] = now
     salvar(vp, vd)
     try:  # acumula até o próximo PostToolBatch (mais de uma ação pode mostrar cartão no mesmo lote)
         pp = os.path.join(STATE, re.sub(r"[^\w-]", "_", sid or "nosid") + ".pend")
@@ -685,7 +756,8 @@ def main():
             prev = json.load(open(pp))
         except Exception:
             prev = {"cartoes": [], "superficie": sup, "t": now}
-        prev["cartoes"] += [c["id"] for c in mostrar if c["id"] not in prev["cartoes"]]
+        prev["cartoes"] += [c["id"] for c in mostrar if c["id"] not in prev["cartoes"] and c.get("motor") != "ponte"]
+        prev["pontes"] = prev.get("pontes", []) + [c["id"] for c in mostrar if c.get("motor") == "ponte"]  # par marca à parte
         prev["armado"] = False  # cartão novo neste lote: o par espera o próximo
         json.dump(prev, open(pp, "w"))
     except OSError:
@@ -696,6 +768,9 @@ def main():
         for c in mostrar:
             casa, _, num = c["id"].rpartition(":")
             t = (c.get("titulo") or c.get("regra_curta") or "").replace("\n", " ")
+            if c.get("motor") == "ponte":
+                linhas.append(f'↳ via {c["via"]} · {casa} {num} — {t[:100].rstrip()}{"…" if len(t) > 100 else ""}  [{casa_dir(casa)}]')
+                continue
             linhas.append(f'• {num} — {t[:100].rstrip()}{"…" if len(t) > 100 else ""}' + (f"  [{casa_dir(casa)}]" if casa else ""))
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit" if sup == "prompt" else "PreToolUse",
                                                  "additionalContext": "\n".join(linhas)}}, ensure_ascii=False))

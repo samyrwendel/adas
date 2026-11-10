@@ -99,7 +99,7 @@ adas_casas_map() {
     case "$esc" in *projeto/*) ;; *) continue ;; esac
     [ -f "$pre/DECISIONS.md" ] && [ -f "$pre/scripts/da-index.sh" ] || continue
     n="$(grep -E '^- DA-' "$pre/DECISIONS-INDEX.md" 2>/dev/null | grep -vcE ' · (📚 em|🔄 por) ')"
-    printf '📦 %s → %s/DECISIONS.md (%s vigentes) · ler: bash ~/scripts/da-index.sh show DA-NNN %s · buscar: regra-search "<assunto>" --casa %s\n' \
+    printf '📦 %s → %s/DECISIONS.md (%s vigentes) · ler: bash ~/scripts/da-index.sh show DA-NNN %s · buscar: python3 ~/adas/host/jit/regra-search "<assunto>" --casa %s\n' \
       "${ap:-$(basename "$pre")}" "$pre" "${n:-0}" "$pre" "$(basename "$pre")"
   done < "$conf"
 }
@@ -141,7 +141,7 @@ adas_da_layer0() {
   # chegam por AÇÃO (regra-jit.py no prompt/bash/edit, pré-voo do bus-inject); aqui fica UMA linha.
   # ADAS_JIT=off volta ao comportamento antigo (camada 0 orçada).
   if [ "${ADAS_JIT:-inline}" != "off" ] && [ -f "${ADAS_JIT_DIR:-$HOME/.adas/jit}/regras.db" ]; then
-    printf '\n[ADAS-JIT ativo] Regras do diário (~/DECISIONS.md, ~/CONDUCT.md) chegam POR AÇÃO: no prompt do dono, no comando, na edição e na delegação aparecem até 3 cartões com a Regra e "da-index.sh show DA-NNN". Sob demanda: bash ~/scripts/da-index.sh sagas ~ · bash ~/adas/host/jit/regra-search "<assunto>"'
+    printf '\n[ADAS-JIT ativo] Regras do diário (~/DECISIONS.md, ~/CONDUCT.md) chegam POR AÇÃO: no prompt do dono, no comando, na edição e na delegação aparecem até 3 cartões com a Regra e "da-index.sh show DA-NNN". Sob demanda: bash ~/scripts/da-index.sh sagas ~ · python3 ~/adas/host/jit/regra-search "<assunto>"'
     printf '\n'; adas_casas_map
     return 0
   fi
