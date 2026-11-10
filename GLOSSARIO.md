@@ -49,7 +49,7 @@ O ADAS-JIT é a ponte entre as duas: a memória acende (ativação) e o enforcem
 | limiar | **limiar de disparo** | abaixo dele, silêncio | `LIMIAR` em `regra-jit.py`; `limiar`/`limiar_aviso` do juiz |
 | consolidar | **consolidação** | rodadas viram cabeça; o episódio (o Motivo da DA) vira regra limpa. É o PROCESSO; a DA que resulta dele é a cabeça | `consolida:` |
 | trecho de conversa | **episódio** | o que aconteceu: a mensagem que motivou a regra | `kind='conversation'` no índice do cérebro |
-| reforço e enfraquecimento | **plasticidade** / **poda** | o peso da sinapse aprendida sobe com `aplicou` e desce com `ignorou`; a aresta fraca sai na recompilação. Poda vale só para aresta aprendida, nunca para DA. **(pendente: B1)** | campo `w` do `grafo.json` (quando existir) |
+| reforço e enfraquecimento | **plasticidade** / **poda** | plasticidade: item de ponte ABERTO (`da-index.sh show` do número com a casa, no lote seguinte) faz cada sinapse do caminho ganhar +0,15; mostrado e não aberto perde 0,05 (fator entre 0,3 e 2,0). Poda: sinapse que já esteve num caminho mostrado e não abriu nada em 60 dias pesa o piso (0,3; explícita 0,8), sem apagar, e volta quando abrir de novo. Nunca reescreve o `grafo.json` nem a DA (DA-704) | `~/.adas/jit/pesos-aprendidos.json` (fator por sinapse); `--zera-pesos` volta atrás |
 
 ### As 4 espécies de sinapse
 
@@ -60,7 +60,7 @@ O campo `classe` de cada aresta do `grafo.json` diz a espécie. O campo `tipo` c
 | **explícita** | `refs`, `consolida`, `supersede`, `mecanismo-de` | 1,0 | autor da DA; no cérebro, `## Sinapses` |
 | **pertencimento** | `saga` (mesmo grupo) | 0,3 | compilador |
 | **semântica** | `semântica` (cosseno ≥ 0,80, top-5) | o cosseno | compilador; no cérebro, `## Relacionadas` (≥ 0,60) |
-| **aprendida** | `adesao` | w ∈ [0,1] | ledger de adesão. **Pendente (B1): o nome está reservado e o campo nasce com o dado** |
+| **aprendida** | camada por cima das outras espécies (não é aresta nova) | fator 0,3–2,0 multiplicando o peso | par da ponte no `regra-jit.log` → `pesos-aprendidos.json` (DA-704) |
 | **entidade** | `entidade` (bot, unit systemd, arquivo ou app citado nas duas DAs) | 0,95 bot · 0,9 unit · 0,88 arquivo · 0,82 app | compilador; só aresta diário↔projeto, entidade citada por ≤ 8 DAs de cada lado. O gancho também casa a entidade na mensagem (`entidades.json`) |
 
 ## Aposentado da prosa

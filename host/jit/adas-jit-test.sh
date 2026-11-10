@@ -327,6 +327,36 @@ chk("PONTE caminho visível com casa só na troca", _p[2]["caminho"] == "@sendtr
 chk("PONTE teto e já-visto na sessão", len(rj.pontes(_ms, "Send Trade", {}, n=1)) == 1
     and "ne:DA-05" not in [c["id"] for c in rj.pontes(_ms, "Send Trade", {"lista:ne:DA-05": 1})])
 chk("PONTE sem grafo/entidades = nada, sem exceção", rj.pontes([{"id": "DA-7"}], "x", {}) == [])
+
+print("── PLASTICIDADE e PODA (DA-704): peso aprendido fora do grafo.json, medido junto ──")
+import contextlib, io
+_pp = os.path.join(_pd, "pesos-aprendidos.json")
+chk("PLAST sem pesos-aprendidos.json = sem influência (fator 1, posição igual)", all(c["fator"] == 1.0 and c["aprend"] == "igual"
+    for c in rj.pontes(_ms, "o print do Send Trade", {}, n=4)))
+with contextlib.redirect_stdout(io.StringIO()): rj.liga_pesos(True)
+_c6 = [["ne:DA-04", "ne:DA-05"], ["ne:DA-05", "ne:DA-06"]]
+_m = rj.aprende({"ne:DA-06": {"arestas": _c6}, "ne:DA-08": {"arestas": [["DA-1", "ne:DA-08"]]}}, {"ne:DA-06"})
+chk("PLAST aberto ganha +0,15 em cada aresta do caminho; mostrado e não aberto perde 0,05", _m == {"ne:DA-04|ne:DA-05": 1.15,
+    "ne:DA-05|ne:DA-06": 1.15, "DA-1|ne:DA-08": 0.95}, str(_m))
+for _ in range(8): rj.aprende({"ne:DA-06": {"arestas": _c6}}, {"ne:DA-06"})
+_p = {c["id"]: c for c in rj.pontes(_ms, "o print do Send Trade", {}, n=4)}
+chk("PLAST teto 2,0 e o aprendizado sobe o item (DA-06 passa a DA-08) e o ledger sabe", _p["ne:DA-06"]["aprend"] == "subiu"
+    and _p["ne:DA-08"]["aprend"] == "desceu" and _p["ne:DA-06"]["fator"] == 4.0, str({k: (v["aprend"], v["fator"]) for k, v in _p.items()}))
+_P = json.load(open(_pp)); _vel = time.time() - 61 * 86400
+chk("PODA: >60 dias sem abrir cai pro piso (explícita 0,8, demais 0,3), sem apagar; abrir de novo volta",
+    rj.fator("k", "semântica", {"arestas": {"k": {"f": 1.5, "visto": _vel}}}) == 0.3
+    and rj.fator("k", "explícita", {"arestas": {"k": {"f": 1.5, "visto": _vel}}}) == 0.8
+    and rj.fator("k", "semântica", {"arestas": {"k": {"f": 1.5, "visto": _vel, "util": time.time()}}}) == 1.5)
+rj.STATE = os.path.join(T, "plast"); os.makedirs(rj.STATE, exist_ok=True); rj.LOG = os.path.join(T, "plast.log")
+for _cmd, _esp in (("bash ~/scripts/da-index.sh show DA-06 /opt/projects/ne", ["ne:DA-06"]), ("citei ne DA-06 no reply", [])):
+    json.dump({"cartoes": [], "pontes": ["ne:DA-06"], "pontes_info": {"ne:DA-06": {"arestas": _c6, "aprend": "subiu"}},
+               "armado": True, "superficie": "prompt", "t": time.time()}, open(os.path.join(rj.STATE, "sp.pend"), "w"))
+    rj.par({"session_id": "sp", "tool_uses": [{"tool_name": "Bash", "tool_input": {"command": _cmd}}]}, "sp")
+    _l = json.loads(open(rj.LOG).read().splitlines()[-1])
+    chk(f"PLAST par: só `da-index.sh show` com a casa ensina ({_cmd[:24]}…)", _l["abriu_ponte"] == _esp and _l["pontes_aprend"] == {"ne:DA-06": "subiu"}, str(_l))
+with contextlib.redirect_stdout(io.StringIO()): rj.liga_pesos(False)
+chk("PLAST --zera-pesos: backup + desligado = sem influência", rj.pesos() == {} and any(f.startswith("pesos-aprendidos.json.bak-") for f in os.listdir(_pd))
+    and all(c["fator"] == 1.0 for c in rj.pontes(_ms, "o print do Send Trade", {}, n=4)))
 rj.D = _D0
 
 print("── juiz externo (task 20261109-022): segredo não sai, texto é DADO, saída só probabilidade ──")

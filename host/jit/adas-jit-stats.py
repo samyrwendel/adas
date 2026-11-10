@@ -40,12 +40,22 @@ def p95(xs):
 sup, dec, vet, cart, ades = (collections.Counter() for _ in range(5)); ms = []
 lst, lpar = [], collections.Counter()  # modo LISTA (task 20261109-017/021): itens por prompt e se o agente abriu algum
 npt, ppar = 0, collections.Counter()   # PONTE diário→casa (task 20261110-009): fora dos itens da lista, par próprio
+PJ = os.path.join(H, ".adas", "jit", "pesos-aprendidos.json")  # plasticidade (DA-704)
+try:
+    PA = json.load(open(PJ))
+except (OSError, ValueError):
+    PA = {}
+INI = PA.get("inicio") or "9999"
+plast, cortepar = collections.defaultdict(collections.Counter), collections.Counter()
 for d in linhas(os.path.join(BUS, "regra-jit.log")):
     if d.get("superficie") in ("par", "sombra"):
         for c, v in (d.get("adesao") or {}).items():
             ades[v] += 1
         if d.get("mostrado_em") == "prompt":
             lpar["abriu" if d.get("leu_da") else "nao_abriu"] += 1
+            cortepar[("depois" if d.get("ts", "") >= INI else "antes", "abriu" if d.get("leu_da") else "nao_abriu")] += 1
+            for c, ap in (d.get("pontes_aprend") or {}).items():
+                plast[ap or "sem_medida"]["abriu" if c in (d.get("abriu_ponte") or []) else "nao_abriu"] += 1
             if d.get("pontes"):
                 ppar["abriu" if d.get("leu_ponte") else "nao_abriu"] += 1
         continue
@@ -69,6 +79,21 @@ print(f"lista (prompt): {len(lst)} prompts · {round(sum(lst) / len(lst), 1) if 
       + (" · ".join(f"{k} {v}" for k, v in lpar.most_common()) or "sem par") + " — 'abriu' = o lote seguinte citou um id mostrado")
 print(f"ponte (prompt): {npt} itens diário→casa · par da ponte: " + (" · ".join(f"{k} {v}" for k, v in ppar.most_common()) or "sem par")
       + " — 'abriu' = o lote seguinte citou o número E a casa")
+tx = lambda c: f'{c["abriu"]}/{c["abriu"] + c["nao_abriu"]} abriram'
+ar = PA.get("arestas") or {}
+mais = sorted((x for x in ar.items() if x[1].get("f", 1) > 1), key=lambda x: -x[1]["f"])[:5]
+menos = sorted((x for x in ar.items() if x[1].get("f", 1) < 1), key=lambda x: x[1]["f"])[:5]
+print(f"plasticidade: {'DESLIGADA (--zera-pesos)' if PA.get('desligado') else 'ligada desde ' + PA['inicio'] if PA.get('inicio') else 'sem pesos-aprendidos.json'}"
+      + " · " + (" · ".join(f"{k} {tx(v)}" for k, v in sorted(plast.items())) or "sem par de ponte medido")
+      + f" | arestas aprendidas {len(ar)} · reforçadas: " + (", ".join(f"{k}×{v['f']}" for k, v in mais) or "nenhuma")
+      + " · enfraquecidas: " + (", ".join(f"{k}×{v['f']}" for k, v in menos) or "nenhuma")
+      + " — 'abriram' = `da-index.sh show` do número com a casa no lote seguinte")
+_ag = datetime.datetime.now().timestamp()
+print(f"poda: {sum(_ag - max(v.get('util') or 0, v.get('visto') or 0) > 60 * 86400 for v in ar.values())} aresta(s) no piso "
+      "(no caminho mostrado e sem abrir há > 60 dias; volta ao abrir)")
+if PA.get("inicio"):
+    print(f"corte da lista (deploy da plasticidade {PA['inicio']}): " + " · ".join(
+        f"{q} " + "/".join(str(cortepar[(q, k)]) for k in ("abriu", "nao_abriu")) for q in ("antes", "depois")) + " (abriu/não abriu)")
 print("adesão (par cartão × ação seguinte): " + (" · ".join(f"{k} {v}" for k, v in ades.most_common()) or "sem par")
       + " — 'ignorou' só existe em cartão com viola=")
 

@@ -123,6 +123,83 @@ PONTE_HUB = 4.0  # grau (soma dos fatores; mediana do grafo ~5) a partir do qual
 PONTE_TEXTO = float(os.environ.get("ADAS_JIT_PONTE_TEXTO", "0.45"))  # DA de casa que a própria mensagem nomeia (bm25 ≤ −18) vira semente
 
 
+PLAST = {"ganho": 0.15, "perda": 0.05, "teto": 2.0, "piso": 0.3, "piso_explicita": 0.8, "poda_dias": 60}  # DA-704
+
+
+def pesos():
+    """pesos-aprendidos.json (DA-704): {inicio, desligado?, arestas: {"a|b": {f, visto, util, abriu, nao}}}. Fora do grafo.json
+    gerado. ADAS_JIT_PLASTICIDADE=off ou desligado (--zera-pesos) → {} = sem influência e sem aprendizado."""
+    if os.environ.get("ADAS_JIT_PLASTICIDADE") == "off":
+        return {}
+    try:
+        p = json.load(open(os.path.join(D, "pesos-aprendidos.json")))
+    except Exception:
+        return {}
+    return {} if p.get("desligado") else p
+
+
+def _chave(a, b):
+    return "|".join(sorted((a, b)))
+
+
+def fator(k, classe, P, agora=None):
+    """Fator aprendido da aresta, entre o piso (explícita tem piso alto) e o teto. PODA: aresta que já esteve num caminho
+    mostrado e não carregou sinal útil (caminho ABERTO) em poda_dias cai pro piso, sem apagar; volta se abrir de novo."""
+    x = (P.get("arestas") or {}).get(k)
+    if not x:
+        return 1.0
+    piso = PLAST["piso_explicita"] if classe == "explícita" else PLAST["piso"]
+    if (agora or time.time()) - max(x.get("util") or 0, x.get("visto") or 0) > PLAST["poda_dias"] * 86400:
+        return piso
+    return min(PLAST["teto"], max(piso, x.get("f", 1.0)))
+
+
+def aprende(itens, abertos, agora=None):
+    """Par da ponte: item ABERTO → cada aresta do caminho ganha +ganho (e marca 'util'); mostrado e não aberto → −perda.
+    itens {id: {arestas: [[a,b],...]}}. Grava pesos-aprendidos.json por troca atômica. → {chave: novo f}."""
+    P = pesos()
+    if not P:
+        return {}
+    agora = agora or time.time()
+    A = P.setdefault("arestas", {})
+    mud = {}
+    for i, info in itens.items():
+        for a, b in info.get("arestas") or []:
+            k = _chave(a, b)
+            x = A.setdefault(k, {"f": 1.0, "visto": agora, "abriu": 0, "nao": 0})
+            if i in abertos:
+                x["f"], x["util"], x["abriu"] = min(PLAST["teto"], x["f"] + PLAST["ganho"]), agora, x["abriu"] + 1
+            else:
+                x["f"], x["nao"] = max(PLAST["piso"], x["f"] - PLAST["perda"]), x["nao"] + 1
+            x["f"] = round(x["f"], 4)
+            mud[k] = x["f"]
+    tmp = os.path.join(D, ".pesos-aprendidos.json.tmp")
+    json.dump(P, open(tmp, "w"), ensure_ascii=False)
+    os.replace(tmp, os.path.join(D, "pesos-aprendidos.json"))
+    return mud
+
+
+def liga_pesos(ligar):
+    """--liga-pesos: cria/religa (inicio = corte antes/depois no stats). --zera-pesos: backup + arestas vazias + desligado."""
+    pp = os.path.join(D, "pesos-aprendidos.json")
+    try:
+        P = json.load(open(pp))
+    except Exception:
+        P = {}
+    if ligar:
+        P.pop("desligado", None)
+        P.setdefault("inicio", time.strftime("%Y-%m-%dT%H:%M:%S"))
+        P.setdefault("arestas", {})
+    else:
+        if os.path.exists(pp):
+            bak = pp + ".bak-" + time.strftime("%Y%m%dT%H%M%S")
+            os.replace(pp, bak)
+            print("backup:", bak)
+        P = {"inicio": P.get("inicio"), "desligado": True, "arestas": {}}
+    json.dump(P, open(pp, "w"), ensure_ascii=False)
+    print(("ligado" if ligar else "zerado e desligado") + ":", pp)
+
+
 def _peso(e):
     """Peso efetivo da sinapse: semântica reescalada (o grafo só guarda ≥ 0,80: 0,80 vale 0 e 0,90 vale 1)."""
     w = e["w"]
@@ -131,12 +208,12 @@ def _peso(e):
     return w * PONTE_FATOR.get(e.get("classe"), 0.5)
 
 
-def ativa(sementes, g, saltos=2, beta=0.7):
+def ativa(sementes, g, saltos=2, beta=0.7, P=None):
     """Ativação propagada (DA-703): sementes {id: (a0, rótulo)} → {nó: (ativação, caminho)}. Por semente vale o MELHOR
     caminho até o nó (2 saltos, β no 2º); entre sementes SOMA — várias sementes convergindo no mesmo nó o acendem.
     Aresta normalizada pelo grau dos dois lados (hub de saga não espalha pra todo lado); nó alcançado SÓ por
     pertencimento não conta."""
-    deg = {}
+    deg, agora = {}, time.time()
     for e in g:
         f = PONTE_FATOR.get(e.get("classe"), 0.5)
         deg[e["a"]] = deg.get(e["a"], 0) + f
@@ -144,6 +221,8 @@ def ativa(sementes, g, saltos=2, beta=0.7):
     adj = {}
     for e in g:
         x = _peso(e) * min(1.0, (PONTE_HUB ** 2 / (deg[e["a"]] * deg[e["b"]])) ** 0.25)  # só penaliza hub, nunca amplifica
+        if P:
+            x *= fator(_chave(e["a"], e["b"]), e.get("classe"), P, agora)
         forte = e.get("classe") != "pertencimento"
         adj.setdefault(e["a"], []).append((e["b"], x, forte))
         adj.setdefault(e["b"], []).append((e["a"], x, forte))
@@ -182,10 +261,11 @@ def caminho(p):
 
 def pontes(mostrar, texto, vd, n=PONTE_N):
     """Itens de PONTE diário→casa por ATIVAÇÃO PROPAGADA (DA-703, parcial sobre a DA-701; dono msg 13289: 'sinapses').
-    Sementes: DAs MOSTRADAS na lista (1,0), DAs de casa citadas por uma entidade da mensagem (entidades.json:
+    Sementes: DAs MOSTRADAS na lista (0,3 + 0,7 × eco na mensagem), DAs de casa citadas por uma entidade da mensagem (entidades.json:
     @bot, unit, arquivo — 1/√n quando a entidade cita n DAs) e DA de casa que a mensagem nomeia (bm25, os nomes que o
     mainbot dá no --consulta). Entram os n nós de casa de maior ativação fora da lista, acima do piso, com o
-    caminho. Sem filtro de escopo e sem Jev: quem julga é o agente. → dicts {id, titulo, motor: ponte, via, ativ}."""
+    caminho. Sem filtro de escopo e sem Jev: quem julga é o agente. Aresta pesa × fator aprendido (DA-704);
+    'aprend' diz se o aprendizado mudou a posição. → dicts {id, titulo, motor: ponte, via, caminho, ativ, arestas, fator, aprend}."""
     ja = {c["id"] for c in mostrar}
     sem = {}
     try:
@@ -216,25 +296,41 @@ def pontes(mostrar, texto, vd, n=PONTE_N):
     for i, a in txt.items():
         if ":" in i and a >= PONTE_TEXTO and a > sem.get(i, (0,))[0]:
             sem[i] = (a, "mensagem")
-    at = ativa(sem, g)
-    cand = {}
-    for v in set(at) | set(sem):
-        if ":" not in v or v in ja:
-            continue
-        a0, rot = sem.get(v, (0.0, v))
-        a, p = at.get(v, (0.0, []))
-        cand[v] = (a0 + a, [rot, v] if a0 else p, bool(a0))  # semente mostra o PRÓPRIO motivo (entidade/mensagem)
-    # nó alcançado pela propagação vem antes; semente de entidade/mensagem só completa (ela já aparece no caminho dos outros)
-    ordem = [i for i, (a, _, s0) in sorted(cand.items(), key=lambda kv: (kv[1][2], -kv[1][0]))
-             if a >= PONTE_PISO and "lista:" + i not in vd and not re.search(r"\b%s\b" % re.escape(i), texto)][:n * 3]
+    P = pesos()
+    nos = {x for e in g for x in (e["a"], e["b"])}
+
+    def ordena(at):
+        cand = {}
+        for v in set(at) | set(sem):
+            if ":" not in v or v in ja:
+                continue
+            a0, rot = sem.get(v, (0.0, v))
+            a, p = at.get(v, (0.0, []))
+            cand[v] = (a0 + a, [rot, v] if a0 else p, bool(a0))  # semente mostra o PRÓPRIO motivo (entidade/mensagem)
+        # nó alcançado pela propagação vem antes; semente de entidade/mensagem só completa (já aparece no caminho dos outros)
+        return [i for i, (a, _, s0) in sorted(cand.items(), key=lambda kv: (kv[1][2], -kv[1][0]))
+                if a >= PONTE_PISO and "lista:" + i not in vd and not re.search(r"\b%s\b" % re.escape(i), texto)], cand
+    ordem, cand = ordena(ativa(sem, g, P=P))
+    base = ordena(ativa(sem, g))[0] if P.get("arestas") else ordem  # sem peso aprendido: mede se o aprendizado mudou a posição
+    ordem = ordem[:n * 3]
     if not ordem:
         return []
     import sqlite3
     db = sqlite3.connect(os.path.join(D, "regras.db"))
     tit = dict(db.execute("select key, titulo from docs where key in (%s)" % ",".join("?" * len(ordem)), ordem).fetchall())
     db.close()
-    return [{"id": i, "titulo": tit[i], "motor": "ponte", "via": caminho(cand[i][1][:-1]), "caminho": caminho(cand[i][1]),
-             "ativ": round(cand[i][0], 3)} for i in ordem if i in tit][:n]
+    out = []
+    for k, i in enumerate([i for i in ordem if i in tit][:n]):
+        p = cand[i][1]
+        ar = [[x, y] for x, y in zip(p, p[1:]) if x in nos and y in nos]
+        kb = base.index(i) if i in base else len(base)
+        fa = 1.0
+        for x, y in ar:
+            fa *= fator(_chave(x, y), next((e.get("classe") for e in g if {e["a"], e["b"]} == {x, y}), None), P) if P else 1.0
+        out.append({"id": i, "titulo": tit[i], "motor": "ponte", "via": caminho(p[:-1]), "caminho": caminho(p),
+                    "ativ": round(cand[i][0], 3), "arestas": ar, "fator": round(fa, 3),
+                    "aprend": "subiu" if ordem.index(i) < kb else "desceu" if ordem.index(i) > kb else "igual"})
+    return out
 
 
 def rx(v):
@@ -534,6 +630,17 @@ def par(p, sid):
     leu_p = [c for c in mostrado.get("pontes") or [] if re.search(r"\b%s\b" % re.escape(c.rpartition(":")[2]), lote)
              and c.rpartition(":")[0] in lote]
     ferr = sorted(set(re.findall(r'"tool_name":\s*"([^"]+)"', lote)))
+    # plasticidade (DA-704): 'abriu' que ENSINA é leitura de verdade — `da-index.sh show <num>` com a casa no MESMO comando.
+    # Citar o id (no reply, no bus-inject reclamando dele) não é abrir: o único par de 09-10/11 'abriu' a DA-001 assim.
+    cmds = [json.dumps(t.get("tool_input") or {}, ensure_ascii=False) for t in p.get("tool_uses") or []]
+    info = mostrado.get("pontes_info") or {}
+    abriu_r = [c for c in mostrado.get("pontes") or [] if any(
+        re.search(r"da-index\.sh\W+show\W+%s\b" % re.escape(c.rpartition(":")[2]), x)
+        and (c.rpartition(":")[0] in x or casa_dir(c.rpartition(":")[0]) in x) for x in cmds)]
+    try:
+        aprendeu = aprende({c: info.get(c) or {} for c in mostrado.get("pontes") or []}, set(abriu_r)) if info else {}
+    except Exception as e:
+        aprendeu = {"erro": type(e).__name__}
     # adesão por PREDICADO (task 029 §A.2 #4): cartão com `viola=/re/` no Gatilho → a ação seguinte casa? ignorou : aplicou.
     # Sem viola= → n/a (menção do id não prova cumprimento). Ações = tool_input dos tool_uses do lote.
     try:
@@ -550,7 +657,9 @@ def par(p, sid):
         adesao[c] = ("ignorou" if v.search(acoes) else "aplicou") if v else "n/a"
     ledger({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "sid": sid, "superficie": "par",
             "mostrado_em": mostrado.get("superficie"), "cartoes": mostrado["cartoes"], "leu_da": leu, "adesao": adesao,
-            **({"pontes": mostrado["pontes"], "leu_ponte": leu_p} if mostrado.get("pontes") else {}),
+            **({"pontes": mostrado["pontes"], "leu_ponte": leu_p, "abriu_ponte": abriu_r,
+                "pontes_aprend": {c: (info.get(c) or {}).get("aprend") for c in mostrado["pontes"]},
+                "aprendeu": aprendeu} if mostrado.get("pontes") else {}),
             "ferramentas": ferr[:6], "atraso_s": round(time.time() - mostrado.get("t", time.time()), 1)})
 
 
@@ -805,7 +914,7 @@ def main(consulta=None):
     elif cards or sup == "prompt":
         ledger({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "sid": sid, "superficie": sup, "nivel": nivel, "vetor": vetor,
                 "escopo": ",".join(sorted(esc)), "decisao": decisao, "ms": ms, "payload": red(texto),
-                "cartoes": [{k: c.get(k) for k in ("id", "motor", "l2", "bm25", "via") if k != "via" or c.get(k)} for c in mostrar],
+                "cartoes": [{k: c.get(k) for k in ("id", "motor", "l2", "bm25", "via", "aprend", "fator") if k in ("id", "motor", "l2", "bm25") or c.get(k)} for c in mostrar],
                 "omitidos": omitidos, **({"juiz": dict(jmeta, p=pj)} if jmeta.get("chamou") or jmeta.get("erro") or jmeta.get("motivo") else {}),
                 **({"juiz_prompt": jpm} if jpm.get("chamou") or jpm.get("erro") or jpm.get("motivo") else {}),
                 **({"lista": lmeta} if lista else {})})
@@ -831,6 +940,8 @@ def main(consulta=None):
             prev = {"cartoes": [], "superficie": sup, "t": now}
         prev["cartoes"] += [c["id"] for c in mostrar if c["id"] not in prev["cartoes"] and c.get("motor") != "ponte"]
         prev["pontes"] = prev.get("pontes", []) + [c["id"] for c in mostrar if c.get("motor") == "ponte"]  # par marca à parte
+        prev.setdefault("pontes_info", {}).update({c["id"]: {"arestas": c.get("arestas") or [], "aprend": c.get("aprend")}
+                                                   for c in mostrar if c.get("motor") == "ponte"})  # plasticidade (DA-704)
         prev["armado"] = False  # cartão novo neste lote: o par espera o próximo
         json.dump(prev, open(pp, "w"))
     except OSError:
@@ -865,6 +976,8 @@ if __name__ == "__main__":
     try:
         if "--consulta" in sys.argv:
             main(" ".join(sys.argv[sys.argv.index("--consulta") + 1:]))
+        elif "--zera-pesos" in sys.argv or "--liga-pesos" in sys.argv:
+            liga_pesos("--liga-pesos" in sys.argv)
         elif "--sombra" in sys.argv:
             sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
             q = json.loads(sys.stdin.read() or "{}")
