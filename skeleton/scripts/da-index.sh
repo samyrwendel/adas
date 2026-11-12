@@ -14,6 +14,7 @@
 #   da-index.sh export-saga slug [dir]
 #   da-index.sh gatilhos [dir]                         # TSV id⇥gatilho⇥fonte (ADAS-JIT, DA-468)
 #   da-index.sh dump [dir]                             # TSV id⇥marca⇥<campos do da-schema.tsv> — acesso único aos campos
+#   da-index.sh taxa [dir]                             # DAs datadas em 7 dias, por dia e fração de adendo — avisa (⚠), nunca bloqueia
 #   da-index.sh draft-head <saga> [--ids DA-a,DA-b] [dir]   # rascunho de cabeça v2 (só lê; recusa >1 gatilho vivo)
 #   da-index.sh draft-head --confere DA-a,DA-b [dir]        # cabeças já escritas: avisa termo distintivo perdido (DA-546)
 # [dir] = onde vivem DECISIONS.md e os gerados (default: $HOME — NUNCA o cwd; DA-196).
@@ -933,6 +934,38 @@ ficha_check() {
 
 # ============================================================================
 # 6) COMANDOS
+# 5c) TAXA (Fase 4 do plano estrutural, decisão do dono msg 13512): quantas DAs o diário ganhou na janela e que
+# fração é adendo. AVISO, nunca bloqueio — limite duro travaria decisão legítima em dia cheio (parecer 006 §7).
+# Só conta DA com `data:` a partir do corte (<dir>/.adas/taxa-desde, senão 2026-11-13): a reescrita em lote de
+# 06 e 07/11 não entra, e diário sem data não é medido (a linha diz quantas ficaram de fora).
+# Adendo = título que abre por "Adendo" ou bloco com linha "**Mecanismo da DA-NNN:**".
+_dia_menos() { date -d "$2 -$1 days" +%F 2>/dev/null || date -j -v-"$1"d -f %F "$2" +%F; }
+cmd_taxa() {
+  local dir="${1:-$DA_DIR_DEFAULT}" hoje jan ini desde
+  [ -f "$dir/DECISIONS.md" ] || { echo "taxa $dir: sem DECISIONS.md"; return 0; }
+  hoje="${DA_TAXA_HOJE:-$(date +%F)}"; jan="${DA_TAXA_JANELA:-7}"
+  ini="$(_dia_menos "$((jan - 1))" "$hoje")" || { echo "taxa $dir: não calculei a janela"; return 0; }
+  desde="${DA_TAXA_DESDE:-$(grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}' "$dir/.adas/taxa-desde" 2>/dev/null | head -1)}"; desde="${desde:-2026-11-13}"
+  [[ "$ini" < "$desde" ]] && ini="$desde"
+  [[ "$hoje" < "$ini" ]] && { echo "taxa $dir: medição começa em $desde"; return 0; }
+  awk -v ini="$ini" -v hoje="$hoje" -v jan="$jan" -v dir="$dir" \
+      -v LD="${DA_TAXA_DIA:-5}" -v LA="${DA_TAXA_ADENDO:-20}" -v MIN="${DA_TAXA_MIN:-5}" '
+    function fecha() { if (id == "") return
+      if (dt == "") { semdata++; return }
+      if (dt < ini || dt > hoje) return
+      n++; if (ad) a++; if (gov) g++ }
+    /^## (Decisão Arquitetural )?DA-[0-9]+/ { fecha(); id = $0; dt = ""; gov = 0; ad = ($0 ~ /^## [^—]*— *Adendo/); cab = NR + 1; next }
+    id == "" { next }
+    NR == cab { if (match($0, /`data: [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]`/)) dt = substr($0, RSTART + 7, 10)
+                if ($0 ~ /`saga: [^`]*governanca-adas/) gov = 1 }
+    /^\*\*Mecanismo da DA-[0-9]+:\*\*/ { ad = 1 }
+    END { fecha()
+      media = n / jan; pa = (n > 0) ? 100 * a / n : 0
+      alto = (media > LD) || (n >= MIN && pa > LA)
+      printf "%staxa %s: %d DA(s) de %s a %s = %.1f/dia (limite %s) · adendo %d/%d = %.0f%% (limite %s%%, a partir de %d DAs) · governanca-adas %d%s\n", \
+        (alto ? "⚠ " : ""), dir, n, ini, hoje, media, LD, a, n, pa, LA, MIN, g, (semdata ? " · " semdata " sem data, fora da conta" : "") }
+  ' "$dir/DECISIONS.md"
+}
 # ============================================================================
 usage() {
   echo "uso: da-index.sh update|check [dir]"
@@ -942,6 +975,7 @@ usage() {
   echo "     da-index.sh export-saga slug [dir]"
   echo "     da-index.sh gatilhos [dir]"
   echo "     da-index.sh dump [dir]          # TSV: id, marca de vigência e cada campo do da-schema.tsv (∅ = linha ausente)"
+  echo "     da-index.sh taxa [dir]          # DAs datadas em 7 dias, por dia e fração de adendo (⚠ acima do limite; nunca bloqueia)"
   exit 2
 }
 
@@ -1182,6 +1216,7 @@ case "$MODE" in
   export-saga) cmd_export_saga "$@" ;;
   gatilhos) cmd_gatilhos "$@" ;;
   dump) cmd_dump "$@" ;;
+  taxa) cmd_taxa "$@" ;;
   draft-head) exec python3 -I "$SELFDIR/da-draft-head.py" "$@" ;;
   *) usage ;;
 esac

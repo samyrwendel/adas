@@ -20,6 +20,7 @@ campo() { sed -n "s/^$1=//p" "$ST" 2>/dev/null | head -1; }
 if [ "${1:-}" = "--linha" ]; then
   [ -f "$ST" ] || exit 0
   now=$(date +%s); rodou="$(campo rodou)"; desde="$(campo desde)"
+  [ -n "$(campo taxa)" ] && echo "ADAS taxa de DAs acima do limite (5/dia ou 20% de adendo em 7 dias): $(campo taxa). Critério: da-new.sh --quando"
   if [ "$(campo estado)" = vermelho ]; then
     echo "ADAS selftest VERMELHO há $(( (now - ${desde:-$now}) / 86400 )) dia(s): $(campo falhas). Rode: adas test"
   elif [ -n "$rodou" ] && [ $((now - rodou)) -gt "${ADAS_SELFTEST_VELHO:-259200}" ]; then
@@ -59,7 +60,7 @@ fi
 # shellcheck disable=SC2046
 unset $(git rev-parse --local-env-vars 2>/dev/null) AXON_HEADLESS
 
-falhas=(); log=""; t0=$(date +%s)
+falhas=(); taxa_alta=(); log=""; t0=$(date +%s)
 roda() {  # roda <nome> <cmd...>
   local nome="$1" s rc out; shift; s=$(date +%s)
   out="$("$@" 2>&1)"; rc=$?
@@ -109,6 +110,15 @@ else
     locks="$(bash "$ROOT/host/adas-sync.sh" --check --all 2>&1)"; rc=$?
     roda "locks das casas (repos.conf)" bash -c "exit $rc"
     printf '%s\n' "$locks" | sed 's/^/      /'
+    # Fase 4 (taxa): DAs datadas em 7 dias por casa. AVISO — não entra em falhas[]; vai para o status e o SessionStart.
+    echo "  taxa de DAs (7 dias; limite 5/dia e 20% de adendo — aviso, não reprova)"
+    while IFS= read -r casa; do
+      case "$casa" in ''|\#*) continue ;; esac
+      [ -f "$casa/DECISIONS.md" ] || continue
+      l="$(bash "$ROOT/skeleton/scripts/da-index.sh" taxa "$casa" 2>/dev/null | tail -1)"; [ -n "$l" ] || continue
+      echo "      $l"
+      case "$l" in "⚠"*) taxa_alta+=("$(basename "$casa")") ;; esac
+    done < "$CONF"
   fi
   [ "$VARRE" = 1 ] && roda "varredura DA-530 (pasta .adas sem git)" varredura_da530
 fi
@@ -121,7 +131,7 @@ if [ "$SELF" = 1 ]; then
   now=$(date +%s); antes="$(campo estado)"; desde="$(campo desde)"
   [ "$antes" = "$estado" ] && [ -n "$desde" ] || desde=$now
   mkdir -p "$(dirname "$ST")"
-  printf 'estado=%s\ndesde=%s\nrodou=%s\nsegundos=%s\nfalhas=%s\n' "$estado" "$desde" "$now" "$total" "${falhas[*]}" > "$ST.tmp" \
+  printf 'estado=%s\ndesde=%s\nrodou=%s\nsegundos=%s\nfalhas=%s\ntaxa=%s\n' "$estado" "$desde" "$now" "$total" "${falhas[*]}" "${taxa_alta[*]:-}" > "$ST.tmp" \
     && mv "$ST.tmp" "$ST"
   printf '%s' "$log" > "${ST%.status}.log"   # saída inteira das suítes vermelhas da última rodada (vazio se verde)
   # alerta SÓ na transição; sem status anterior conta como verde (nasce mudo se nasce verde)

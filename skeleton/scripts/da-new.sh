@@ -13,6 +13,7 @@
 # uso: da-new.sh --tipo <tipo> <escopo> <saga> "<título>" [dir]
 #      da-new.sh --ajuda        instrução de preenchimento (campos, obrigatoriedade, tetos)
 #      da-new.sh --ficha        a ficha em markdown (docs/ficha.md do produto é esta saída)
+#      da-new.sh --quando       o critério "quando é DA" (o mesmo texto do aviso de saga recente)
 #   tipo:   um dos valores da etiqueta tipo no esquema (regra · registro · princípio)
 #   escopo: produto | instância | projeto/<nome> (composto: "produto,instância")
 #   saga:   slug existente em ~/.adas/sagas.conf, ou "nova/<slug>" se for nova
@@ -40,13 +41,26 @@ ficha() {
   { $8 = esc($8); $9 = esc($9)
     printf "| %s | %s | %s | %s | %s | %s | %s |\n", ($1=="cab" ? "`" $3 ":`" : "**" $3 ":**"), $1, $4, $5, ($6=="s" ? "sim" : "não"), $8, $9 }'
 }
-usage() { echo 'uso: da-new.sh --tipo <'"$(valores_de tipo)"'> <escopo> <saga> "<título>" [dir]   ·   da-new.sh --ajuda | --ficha' >&2; exit 2; }
+# Critério de taxa (Fase 4, decisão do dono msg 13512). Fonte única do texto: a faixa de decisões aponta para cá.
+quando() {
+  cat <<'TXT'
+Quando é DA (teste: "se um agente novo desfizer isso amanhã, é erro?"):
+  DA (--tipo regra)      escolha entre alternativas que restringe o que agente ou dono fazem depois
+  commit citando a DA    como a ferramenta implementa regra já decidida · conserto que devolve o comportamento
+                         decidido · ajuste de parâmetro dentro do que a DA permite
+  commits + UMA DA       iterações da mesma rodada: a DA entra quando a rodada fecha, com a medição
+  DA (--tipo registro)   fato sem regra (migração feita, inventário); não vira cartão
+  nada                   texto para calar um check: conserte o check ou a regra
+TXT
+}
+usage() { echo 'uso: da-new.sh --tipo <'"$(valores_de tipo)"'> <escopo> <saga> "<título>" [dir]   ·   da-new.sh --ajuda | --ficha | --quando' >&2; exit 2; }
 
 TIPO=""; POS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --ajuda) ajuda; exit 0 ;;
     --ficha) ficha; exit 0 ;;
+    --quando) quando; exit 0 ;;
     --tipo) TIPO="${2:-}"; shift 2 || usage ;;
     --tipo=*) TIPO="${1#--tipo=}"; shift ;;
     *) POS+=("$1"); shift ;;
@@ -106,6 +120,26 @@ if [ -f "$SAGAS_CONF" ]; then
     echo "  slugs válidos:" >&2
     cut -d'|' -f1 "$SAGAS_CONF" 2>/dev/null | grep -vE '^(#|$)' | sed 's/^/    /' >&2
     exit 2
+  fi
+fi
+
+# Aviso de saga recente (Fase 4): atrito no ponto de uso, sem LLM e sem bloqueio. DA_SAGA_JANELA dias (padrão 2,
+# hoje e ontem ≈ 48 h) e DA_SAGA_AVISO DAs (padrão 2) da MESMA saga (nova/<slug> conta como <slug>) → lista e pergunta.
+_jan="${DA_SAGA_JANELA:-2}"; _hoje="${DA_NEW_HOJE:-$(date +%F)}"
+_ini="$(date -d "$_hoje -$((_jan - 1)) days" +%F 2>/dev/null || date -j -v-"$((_jan - 1))"d -f %F "$_hoje" +%F 2>/dev/null)"
+if [ -n "$_ini" ]; then
+  _rec="$(awk -v ini="$_ini" -v sagas="$SAGA" '
+    BEGIN { n = split(sagas, q, ","); for (i = 1; i <= n; i++) { x = q[i]; gsub(/ /, "", x); sub(/^nova\//, "", x); if (x != "") quer[x] = 1 } }
+    /^## (Decisão Arquitetural )?DA-[0-9]+/ { tit = substr($0, 4); cab = NR + 1; next }
+    NR == cab && match($0, /`data: [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]`/) {
+      d = substr($0, RSTART + 7, 10); if (d < ini) next
+      if (!match($0, /`saga: [^`]*`/)) next
+      m = split(substr($0, RSTART + 7, RLENGTH - 8), sg, ","); for (i = 1; i <= m; i++) { x = sg[i]; gsub(/ /, "", x); sub(/^nova\//, "", x)
+        if (x in quer) { print "    " d "  " substr(tit, 1, 110); break } } }' "$DEC")"
+  if [ -n "$_rec" ] && [ "$(grep -c . <<< "$_rec")" -ge "${DA_SAGA_AVISO:-2}" ]; then
+    { echo "⚠ da-new: a saga '$SAGA' já ganhou $(grep -c . <<< "$_rec") DA(s) desde $_ini:"; echo "$_rec"
+      echo "  Rodada nova ou iteração da mesma rodada? Iteração vai no commit (citando a DA); a DA entra quando a rodada fecha."
+      quando | sed 's/^/  /'; } >&2
   fi
 fi
 

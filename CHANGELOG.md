@@ -3,6 +3,16 @@
 Cada versão diz o que muda para quem usa, não a lista de commits. A primeira linha `Resumo:` de cada
 versão é a que aparece no aviso de versão nova da sessão.
 
+## 1.5.0 — 2026-11-12
+
+Resumo: taxa de DA medida em cada casa (`da-index.sh taxa`) com aviso no `adas test` e no SessionStart; `da-new.sh --quando` e aviso de saga recente.
+
+- **`da-index.sh taxa [dir]`**: DAs com `data:` nos últimos 7 dias (corte em 13/11, `DA_TAXA_DESDE` ou `.adas/taxa-desde`), média por dia, fração de adendo (só com 5+ DAs na janela) e contagem de `governanca-adas`. Linha abre com `⚠` acima de 5/dia ou 20% de adendo. rc sempre 0.
+- **`da-new.sh`**: `--quando` imprime o critério "Quando é DA"; se a saga já tem 2 DAs em 48 h, lista as DAs e pergunta no stderr antes de criar (cria mesmo assim). Não chega ao `skeleton-v4`.
+- **`adas test`**: mede a taxa de cada casa do `repos.conf` e grava `taxa=<casas acima>` no `selftest.status`; `--linha` avisa no SessionStart. Aviso, não falha.
+- **`install.sh`**: casa adicionada ao `repos.conf` sem lock ganha a instrução "rode: adas sync".
+- Casas: re-sync leva `da-index.sh`, `da-new.sh` e `tests/taxa.test.sh` novos.
+
 ## 1.4.6 — 2026-11-12
 
 Resumo: casa do `repos.conf` sem `.adas/skeleton.lock` deixa o `adas sync --check` e o `adas test` vermelhos.

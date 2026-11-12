@@ -110,6 +110,7 @@ DA-530 (pasta com `.adas/` fora de git sob a home e `/opt/projects`). O pre-comm
 `adas test --sem-varredura`. O `install.sh` instala o `adas-selftest.timer` (diário, sem LLM): grava
 `~/.adas/selftest.status` + `selftest.log` e chama `ADAS_ALERT_CMD` (de `~/.claude/adas/selftest.env`) só na
 troca verde↔vermelho. Vermelho ou parado há >3 dias = uma linha no SessionStart (`adas test --linha`).
+Taxa de DA (1.5.0): o `adas test` roda `da-index.sh taxa` em cada casa e avisa (não reprova) acima de 5 DAs/dia ou 20% de adendo em 7 dias (`taxa=` no status e no `--linha`); `da-new.sh --quando` imprime o critério "Quando é DA".
 
 ## O que o runtime NÃO cobre (limitações conhecidas)
 - **Escrita via shell**: o matcher `Edit|Write|MultiEdit` NÃO pega `sed -i`, `tee`, redirects

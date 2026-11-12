@@ -33,6 +33,7 @@ if [ "$#" -gt 0 ]; then
     rr="$(cd "$r" 2>/dev/null && pwd)" || { echo "✗ repo inexistente: $r"; exit 1; }
     [ -f "$rr/ADAS.md" ] || echo "• aviso: $rr sem ADAS.md na raiz (o núcleo reinjetado cai no fallback genérico)"
     grep -qxF "$rr" "$A/repos.conf" 2>/dev/null || echo "$rr" >> "$A/repos.conf"
+    [ -f "$rr/.adas/skeleton.lock" ] || echo "• $rr: sem .adas/skeleton.lock — rode: adas sync $rr (casa do repos.conf sem lock deixa o adas test vermelho)"
   done
 elif [ ! -f "$A/repos.conf" ]; then
   cp "$DIR/repos.conf.example" "$A/repos.conf"
