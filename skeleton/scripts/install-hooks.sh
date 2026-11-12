@@ -12,6 +12,8 @@
 #      visível) — só se scripts/check-adas.sh existe no repo (repo governado)
 #   3. da-index.sh check  → BLOCK se o índice de DAs divergir (DA-164) — só se existem
 #      scripts/da-index.sh e DECISIONS.md
+#   4. host/adas-test.sh  → BLOCK se qualquer suíte do ADAS falhar — só no repo do PRODUTO
+#      ADAS (onde host/adas-test.sh existe); casas não têm esse arquivo
 #
 # Idempotente: rodar 2x = mesmo resultado. Hook alheio pré-existente é PRESERVADO
 # (vira .git/hooks/pre-commit.local e é chamado ao final do nosso).
@@ -75,6 +77,11 @@ if [ -f scripts/da-index.sh ] && [ -f DECISIONS.md ]; then
     || { echo "✗ pre-commit: índice de DAs divergente — rode scripts/da-index.sh update e adicione ao commit"; exit 1; }
 fi
 
+# 4) repo do PRODUTO ADAS: a suíte inteira (relógio, Fase 1) — teste vermelho não entra
+if [ -f host/adas-test.sh ]; then
+  bash host/adas-test.sh --sem-varredura || { echo "✗ pre-commit: adas test VERMELHO — conserte antes de commitar"; exit 1; }
+fi
+
 # hook local pré-existente (preservado pelo install-hooks)
 if [ -x "\$(git rev-parse --git-path hooks)/pre-commit.local" ]; then
   "\$(git rev-parse --git-path hooks)/pre-commit.local" || exit 1
@@ -82,4 +89,4 @@ fi
 exit 0
 EOF
 chmod +x "$PC"
-echo "✓ pre-commit instalado em $PC (secrets→BLOCK · check-adas · DA com mecanismo · da-index; --no-verify existe, o CI repete)"
+echo "✓ pre-commit instalado em $PC (secrets→BLOCK · check-adas · DA com mecanismo · da-index · adas test no produto; --no-verify existe, o CI repete)"

@@ -3,6 +3,15 @@
 Cada versão diz o que muda para quem usa, não a lista de commits. A primeira linha `Resumo:` de cada
 versão é a que aparece no aviso de versão nova da sessão.
 
+## 1.2.0 — 2026-11-12
+
+Resumo: `adas test` roda todas as suítes do ADAS; um timer diário roda o mesmo e avisa quando fica vermelho.
+
+- **`adas test`**: um comando para as suítes do esqueleto, o harness do `da-index`, o smoke e o smoke-v4, com o tempo de cada uma. Sai ≠0 se qualquer uma falhar. O pre-commit do repositório `adas` e o CI rodam o mesmo comando, então teste vermelho não entra mais por cima.
+- **Relógio diário (`adas-selftest.timer`)**, instalado pelo `host/install.sh` onde houver `systemd --user`. Grava `~/.adas/selftest.status` (e `~/.adas/selftest.log` com a saída do que falhou) e avisa **só na troca** verde↔vermelho. O canal do aviso é `ADAS_ALERT_CMD` em `~/.claude/adas/selftest.env`; sem ele o aviso vai pro journal. Sem LLM.
+- **SessionStart**: enquanto o relógio estiver vermelho, ou sem rodar há mais de 3 dias, a sessão abre com uma linha dizendo isso.
+- **Projeto ADAS fora de git é procurado**, não só barrado quando alguém roda o check: o `adas test` varre toda pasta com `.adas/` sob a home e `/opt/projects` (menos a home) e reprova a que não é repositório git (DA-530).
+
 ## 1.1.5 — 2026-11-11
 
 Resumo: o juiz exige redator de segredos configurado (ADAS_REDATOR) e avisa quando falta; check de mecanismo cobra só DA em vigor.

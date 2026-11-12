@@ -23,9 +23,8 @@ jobs:
           for f in skeleton/.claude/skills/adas-check/scripts/*.js; do node --check "$f"; done
       - name: check-adas no PRÓPRIO esqueleto (DA-166 — o ADAS se audita fora das fixtures)
         run: cd skeleton && bash scripts/check-adas.sh
-      - name: smoke — spec executável (comportamento, não só sintaxe)
-        run: bash tests/smoke.sh
-      - name: skeleton-v4 — shellcheck + teste de adoção (dia 0 = 1 aviso em doc; FAIL esperado em mecanismo)
+      - name: adas test — TODAS as suítes (skeleton + da-index + smoke + smoke-v4), o mesmo relógio do pre-commit e do timer
+        run: bash host/adas-test.sh --sem-varredura
+      - name: skeleton-v4 — shellcheck (o teste de adoção roda no adas test)
         run: |
           shellcheck -S error skeleton-v4/scripts/*.sh skeleton-v4/.claude/hooks/*.sh skeleton-v4/mecanismo/tests/*.sh tests/smoke-v4.sh
-          bash tests/smoke-v4.sh

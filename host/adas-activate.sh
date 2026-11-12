@@ -25,6 +25,10 @@ adas_session_emit "$cwd" 2>/dev/null || true
 # (linha própria: a camada 0 pode terminar sem \n e o aviso grudaria nela)
 v="$([ -f "$DIR/adas-version.sh" ] && bash "$DIR/adas-version.sh" 2>/dev/null)"
 [ -n "$v" ] && printf '\n%s\n' "$v"
+# relógio do ADAS (Fase 1): uma linha só quando o selftest está vermelho ou parado
+src="$(cat "$HOME/.claude/adas/source" 2>/dev/null || echo "$HOME/adas")"
+st="$([ -f "$src/host/adas-test.sh" ] && timeout 2 bash "$src/host/adas-test.sh" --linha 2>/dev/null)"
+[ -n "$st" ] && printf '\n%s\n' "$st"
 # ADAS-JIT (DA-468): termostato do nível 1×/dia em segundo plano; juiz sem chave NÃO fica calado (task 20261101-001)
 J="$(cat "$HOME/.claude/adas/source" 2>/dev/null || echo "$HOME/adas")/host/jit"
 if [ -f "$J/termostato.py" ] && [ -z "$(find "$HOME/.adas/jit/termostato.json" -mmin -1440 2>/dev/null)" ]; then

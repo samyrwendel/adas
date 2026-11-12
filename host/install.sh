@@ -5,6 +5,7 @@
 # Faz: 1) copia os hooks pro user-level  2) garante ~/.claude/adas/repos.conf
 #      3) MERGE dos hooks no ~/.claude/settings.json — preserva o que já existe, remove entradas
 #         adas-*.sh antigas e re-adiciona as do snippet (rodar 2x = mesmo resultado). Backup .bak-adas.
+#      4) instala o adas-selftest.timer (host/install-selftest.sh)
 # Instalação é FAIL-CLOSED (meia-instalação é pior que nenhuma): qualquer erro aborta.
 # Os hooks instalados continuam fail-open em runtime (nunca travam sessão/edição).
 set -euo pipefail
@@ -57,4 +58,6 @@ jq -e '.hooks.SessionStart and .hooks.SubagentStart and .hooks.PreToolUse' "$S.t
   || { echo "✗ merge falhou — settings intacto (backup em $S.bak-adas)"; rm -f "$S.tmp"; exit 1; }
 mv "$S.tmp" "$S"
 echo "✓ hooks registrados em $S (backup: $S.bak-adas)"
+# 4) relógio: adas-selftest.timer (suíte diária sem LLM, alerta na transição) — Fase 1
+bash "$DIR/install-selftest.sh"
 echo "OK — vale a partir da PRÓXIMA sessão. Teste sem abrir sessão: host/README.md §Teste rápido"

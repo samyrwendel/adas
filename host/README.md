@@ -90,6 +90,14 @@ echo '{"tool_input":{"file_path":"/caminho/do/repo/arquivo-de-faixa"}}' | bash ~
 CLAUDE_PROJECT_DIR=/caminho/do/repo bash -c 'echo "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/x\"}}" | bash ~/.claude/hooks/adas-route.sh'  # guard: vazio
 ```
 
+## Relógio (`adas test` + `adas-selftest.timer`)
+
+`adas test` roda todas as suítes do produto (esqueleto, harness do `da-index`, smoke, smoke-v4) e a varredura
+DA-530 (pasta com `.adas/` fora de git sob a home e `/opt/projects`). O pre-commit do repo `adas` e o CI rodam
+`adas test --sem-varredura`. O `install.sh` instala o `adas-selftest.timer` (diário, sem LLM): grava
+`~/.adas/selftest.status` + `selftest.log` e chama `ADAS_ALERT_CMD` (de `~/.claude/adas/selftest.env`) só na
+troca verde↔vermelho. Vermelho ou parado há >3 dias = uma linha no SessionStart (`adas test --linha`).
+
 ## O que o runtime NÃO cobre (limitações conhecidas)
 - **Escrita via shell**: o matcher `Edit|Write|MultiEdit` NÃO pega `sed -i`, `tee`, redirects
   (`>`/`>>`) nem `NotebookEdit` — uma edição por Bash passa sem a faixa injetada. Cobrir isso com
