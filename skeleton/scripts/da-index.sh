@@ -746,7 +746,7 @@ run_quality_checks() {
   # gargalo: 37 sagas × grep -r em ~1GB deixava o hook (síncrono) lento demais).
   if [ "${#SAGA_SLUGS[@]}" -gt 0 ]; then
     local paths=()
-    for p in "$HOME/scripts" "$HOME/claude-tg-tmux" "$HOME/.claude/skills" "$HOME/axon"; do [ -d "$p" ] && paths+=("$p"); done
+    for p in "$HOME/scripts" "$HOME/axon-core" "$HOME/.claude/skills" "$HOME/axon"; do [ -d "$p" ] && paths+=("$p"); done
     if [ "${#paths[@]}" -gt 0 ]; then
       local altpat; altpat="$(printf '%s\n' "${SAGA_SLUGS[@]}" | paste -sd'|')"
       local hits

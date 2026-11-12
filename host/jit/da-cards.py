@@ -178,7 +178,7 @@ def cosseno():
     """A MESMA aresta semântica do cérebro: cosine() do brain-linker.py (instância). Produto sem o cérebro → igual, local."""
     try:
         import importlib.util
-        sp = importlib.util.spec_from_file_location("brain_linker", os.path.join(HOME, "claude-tg-tmux/scripts/brain/brain-linker.py"))
+        sp = importlib.util.spec_from_file_location("brain_linker", os.path.join(HOME, "axon-core/scripts/brain/brain-linker.py"))
         m = importlib.util.module_from_spec(sp); sp.loader.exec_module(m)
         return m.cosine
     except Exception:

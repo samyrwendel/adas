@@ -8,7 +8,7 @@ Todo texto sai por juiz_prov.redigir (DA-698): se o redator falhar, NADA é envi
 import json, os, re, subprocess, sys, time, urllib.request, urllib.error
 from concurrent.futures import ThreadPoolExecutor
 H = os.path.expanduser("~"); sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-D = f"{H}/.adas/jit/juiz-rotulo/modelos"; CRED = f"{H}/claude-tg-tmux/scripts/get-credential.sh"
+D = f"{H}/.adas/jit/juiz-rotulo/modelos"; CRED = f"{H}/axon-core/scripts/get-credential.sh"
 ROT = {  # nome: (provedor-no-cofre, base, modelo)
     "glm": ("experientiallabs", "https://api.experientiallabs.ai/v1", "glm-5.3-flash-uncensored"),  # hereticbot
     "gemini": ("openrouter", "https://openrouter.ai/api/v1", "google/gemini-2.5-flash"),
