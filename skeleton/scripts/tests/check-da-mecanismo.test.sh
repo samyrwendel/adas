@@ -94,6 +94,14 @@ vig() { # <FAIL|OK> <rótulo> <supersede da DA-901> — só DA vigente é cobrad
 vig OK   "DA superada que proíbe sem Mecanismo não conta" "DA-900"
 vig FAIL "a mesma DA vigente (sem supersede) conta"       "—"
 
+# diário com outro nome na mesma raiz: a vigência do DECISIONS.md não vale para ele (R1, senior-008)
+printf '# d\n\n## DA-001 — a\n%s\n**Regra:** Tudo certo.\n' "$META_NOVA" > "$T/DECISIONS.md"
+printf '# d\n\n## DA-900 — nova\n%s\n**Regra:** Nunca publicar sem o gate.\n' "$META_NOVA" > "$T/OUTRO.md"
+out="$(bash "$CHK" --list "$T/OUTRO.md" "$T")"
+printf '%s\n' "$out" | grep -q '^FAIL DA-900' \
+  && echo "✓ diário fora de <raiz>/DECISIONS.md é auditado inteiro" \
+  || { echo "✗ vigência de outro diário silenciou DA nova"; fail=1; }
+
 ADAS_CHK="$(dirname "$CHK")/check-adas.sh"
 if [ -f "$ADAS_CHK" ]; then
   printf '# diário\n\n## DA-900 — fixture\n%s\n**Regra:** Nunca X.\n' "$META_NOVA" > "$T/DECISIONS.md"
@@ -104,7 +112,8 @@ fi
 
 # DA-530: ADAS-Projeto (tem .adas/profile.json) fora de repo git = BLOCK; com git init passa.
 if [ -f "$ADAS_CHK" ]; then
-  P="$T/proj"; mkdir -p "$P"; cp -r "$(dirname "$ADAS_CHK")/.." "$P/x"; P="$P/x"
+  # fixture mínima (não copia o pai: numa casa o pai traz .git e a asserção "sem git" mentiria)
+  P="$T/proj/x"; mkdir -p "$P/.adas"; echo '{}' > "$P/.adas/profile.json"; cp -r "$(dirname "$ADAS_CHK")" "$P/scripts"
   out="$(cd "$P" && bash scripts/check-adas.sh 2>&1)"; rc=$?
   if [ "$rc" -ne 0 ] && printf '%s\n' "$out" | grep -qF "ADAS-Projeto só entra em repo git (DA-530)"; then echo "✓ projeto sem git → BLOCK (DA-530)"
   else echo "✗ projeto sem git não bloqueou (exit $rc)"; fail=1; fi

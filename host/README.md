@@ -73,6 +73,8 @@ Variáveis:
   `EXPERIENTIALLABS_API_KEY`, `AI_GATEWAY_API_KEY`) → `~/.adas/juiz.env` → arquivo apontado por `ADAS_JUIZ_ENVFILE` →
   cofre apontado por `ADAS_JUIZ_CRED` (`<script> <provedor> value`). Ordem: `ADAS_JUIZ_ORDEM`. OpenAI-compatível/Ollama:
   `ADAS_JUIZ_OPENAI_URL` + `ADAS_JUIZ_OPENAI_MODEL` [+ `ADAS_JUIZ_OPENAI_KEY`]. `adas juiz testar` faz uma pergunta real;
+- redator do juiz: `ADAS_REDATOR` (env ou linha no `~/.adas/juiz.env`) = caminho de um `.py` com `carregar_segredos()` e
+  `redigir(texto, segredos)`. Obrigatório: sem ele nenhum texto sai pro juiz (fail-closed) e `adas juiz status` avisa "sem redator";
 - nível: `adas nivel` (termostato) grava `~/.adas/jit/nivel`; `~/.adas/jit/nivel.fixo` fixa;
 - sombra (grava o ledger, não injeta): `ADAS_JIT=log`.
 

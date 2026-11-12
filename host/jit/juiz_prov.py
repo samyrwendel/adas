@@ -332,12 +332,18 @@ def nivel():
 
 
 def aviso():
-    """Linha do SessionStart quando o nível pede juiz (3) e não há chave. Sem rede, sem cofre."""
-    if nivel() < 3 or provedores(rede=False):
+    """Linha do SessionStart quando o nível pede juiz (3) e falta chave ou redator. Sem rede, sem cofre."""
+    if nivel() < 3:
         return ""
-    return ("Juiz DESLIGADO: sem chave — nível 2 (regras chegam, mas ninguém lê a resposta antes de sair). "
-            f"Pra ligar: {CMD} configurar --auto (acha a chave que você já tem) · {CMD} configurar (cola escondido no "
-            f"terminal) · {CMD} link (formulário de uso único). Chave colada no chat não é usada.")
+    if not provedores(rede=False):
+        return ("Juiz DESLIGADO: sem chave — nível 2 (regras chegam, mas ninguém lê a resposta antes de sair). "
+                f"Pra ligar: {CMD} configurar --auto (acha a chave que você já tem) · {CMD} configurar (cola escondido no "
+                f"terminal) · {CMD} link (formulário de uso único). Chave colada no chat não é usada.")
+    red = REDATOR or conf().get("ADAS_REDATOR")
+    if not red or not os.path.isfile(red):
+        return ("Juiz DESLIGADO: sem redator — defina ADAS_REDATOR=<caminho do redator de segredos> no ambiente ou em "
+                f"{CONF}. Sem ele nenhum texto sai para o juiz (fail-closed).")
+    return ""
 
 
 # ───────────────────────── configurar ─────────────────────────
@@ -521,8 +527,11 @@ def main(a):
             if av:
                 print(av)
             return 0
-        ps = provedores(rede=False)
-        print(("juiz: " + ", ".join(p["nome"] for p in ps)) if ps else aviso())
+        ps, av = provedores(rede=False), aviso()
+        if av:
+            print(av)
+        if ps:
+            print("juiz: " + ", ".join(p["nome"] for p in ps))
         return 0
     if cmd == "testar":
         ps = provedores()

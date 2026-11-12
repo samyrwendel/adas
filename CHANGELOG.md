@@ -3,6 +3,14 @@
 Cada versão diz o que muda para quem usa, não a lista de commits. A primeira linha `Resumo:` de cada
 versão é a que aparece no aviso de versão nova da sessão.
 
+## 1.1.5 — 2026-11-11
+
+Resumo: o juiz exige redator de segredos configurado (ADAS_REDATOR) e avisa quando falta; check de mecanismo cobra só DA em vigor.
+
+- **Redator do juiz por configuração.** Saiu o caminho padrão de instância. Defina `ADAS_REDATOR` (env ou `~/.adas/juiz.env`). Sem ele nenhum texto vai pro juiz, e agora `adas juiz status` e o SessionStart dizem "Juiz DESLIGADO: sem redator" em vez de listar provedores como se estivesse ligado.
+- **Check de mecanismo cobra a regra em vigor.** DA superada ou consolidada sai da fila; a vigência só vale pro `DECISIONS.md` da raiz, outro diário é auditado inteiro.
+- **BLOCK novo:** projeto ADAS (com `.adas/profile.json`) fora de repo git reprova no `check-adas.sh`.
+
 ## 1.1.4 — 2026-11-01
 
 Resumo: quando o dono diz "a partir de agora…", o agente registra a decisão no diário e não só na memória dele.

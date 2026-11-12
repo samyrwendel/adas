@@ -368,8 +368,8 @@ rj.D = _D0
 print("── juiz externo (task 20261109-022): segredo não sai, texto é DADO, saída só probabilidade ──")
 import importlib.util as _iuj
 _spj = _iuj.spec_from_file_location("jp_limpo", os.path.join(JD, "juiz_prov.py")); jpl = _iuj.module_from_spec(_spj); _spj.loader.exec_module(jpl)
-_RH_RED = os.path.join(os.path.expanduser("~"), "claude-tg-tmux", "scripts", "lib", "redact-secrets.py")
-if os.path.exists(_RH_RED):
+_RH_RED = os.environ.get("ADAS_REDATOR") or jpl.conf().get("ADAS_REDATOR") or ""  # redator da instância, pela config (R4)
+if os.path.isfile(_RH_RED):
     jpl.REDATOR = _RH_RED; os.environ["REDACT_FONTES"] = os.path.join(T, "nada")  # só a metade de padrões; cofre real fora do teste
     _a = "abcdefghij0123456789ABCDEFGHIJ0123456789"  # chaves falsas montadas em runtime (o pre-commit reprova literal)
     _falsas = ["sk-" + "proj" + _a[:30], "gh" + "p_" + _a[:36], "AI" + "za" + _a[:35], "AK" + "IA" + "ABCDEFGHIJ012345",

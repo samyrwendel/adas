@@ -112,13 +112,19 @@ caminho_existe() {
 nfail=0; nwarn=0; nunver=0; nproib=0; nok=0; npulo=0
 # Só DA VIGENTE é cobrada (fila nasceu como "DAs vigentes sem trava"): superada/consolidada responde
 # pela cabeça. Vigência vem do da-index.sh (raiz ou ao lado deste script); sem ele, audita tudo.
-declare -A VIG=(); TEM_VIG=0
-for idx in "$ROOT/scripts/da-index.sh" "$(dirname "$0")/da-index.sh"; do
-  [ -f "$idx" ] || continue
-  vout="$(bash "$idx" list --vigentes "$ROOT" 2>/dev/null)" || break
-  while read -r v; do VIG[$v]=1; TEM_VIG=1; done < <(printf '%s\n' "$vout" | grep -oE '^- DA-[0-9]+' | cut -c3-)
-  break
-done
+declare -A VIG=() CONH=(); TEM_VIG=0
+# Só pula a DA que o índice CONHECE e marca 🔄/📚; id que o índice não listou é auditado.
+# A vigência só vale para o diário que o da-index leu (<raiz>/DECISIONS.md). Outro arquivo = audita tudo.
+if [ "$DEC" -ef "$ROOT/DECISIONS.md" ]; then
+  for idx in "$ROOT/scripts/da-index.sh" "$(dirname "$0")/da-index.sh"; do
+    [ -f "$idx" ] || continue
+    tout="$(bash "$idx" list "$ROOT" 2>/dev/null)" || break
+    vout="$(bash "$idx" list --vigentes "$ROOT" 2>/dev/null)" || break
+    while read -r v; do CONH[$v]=1; TEM_VIG=1; done < <(printf '%s\n' "$tout" | grep -oE '^- DA-[0-9]+' | cut -c3-)
+    while read -r v; do VIG[$v]=1; done < <(printf '%s\n' "$vout" | grep -oE '^- DA-[0-9]+' | cut -c3-)
+    break
+  done
+fi
 declare -A ADENDO=()
 REGS=()
 while IFS=$'\037' read -r id dt regra mec; do
@@ -128,7 +134,7 @@ for reg in ${REGS[@]+"${REGS[@]}"}; do
   IFS=$'\037' read -r id dt regra mec <<< "$reg"
   mec="$mec ${ADENDO[$id]:-}"
   printf '%s\n' "$regra" | grep -qiE "$PROIBE" || continue
-  if [ "$TEM_VIG" = 1 ] && [ -z "${VIG[$id]:-}" ]; then npulo=$((npulo + 1)); continue; fi
+  if [ "$TEM_VIG" = 1 ] && [ -n "${CONH[$id]:-}" ] && [ -z "${VIG[$id]:-}" ]; then npulo=$((npulo + 1)); continue; fi
   nproib=$((nproib + 1))
   motivo=""
   if [ -z "${mec// /}" ]; then

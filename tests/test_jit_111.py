@@ -100,6 +100,11 @@ o = run(["python3", os.path.join(J, "juiz_prov.py"), "status", "--aviso"], {"ADA
 chk("nível 2 fixado → sem aviso (o juiz não foi pedido)", o.strip() == "", o)
 o = run(["python3", os.path.join(J, "juiz_prov.py"), "status", "--aviso"], {"OPENROUTER_API_KEY": "x"}).stdout
 chk("com chave → silêncio", o.strip() == "", o)
+SEMRED = {k: v for k, v in LIMPO.items() if k != "ADAS_REDATOR"}
+for sub in (["status", "--aviso"], ["status"]):
+    r = subprocess.run(["python3", os.path.join(J, "juiz_prov.py"), *sub], capture_output=True, text=True,
+                       env=dict(SEMRED, HOME=T, OPENROUTER_API_KEY="x"), timeout=30)
+    chk(f"com chave e SEM redator → {' '.join(sub)} diz 'sem redator' (não finge juiz ligado)", "Juiz DESLIGADO: sem redator" in r.stdout, r.stdout)
 os.makedirs(os.path.join(T, ".claude", "adas"), exist_ok=True)
 open(os.path.join(T, ".claude", "adas", "source"), "w").write(ROOT)
 o = run(["bash", os.path.join(ROOT, "host", "adas-activate.sh")], {"ADAS_VERSION_CHECK": "off", "ADAS_JIT_NIVEL": "3"}, inp="{}").stdout

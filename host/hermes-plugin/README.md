@@ -72,6 +72,8 @@ Ledger em `governanca/jit/jit.log`. Nível em `ADAS_JIT_NIVEL`: sem Ollama no co
 Juiz: mesmos provedores do Claude Code (`host/jit/juiz_prov.py`); o `$HERMES_HOME/.env` entra como ponteiro
 (`ADAS_JUIZ_ENVFILE`), a chave não é copiada. Mensagem do usuário com chave colada (formato `sk-…`, `ghp_…`, token de
 bot…) vira aviso pro modelo: não usar, mandar revogar e indicar o link de uso único (DA-479).
+O juiz só envia texto depois do redator de segredos: defina `ADAS_REDATOR` (env do container ou linha no `juiz.env`)
+apontando pro redator da instância. Sem ele o juiz fica desligado e `juiz_prov.py status` diz "sem redator".
 
 Link de uso único pelo bot (usuário só-chat): um comando rápido do Hermes que roda o `link` e devolve a URL.
 **Não provado num Hermes vivo** nesta versão; confira o nome da chave na doc de
