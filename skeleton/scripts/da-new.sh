@@ -36,7 +36,9 @@ ficha() {
   echo
   echo "| Campo | Onde | Obrigatório | Teto | No molde | Valores | Como escrever |"
   echo "|---|---|---|---|---|---|---|"
-  linhas | awk -F'\t' '{ printf "| %s | %s | %s | %s | %s | %s | %s |\n", ($1=="cab" ? "`" $3 ":`" : "**" $3 ":**"), $1, $4, $5, ($6=="s" ? "sim" : "não"), $8, $9 }'
+  linhas | awk -F'\t' 'function esc(x,   n, p, i, o) { n = split(x, p, "|"); o = p[1]; for (i = 2; i <= n; i++) o = o "\\|" p[i]; return o }   # barra na célula quebra a tabela
+  { $8 = esc($8); $9 = esc($9)
+    printf "| %s | %s | %s | %s | %s | %s | %s |\n", ($1=="cab" ? "`" $3 ":`" : "**" $3 ":**"), $1, $4, $5, ($6=="s" ? "sim" : "não"), $8, $9 }'
 }
 usage() { echo 'uso: da-new.sh --tipo <'"$(valores_de tipo)"'> <escopo> <saga> "<título>" [dir]   ·   da-new.sh --ajuda | --ficha' >&2; exit 2; }
 
@@ -51,7 +53,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ "${#POS[@]}" -ge 3 ] || usage
-if [ -z "$TIPO" ] || [[ "|$(valores_de tipo)|" != *"|$TIPO|"* ]]; then
+if [ -z "$TIPO" ] || [[ "$TIPO" == *"|"* ]] || [[ "|$(valores_de tipo)|" != *"|$TIPO|"* ]]; then
   echo "✗ da-new: --tipo é obrigatório e vale $(valores_de tipo) (veio '${TIPO}')." >&2
   echo "  regra manda ou proíbe; registro é fato (o que foi feito, onde roda) e não vira cartão." >&2
   usage

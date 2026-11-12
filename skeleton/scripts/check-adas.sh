@@ -23,7 +23,7 @@ SKILLS_DIR="${SKILLS_DIR:-.claude/skills}"
 SPECS_DIR="${SPECS_DIR:-.specs}"
 ADAS="${ADAS:-ADAS.md}"
 DECISIONS="${DECISIONS:-DECISIONS.md}"
-warn=0; block=0; notes=0
+warn=0; block=0; notes=0; lock_fail=0
 note(){ echo "• $*"; notes=$((notes+1)); }
 
 # 1) PLACEHOLDER não preenchido → bootstrap incompleto (WARN)
@@ -236,6 +236,24 @@ elif [ "${ADAS_CHECK_REMOTE:-0}" = "1" ] && command -v git >/dev/null 2>&1; then
   fi
 fi
 
+# 8b) CÓPIAS CARIMBADAS (Fase 3, decisão do dono msg 13512): scripts/ vem do produto por `adas sync`, que grava
+# .adas/skeleton.lock (sha256 por arquivo). Cópia editada à mão = FAIL — a mudança vai no produto (adas/skeleton*)
+# e desce por `adas sync`; senão a casa deriva em silêncio (59 de 96 cópias divergiam, parecer 006). Sem lock = casa
+# ainda não sincronizada: nada a conferir aqui (o `adas test` lista quem falta). Lock atrás do clone instalado = WARN.
+if [ -f .adas/skeleton.lock ]; then
+  while IFS=$'\t' read -r sha arq; do
+    case "$sha" in ''|\#*) continue;; esac
+    [ "$(sha256sum "scripts/$arq" 2>/dev/null | cut -d' ' -f1)" = "$sha" ] \
+      || { note "scripts/$arq difere do carimbo (.adas/skeleton.lock) — edite no produto (adas/skeleton) e rode: adas sync $PWD"; lock_fail=1; }
+  done < .adas/skeleton.lock
+  lock_v="$(sed -n 's/^# versao: //p' .adas/skeleton.lock | head -1)"
+  src_v="$(cat "$(cat "$HOME/.claude/adas/source" 2>/dev/null)/VERSION" 2>/dev/null)"
+  if [ -n "$lock_v" ] && [ -n "$src_v" ] && [ "$lock_v" != "$src_v" ] \
+     && [ "$(printf '%s\n%s\n' "$lock_v" "$src_v" | sort -V | head -1)" = "$lock_v" ]; then
+    note "scripts/ carimbados na $lock_v, ADAS instalado é $src_v — rode: adas sync $PWD"; warn=1
+  fi
+fi
+
 # 9) ENFORCEMENT LIGADO? → WARN. O modo de falha nº0, antes de todos os outros: o sistema
 # inteiro DESLIGADO. Este check auditava higiene de doc e nunca perguntava "eu estou ATIVO?" —
 # uma instalação-fantasma (ADAS.md copiado à mão, zero hooks) passava com warns cosméticos.
@@ -377,7 +395,7 @@ if [ -f "$DECISIONS" ] && [ -f "$SELFDIR/check-da-gatilho.py" ]; then
 fi
 
 # veredito
-v="ok"; [ "$warn" -ne 0 ] && v="warn"; [ "$block" -ne 0 ] && v="block"
+v="ok"; [ "$warn" -ne 0 ] && v="warn"; [ "$block" -ne 0 ] && v="block"; [ "$lock_fail" -ne 0 ] && v="block"
 if [ "$SEAL" = "1" ]; then
   mkdir -p .adas
   { echo "selado: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -387,6 +405,7 @@ if [ "$SEAL" = "1" ]; then
   } > .adas/install-check
   echo "🔏 selo gravado em .adas/install-check (veredito: $v, $notes aviso(s)) — versione-o: é a prova, não cache"
 fi
+if [ "$lock_fail" -ne 0 ]; then echo "✗ check-adas: script sincronizado editado à mão (acima) — edite no produto e rode adas sync"; exit 1; fi
 if [ "$mec_block" -ne 0 ]; then echo "✗ check-adas: DA nova proíbe sem **Mecanismo:** que exista (DA-004 do repo adas) — corrija antes de seguir"; exit 1; fi
 if [ "$block" -ne 0 ]; then echo "✗ check-adas: faixa quebrada (frontmatter) — corrija antes de seguir"; exit 1; fi
 if [ "$warn" -ne 0 ]; then echo "⚠ check-adas: avisos de higiene do ADAS (acima) — não bloqueia"; exit 0; fi

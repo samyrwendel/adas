@@ -122,7 +122,34 @@ while IFS=$'\t' read -r _ ch _; do
 done < <(linhas)
 [ "$(le dump | head -1 | cut -f3- | tr '\t' ' ')" = "$(linhas | cut -f2 | paste -sd' ')" ] \
   && pass "dump: colunas = chaves do esquema, na ordem" || fail "dump: cabeçalho difere do esquema"
-gera -; ck="$(DA_FICHA_DESDE=2026-11-13 bash "$IDX" check "$W" 2>&1)"
+gera -; bash "$IDX" update "$W" >/dev/null 2>&1; ck="$(DA_FICHA_DESDE=2026-11-13 bash "$IDX" check "$W" 2>&1)"
 grep -q 'WARN ficha: DA-002' <<< "$ck" && fail "a fixture montada do esquema não passa na ficha: $(grep 'ficha: DA-002' <<< "$ck" | head -2)" \
   || pass "DA montada do esquema passa no check da ficha"
+
+# ---- 4. ressalvas da revisão 018 (R1–R5): cada uma com dente ------------------------------------------
+ficha_avisa(){ bash "$IDX" update "$W" >/dev/null 2>&1; DA_FICHA_DESDE="${1:-}" bash "$IDX" check "$W" 2>&1 | grep -q "WARN ficha: $2"; }
+semtipo(){ sed -i 's/ · `tipo: regra`//' "$W/DECISIONS.md"; }
+gera -; semtipo
+ficha_avisa 2026-11-13 DA-002 && pass "base: DA nova sem tipo avisa" || fail "base: DA nova sem tipo NÃO avisou"
+gera -; semtipo; sed -i '/^## DA-002/,$ s/ · `data: 2026-11-20`//' "$W/DECISIONS.md"
+ficha_avisa 2026-11-13 DA-002 && pass "R1: DA sem data, depois da última antiga, não escapa do contrato" || fail "R1: DA sem data escapou do contrato"
+gera -; semtipo; sed -i '0,/`data: 2026-11-20`/! s/`data: 2026-11-20`/`data: 20\/11\/2026`/' "$W/DECISIONS.md"
+ficha_avisa 2026-11-13 "DA-002 data '20/11/2026'" && pass "R1: data fora de AAAA-MM-DD avisa" || fail "R1: data 20/11/2026 passou calada"
+gera -; semtipo; sed -i '0,/ · `data: 2026-11-20`/ s/ · `data: 2026-11-20`//; s/`data: 2026-11-20`/`data: 2026-11-01`/' "$W/DECISIONS.md"
+ficha_avisa 2026-11-13 'DA-00' && fail "R1: DA antiga sem data (antes de uma datada antiga) ganhou aviso" || pass "R1: DA antiga sem data segue sem aviso"
+gera -; sed -i 's/`tipo: regra`/`tipo: regra|registro`/' "$W/DECISIONS.md"
+ficha_avisa 2026-11-13 "DA-002 tipo 'regra|registro'" && pass "R2: check avisa tipo com '|'" || fail "R2: tipo 'regra|registro' passou no check"
+bash "$NEW" --tipo 'regra|registro' produto nova/t "x" "$T/m" >/dev/null 2>&1; [ $? = 2 ] && pass "R2: da-new.sh recusa --tipo 'regra|registro'" || fail "R2: da-new.sh aceitou --tipo 'regra|registro'"
+quebradas="$(bash "$NEW" --ficha | grep '^| ' | sed 's/\\|//g' | awk -F'|' 'NF!=9' | head -2)"
+[ -z "$quebradas" ] && pass "R3: toda linha da ficha tem 7 colunas (barra na célula escapada)" || fail "R3: linha da ficha quebrada: $quebradas"
+JIT="$S/../../host/jit/adas-jit-test.sh"
+if [ -f "$JIT" ]; then   # só no repo do produto: toda etiqueta de aresta (valores ids/ids()) tem classe no mapa do T6
+  faltam="$(linhas | awk -F'\t' '$8=="ids"||$8=="ids()"{print $2}' | while read -r k; do grep -q "^CL = .*\"$k\":" "$JIT" || printf '%s ' "$k"; done)"
+  [ -z "$faltam" ] && pass "R4: mapa tipo→classe do adas-jit-test cobre as arestas do esquema" || fail "R4: mapa CL do adas-jit-test.sh sem: $faltam"
+fi
+gera -; semtipo; echo 2026-12-01 > "$W/.adas/ficha-desde"
+ficha_avisa "" DA-002 && fail "R5: corte da casa (.adas/ficha-desde) ignorado" || pass "R5: DA anterior ao .adas/ficha-desde da casa não ganha aviso"
+echo 2026-11-13 > "$W/.adas/ficha-desde"
+ficha_avisa "" DA-002 && pass "R5: DA posterior ao .adas/ficha-desde avisa" || fail "R5: com ficha-desde 2026-11-13 a DA nova não avisou"
+rm -f "$W/.adas/ficha-desde"
 echo "contrato: $ok ok, $ko falha(s)"; [ "$ko" = 0 ]

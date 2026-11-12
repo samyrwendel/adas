@@ -4,12 +4,14 @@
 #   adas nivel [mudancas]                                         termostato do ADAS-JIT (DA-468)
 #   adas versao | adas update                                     versão instalada / atualização segura
 #   adas test [--sem-varredura|--selftest|--linha]                roda todas as suítes do ADAS (relógio, Fase 1)
+#   adas sync <casa>...|--all [--force] [--check]                 scripts do produto → casas, com .adas/skeleton.lock (Fase 3)
 J="$(dirname "$(readlink -f "$0")")/jit"
 case "${1:-}" in
   juiz) shift; exec python3 "$J/juiz_prov.py" "${@:-status}" ;;
   nivel) shift; exec python3 "$J/termostato.py" "$@" ;;
   versao) cat "$HOME/.claude/adas/VERSION" 2>/dev/null || cat "$J/../../VERSION" ;;
   test) shift; exec bash "$J/../adas-test.sh" "$@" ;;
+  sync) shift; exec bash "$J/../adas-sync.sh" "$@" ;;
   update) shift; exec bash "$J/../update.sh" "$@" ;;
-  *) sed -n '2,6p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  *) sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

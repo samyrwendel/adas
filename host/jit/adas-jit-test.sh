@@ -192,7 +192,7 @@ _gt = os.path.join(T, "gfix"); os.makedirs(_gt, exist_ok=True)
 _dc.compila_grafo([{"id": "DA-901", "hash": "h1"}, {"id": "DA-902", "hash": "h2", "filhos": ["DA-901"]}], _gt, {})
 gfix = json.load(open(os.path.join(_gt, "grafo.json")))
 chk("T6 grafo (fixture): adendo que mecaniza DA-901 gera aresta mecanismo-de", any(e["a"] == "DA-902" and e["b"] == "DA-901" and e["tipo"] == "mecanismo-de" for e in gfix), str(gfix))
-CL = {"refs": "explícita", "consolida": "explícita", "supersede": "explícita", "mecanismo-de": "explícita", "saga": "pertencimento", "semântica": "semântica", "adesao": "aprendida", "entidade": "entidade"}
+CL = {"refs": "explícita", "consolida": "explícita", "supersede": "explícita", "parcial": "explícita", "mecanismo-de": "explícita", "saga": "pertencimento", "semântica": "semântica", "adesao": "aprendida", "entidade": "entidade"}
 chk("T6 grafo.json: toda aresta tem classe ∈ {explícita, pertencimento, semântica, aprendida, entidade} e casa com o tipo (GLOSSARIO.md)",
     all(e.get("classe") == CL.get(e["tipo"]) for e in g), str([e for e in g if e.get("classe") != CL.get(e["tipo"])][:2]))
 import importlib.machinery, importlib.util

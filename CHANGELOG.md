@@ -3,6 +3,17 @@
 Cada versão diz o que muda para quem usa, não a lista de commits. A primeira linha `Resumo:` de cada
 versão é a que aparece no aviso de versão nova da sessão.
 
+## 1.4.0 — 2026-11-12
+
+Resumo: `adas sync` leva os scripts do produto às casas com carimbo sha256; cópia editada à mão reprova o check-adas.
+
+- **`adas sync <casa>|--all`**: copia `skeleton/scripts/` (ou `skeleton-v4`) para `<casa>/scripts/` e grava `.adas/skeleton.lock` com geração, versão, commit e sha256 de cada arquivo. Cópia editada na casa não é sobrescrita sem `--force` (traga a mudança pro produto primeiro); a recusa é atômica por casa. A geração fica no lock e não troca sem `--force`. Scripts próprios da casa não entram no lock.
+- **`check-adas.sh` confere o lock** (passo 8b; 7b no v4): arquivo fora do hash = FAIL, rc 1 ("edite no produto e rode adas sync"). Lock atrás do ADAS instalado = aviso. Casa sem lock: nada muda até o primeiro sync.
+- **Corte do contrato por casa**: o primeiro sync grava `.adas/ficha-desde`; DA anterior ao sync não ganha aviso de ficha.
+- **`adas test`** roda `tests/sync.test.sh` e confere o lock de cada casa do `repos.conf` (casa sem lock só é listada).
+- **`update.sh`** avisa casa com `da-new.sh` sem `da-schema.tsv` e confere o lock das casas sincronizadas; copiar é o `adas sync`, nunca o update.
+- Ressalvas da revisão da Fase 2: DA sem `data:` ISO não escapa mais do contrato (data fora de AAAA-MM-DD avisa); `--tipo 'regra|registro'` é recusado; `docs/ficha.md` sem tabela quebrada; o mapa de arestas do teste JIT conhece `parcial`. Cada uma com teste no `contrato.test.sh`.
+
 ## 1.3.0 — 2026-11-12
 
 Resumo: a ficha da DA virou um arquivo só (`da-schema.tsv`); o molde, a instrução e o aviso de ficha fora do padrão saem dele.

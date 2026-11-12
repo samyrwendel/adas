@@ -857,7 +857,9 @@ _ficha_lista_pura() {  # _ficha_lista_pura <valor> <ids|ids()> → 0 se só há 
 }
 
 ficha_check() {
-  local dir="$1" desde="${DA_FICHA_DESDE:-2026-11-13}" LC_ALL=C.UTF-8
+  local dir="$1" desde LC_ALL=C.UTF-8
+  # corte: env > carimbo da casa (.adas/ficha-desde, gravado pelo adas sync na 1ª vez — Fase 3) > padrão do produto
+  desde="${DA_FICHA_DESDE:-$(head -1 "$dir/.adas/ficha-desde" 2>/dev/null)}"; desde="${desde:-2026-11-13}"
   load_schema || return 0
   load_dump "$dir"
   local proibe='(^|[^[:alnum:]_])(nunca|proibid[oa]s?|n[ãa]o pode|jamais|somente|s[óo])([^[:alnum:]_]|$)'
@@ -868,9 +870,16 @@ ficha_check() {
   for j in "${!SCH_CHAVE[@]}"; do
     [ "${SCH_CHAVE[j]}" = tipo ] && tipo_j=$j; [ "${SCH_CHAVE[j]}" = regra ] && regra_j=$j
   done
+  # DA sem `data:` em AAAA-MM-DD não escapa do contrato: num diário append-only ela é NOVA se nenhuma DA depois
+  # dela tem data anterior ao corte (R1 da revisão 018). As antigas sem data ficam todas antes da última datada antiga.
+  local iso='^[0-9]{4}-[0-9]{2}-[0-9]{2}$' ult_antiga=-1
+  for ((i=0; i<N; i++)); do [[ "${DATATAG[i]}" =~ $iso ]] && [[ "${DATATAG[i]}" < "$desde" ]] && ult_antiga=$i; done
   for ((i=0; i<N; i++)); do
     local d="${DATATAG[i]}"
-    [ -n "$d" ] && [[ ! "$d" < "$desde" ]] || continue
+    if [[ "$d" =~ $iso ]]; then [[ ! "$d" < "$desde" ]] || continue
+    else [ "$i" -gt "$ult_antiga" ] || continue
+         [ -n "$d" ] && echo "WARN ficha: ${KEY[i]} data '$d' fora de AAAA-MM-DD"
+    fi
     local -a val; IFS="$SEP" read -ra val <<< "${DUMP_ROW[i]}$SEP"   # SEP final: preserva campo vazio no fim
     local tipo="" regra=""; [ "$tipo_j" -ge 0 ] && tipo="${val[tipo_j]:-}"; [ "$regra_j" -ge 0 ] && regra="${val[regra_j]:-}"
     for j in "${!SCH_CHAVE[@]}"; do
@@ -900,7 +909,7 @@ ficha_check() {
       case "$va" in
         -|'') ;;
         ids|'ids()') _ficha_lista_pura "$v" "$va" || echo "WARN ficha: ${KEY[i]} $r não é lista pura de ids: $v" ;;
-        *) [[ "|$va|" == *"|$v|"* ]] || echo "WARN ficha: ${KEY[i]} $r '$v' fora de $va" ;;
+        *) [[ "$v" != *"|"* && "|$va|" == *"|$v|"* ]] || echo "WARN ficha: ${KEY[i]} $r '$v' fora de $va" ;;
       esac
       # supersede/parcial apontam para a CABEÇA vigente: alvo já consolidado/superado por OUTRA DA → aviso
       if [ "${SCH_ONDE[j]}" = cab ] && [ "$va" = "ids()" ]; then

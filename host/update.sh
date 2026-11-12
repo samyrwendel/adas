@@ -7,8 +7,8 @@
 # O que troca: o clone deste repo (git merge --ff-only) e os hooks do host (re-roda install.sh, que
 # faz backup do settings.json em .bak-adas antes do merge). O que NUNCA toca: DECISIONS.md, CONDUCT.md,
 # .specs/, fixtures locais (~/.adas/fixtures), cards/grafo compilados, repos governados.
-# Para os repos governados (repos.conf), só LISTA quais têm scripts/ diferentes do skeleton novo;
-# copiar é decisão de quem cuida do repo (o skeleton pode ter sido adaptado lá).
+# Para os repos governados (repos.conf), só CONFERE: com lock, o carimbo (adas sync --check); sem lock, lista os
+# scripts/ diferentes do skeleton novo; avisa se falta o da-schema.tsv. Copiar é o `adas sync` (Fase 3), nunca o update.
 # Clone com mudança local ou fora do fast-forward → aborta sem mexer em nada.
 set -uo pipefail
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -52,11 +52,14 @@ if [ -f "$conf" ]; then
   while IFS= read -r repo; do
     case "$repo" in ''|\#*) continue;; esac
     [ -d "$repo/scripts" ] || continue
+    [ -f "$repo/scripts/da-new.sh" ] && [ ! -f "$repo/scripts/da-schema.tsv" ] \
+      && echo "⚠ $repo: falta scripts/da-schema.tsv — o da-new.sh do produto não cria DA sem ele; rode: adas sync $repo"
+    if [ -f "$repo/.adas/skeleton.lock" ]; then bash "$DIR/host/adas-sync.sh" --check "$repo"; continue; fi
     dif=""
     for f in "$DIR"/skeleton/scripts/*; do
       b="$(basename "$f")"; [ -f "$repo/scripts/$b" ] && ! cmp -s "$f" "$repo/scripts/$b" && dif="$dif $b"
     done
-    [ -n "$dif" ] && echo "• $repo: scripts/ diferente do skeleton novo:$dif (copiar é decisão do repo)"
+    [ -n "$dif" ] && echo "• $repo: scripts/ diferente do skeleton novo:$dif — sem lock; rode: adas sync $repo (recusa cópia editada sem --force)"
   done < "$conf"
 fi
 exit 0

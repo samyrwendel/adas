@@ -92,6 +92,12 @@ echo '{"tool_input":{"file_path":"/caminho/do/repo/arquivo-de-faixa"}}' | bash ~
 CLAUDE_PROJECT_DIR=/caminho/do/repo bash -c 'echo "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/x\"}}" | bash ~/.claude/hooks/adas-route.sh'  # guard: vazio
 ```
 
+## Distribuição (`adas sync`)
+
+O produto é o único lugar editável dos scripts do ADAS. `adas sync <casa>` (ou `--all`, sobre o `repos.conf`)
+copia `skeleton*/scripts/` para a casa e grava `.adas/skeleton.lock` (sha256 por arquivo); o `check-adas.sh` da
+casa reprova cópia fora do hash. Cópia editada na casa só é sobrescrita com `--force`. `adas sync --check` só confere.
+
 ## Relógio (`adas test` + `adas-selftest.timer`)
 
 `adas test` roda todas as suítes do produto (esqueleto, harness do `da-index`, smoke, smoke-v4) e a varredura

@@ -103,6 +103,13 @@ else
   roda "skeleton/da-index/run-tests.sh" bash "$ROOT/skeleton/scripts/tests/da-index/run-tests.sh"
   roda "tests/smoke.sh"    bash "$ROOT/tests/smoke.sh"
   roda "tests/smoke-v4.sh" bash "$ROOT/tests/smoke-v4.sh"
+  roda "tests/sync.test.sh" bash "$ROOT/tests/sync.test.sh"
+  CONF="${ADAS_REPOS_CONF:-$HOME/.claude/adas/repos.conf}"
+  if [ -f "$CONF" ]; then   # Fase 3: cada casa do repos.conf — com lock, 0 arquivo fora do hash; sem lock, só listada
+    locks="$(bash "$ROOT/host/adas-sync.sh" --check --all 2>&1)"; rc=$?
+    roda "locks das casas (repos.conf)" bash -c "exit $rc"
+    printf '%s\n' "$locks" | sed 's/^/      /'
+  fi
   [ "$VARRE" = 1 ] && roda "varredura DA-530 (pasta .adas sem git)" varredura_da530
 fi
 
