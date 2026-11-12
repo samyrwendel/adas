@@ -240,7 +240,7 @@ fi
 # 8b) CÓPIAS CARIMBADAS (Fase 3, decisão do dono msg 13512): scripts/ vem do produto por `adas sync`, que grava
 # .adas/skeleton.lock (sha256 por arquivo). Cópia editada à mão = FAIL — a mudança vai no produto (adas/skeleton*)
 # e desce por `adas sync`; senão a casa deriva em silêncio (59 de 96 cópias divergiam, parecer 006). Sem lock = casa
-# ainda não sincronizada: nada a conferir aqui (o `adas test` lista quem falta). Lock atrás do clone instalado = WARN.
+# ainda não sincronizada = WARN (o `adas test` lista quem falta). Lock atrás do clone instalado = WARN.
 if [ -f .adas/skeleton.lock ]; then
   while IFS=$'\t' read -r sha arq; do
     case "$sha" in ''|\#*) continue;; esac
@@ -253,6 +253,8 @@ if [ -f .adas/skeleton.lock ]; then
      && [ "$(printf '%s\n%s\n' "$lock_v" "$src_v" | sort -V | head -1)" = "$lock_v" ]; then
     note "scripts/ carimbados na $lock_v, ADAS instalado é $src_v — rode: adas sync $PWD"; warn=1
   fi
+else   # parecer 028: sem lock nada aqui confere a cópia — avisa (o FAIL fica para o fechamento da 3c)
+  note "sem .adas/skeleton.lock — scripts/ não carimbados, cópia editada à mão passa calada; rode: adas sync $PWD"; warn=1
 fi
 
 # 9) ENFORCEMENT LIGADO? → WARN. O modo de falha nº0, antes de todos os outros: o sistema

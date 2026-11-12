@@ -30,7 +30,8 @@ adopt "$T/doc"; cd "$T/doc"
 bash scripts/adas-init.sh --modo doc --fonte "$ROOT" >/dev/null 2>&1; rc=$?
 [ "$rc" = 0 ] && ok "adas-init --modo doc exit 0" || bad "adas-init --modo doc exit $rc"
 out="$(bash scripts/check-adas.sh 2>"$T/doc.err")"; rc=$?
-n="$(printf '%s\n' "$out" | grep -c '^•')"
+n="$(printf '%s\n' "$out" | grep '^•' | grep -vc 'sem .adas/skeleton.lock')"   # casa do adas-init ainda não passou por adas sync: o aviso de lock é esperado (1.4.4)
+grep -q '^• sem .adas/skeleton.lock' <<< "$out" && ok "casa sem lock ganha o aviso (1.4.4)" || bad "casa sem lock sem aviso"
 [ "$rc" = 0 ] && ok "check-adas exit 0" || bad "check-adas exit $rc"
 [ "$n" = 1 ] && ok "exatamente 1 linha • (era 8 no esqueleto anterior)" || { bad "$n linhas • (esperado 1):"; printf '%s\n' "$out" | grep '^•' | sed 's/^/      /'; }
 grep -q '^• PLACEHOLDER ainda presente — preencha: .*DECISIONS.md' <<< "$out" && ok "o 1 aviso é o PLACEHOLDER, com a lista de arquivos" || bad "o aviso não é o PLACEHOLDER com lista"
@@ -80,7 +81,7 @@ grep -q 'adas-modo: mecanismo' ADAS.md && [ ! -f mecanismo/ADAS.mecanismo.md ] &
 grep -q '"modo": *"mecanismo"' .adas/profile.json && ok "profile.json declara modo mecanismo" || bad "modo mecanismo não gravado"
 outm="$(bash scripts/check-adas.sh 2>&1)"; rcm=$?
 [ "$rcm" = 1 ] && ok "check-adas exit 1 em modo mecanismo virgem (o contrato do modo)" || bad "check-adas exit $rcm (esperado 1)"
-[ "$(printf '%s\n' "$outm" | grep -c '^•')" = 1 ] && ok "ainda só 1 linha • (placeholder) — o FAIL é do mecanismo, não ruído" || bad "linhas • em mecanismo ≠ 1"
+[ "$(printf '%s\n' "$outm" | grep '^•' | grep -vc 'sem .adas/skeleton.lock')" = 1 ] && ok "ainda só 1 linha • (placeholder) — o FAIL é do mecanismo, não ruído" || bad "linhas • em mecanismo ≠ 1"
 grep -q '✓ \[mecanismo\] invariante 1 «Segredo nunca entra no repo»' <<< "$outm" && ok "invariante de referência (check-secrets + teste) PASSA" || bad "invariante de referência não passou"
 grep -q '✗ \[mecanismo\] invariante 2 .*não existe' <<< "$outm" && grep -q '✗ \[mecanismo\] invariante 3' <<< "$outm" && ok "invariantes-modelo sem gatilho são LISTADOS como FAIL" || bad "invariantes sem gatilho não listados"
 [ "$out" != "$outm" ] && ok "saída do modo doc ≠ saída do modo mecanismo (o modo não é decorativo)" || bad "saídas iguais nos dois modos"

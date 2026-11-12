@@ -1,0 +1,11 @@
+# sync-triados.tsv — cópia editada numa casa que o produto JÁ triou trecho a trecho (subiu, já estava, ou foi
+# descartada com motivo). O `adas sync` trata o blob listado como versão antiga daquele arquivo: troca sem --force.
+# Só entra blob lido inteiro contra a origem; o motivo fica aqui, versionado. Uma linha por blob:
+# <sha1 do blob (git hash-object)>	<geração>/<caminho no produto>	<casa> · <decisão> — <motivo>
+2988424a2c890d732ef3091f36b48564831cb4c2	skeleton-v4/scripts/check-secrets.sh	nest-egg · SOBE (1.4.4) — porta 2 por NOME honra a allowlist (task 20260925-031); 5 linhas sobre o 55b658a, mais nada
+8b656be10f23091f9b4faec18231ab4190132be1	skeleton-v4/scripts/check-da-refs.sh	nest-egg · SOBE (1.4.4) — DECISIONS-LICOES.md (derivado) fora da varredura; o --exclude='*.lock' que falta na casa JÁ ESTÁ no produto
+6e90fd540aaf1d5485352ae773886f88bc27de6d	skeleton/scripts/da-index.sh	nest-egg · DESCARTA — 38 linhas sobre o 956991b, todas DA→DAS em comentário/mensagem (e "DA-"182" = mesmo caminho); o check-da-refs 1.4.4 pula cópia carimbada
+4ed7f1ef51c90baac2147e006aac4d3f38e1689e	skeleton/scripts/da-new.sh	nest-egg · DESCARTA — 4 linhas sobre o 956991b, só DA→DAS em comentário; mesmo motivo do da-index.sh
+ea67e904e23e2edcd55c88872a3d7270369044c0	skeleton/scripts/da-draft-head.py	nest-egg · DESCARTA — 6 linhas sobre o cd31147, só DA→DAS em docstring/comentário; mesmo motivo do da-index.sh
+5c9c453898946999f90f3e9cc6e40a046628304b	skeleton-v4/mecanismo/tests/check-secrets.test.sh	nest-egg · SOBE (1.4.4) — bloco "porta 2 por NOME" (9 linhas sobre o 1e7171a)
+4a4581fc0a7966c6fc8827727dd6979638c33131	skeleton-v4/mecanismo/tests/check-secrets.test.sh	tradingagents · JÁ ESTÁ — versão antiga do teste do produto com menos blocos; único texto próprio é a frase do echo final

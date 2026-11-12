@@ -41,4 +41,13 @@ echo "hdr = 'Bearer test-secret-token'" > tests/fict.test.js && git add -A && gi
 bash scripts/check-secrets.sh >/dev/null 2>&1 || { echo "✗ valor que se declara fixture ('Bearer test-secret-token') bloqueou (peneira de valor)"; exit 1; }
 echo "tk='$tk'" > tests/nova.test.js && git add -A && git commit -qm nova
 bash scripts/check-secrets.sh >/dev/null 2>&1 && { echo "✗ segredo em fixture NOVA passou com allowlist (gate desligado)"; exit 1; }
+# porta 2 por NOME (*.env no histórico): a allowlist isenta o caminho declarado, e SÓ ele (task 20260925-031:
+# systemd/sombra.env, EnvironmentFile sem segredo, bloqueava o histórico todo sem a isenção valer ali).
+mkdir -p "$T/ev/scripts" "$T/ev/.adas" && cd "$T/ev" && git init -q && git config user.email t@t && git config user.name t \
+  && cp "$CS" scripts/ && echo "X_BASE=/tmp" > unit.env && git add -A && git commit -qm env
+bash scripts/check-secrets.sh >/dev/null 2>&1 && { echo "✗ *.env no histórico sem allowlist passou (porta 2)"; exit 1; }
+printf 'unit.env | EnvironmentFile só com caminho | 2026-09-25\n' > .adas/secrets-allowlist
+bash scripts/check-secrets.sh >/dev/null 2>&1 || { echo "✗ allowlist declarada não isentou o *.env no histórico"; exit 1; }
+echo "X=1" > outro.env && git add -A && git commit -qm outro
+bash scripts/check-secrets.sh >/dev/null 2>&1 && { echo "✗ *.env NOVO no histórico passou com allowlist de outro caminho"; exit 1; }
 echo "✓ check-secrets bloqueia token (GitHub e bot Telegram, com e sem git), passa repo limpo, e a allowlist isenta só o caminho declarado"

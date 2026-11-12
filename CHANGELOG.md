@@ -3,6 +3,18 @@
 Cada versão diz o que muda para quem usa, não a lista de commits. A primeira linha `Resumo:` de cada
 versão é a que aparece no aviso de versão nova da sessão.
 
+## 1.4.4 — 2026-11-12
+
+Resumo: `adas sync` leva casa híbrida (base v4 + diário do skeleton) com `--diario skeleton`; triagem de cópia editada vira registro no produto; casa sem lock passa a ganhar aviso no `check-adas`.
+
+- **Diário híbrido**: `adas sync --geracao skeleton-v4 --diario skeleton <casa>` traz `da-index.sh`, `da-new.sh`, `da-draft-head.py` e `da-schema.tsv` de `skeleton/scripts/` e o resto de `skeleton-v4/`; o lock grava `# diario: skeleton` e os syncs seguintes mantêm. Casa v4 sem lock cujo `da-index.sh` é versão do skeleton é recusada sem `--diario` (o v4 puro trocava o diário de 1187 linhas pelo de 491 e quebrava o `da-index check`). A mesa-trading (v4 puro) não muda.
+- **`host/sync-triados.tsv`**: cópia editada numa casa que o produto triou trecho a trecho (subiu, já estava ou descartada com motivo) fica registrada por blob e é trocada sem `--force`. Entram as 6 edições do nest-egg e o teste antigo da tradingagents.
+- **`check-secrets.sh` (duas gerações), porta 2 por NOME**: `*.env` no histórico listado na `.adas/secrets-allowlist` deixa de bloquear; outro `*.env` segue bloqueado (vinha do nest-egg, task 20260925-031). O teste do invariante 1 ganha o caso.
+- **`check-da-refs.sh`**: `DECISIONS-LICOES.md` (derivado) fica fora da varredura, e `DA-NNN` dentro de cópia carimbada no `.adas/skeleton.lock` não é cobrado da casa: é texto do produto. Casa com diário próprio (nest-egg) não precisa mais reescrever comentário dos scripts.
+- **`check-da-mecanismo.sh` (duas gerações)**: corte por casa em `.adas/da-mecanismo-desde`. Quando o script chega a uma casa que não o tinha, o `adas sync` grava a data do dia e `.adas/da-mecanismo-corte` (maior DA): o diário de antes vira fila (WARN), não FAIL. `DA_MECANISMO_DESDE` no ambiente continua mandando.
+- **`check-adas.sh` (duas gerações)**: casa sem `.adas/skeleton.lock` ganha aviso (WARN). O FAIL fica para o fechamento da Fase 3c.
+- Scripts que vão às casas mudaram: rode `adas sync`, depois `check-adas.sh --seal`, e commite lock, versão e selo juntos.
+
 ## 1.4.3 — 2026-11-12
 
 Resumo: o `adas sync` leva também o teste do produto em `mecanismo/tests/` (casa v4 no modo mecanismo) — teste velho contra script novo deixa de reprovar o `check-mecanismo`.

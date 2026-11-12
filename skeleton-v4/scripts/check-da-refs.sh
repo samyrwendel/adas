@@ -2,13 +2,14 @@
 # check-da-refs.sh [--all] [dir] — toda citação `DA-NNN` fora do diário aponta para uma DA que DECISIONS.md TEM.
 #   padrão (pre-commit): só as linhas ADICIONADAS no staged — modo doc: avisa e sai 0 · modo mecanismo: BLOQUEIA (exit 1)
 #   --all: inventário do working tree por número (informativo, sempre exit 0)
-#   fora da varredura: DECISIONS.md, DECISIONS-INDEX.md, DECISIONS-arquivo/ (caderno anterior, congelado) e .adas/
+#   fora da varredura: DECISIONS.md, DECISIONS-INDEX.md, DECISIONS-LICOES.md (derivado), DECISIONS-arquivo/ (caderno anterior,
+#   congelado), .adas/ e os scripts carimbados em .adas/skeleton.lock (cópia do produto: o DA-NNN deles é do diário do produto)
 #   entrada de caderno anterior se cita como "caderno NNN", nunca como DA-NNN — DA-NNN neste repo é sempre ESTE diário
 set -uo pipefail
 
 SELFDIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 MODE=staged; DIR=""
-for a in "$@"; do case "$a" in --all) MODE=all ;; -h|--help) sed -n '2,6p' "$0"; exit 0 ;; *) DIR="$a" ;; esac; done
+for a in "$@"; do case "$a" in --all) MODE=all ;; -h|--help) sed -n '2,7p' "$0"; exit 0 ;; *) DIR="$a" ;; esac; done
 [ -z "$DIR" ] && DIR="$(cd "$SELFDIR/.." && pwd)"
 cd "$DIR" || { echo "✗ check-da-refs: diretório '$DIR' inacessível"; exit 2; }
 DEC="${DECISIONS:-DECISIONS.md}"
@@ -24,19 +25,24 @@ while read -r n; do [ -n "$n" ] && exists[$((10#$n))]=1; done < <(grep -oE '^## 
 hits=""
 if [ "$MODE" = staged ]; then
   git rev-parse --show-toplevel >/dev/null 2>&1 || { echo "ℹ check-da-refs: sem git — use --all"; exit 0; }
-  hits="$(git diff --cached -U0 --diff-filter=AMR -- . ":(exclude)$DEC" ':(exclude)DECISIONS-INDEX.md' ':(exclude)DECISIONS-arquivo' ':(exclude).adas' 2>/dev/null | awk '
+  hits="$(git diff --cached -U0 --diff-filter=AMR -- . ":(exclude)$DEC" ':(exclude)DECISIONS-INDEX.md' ':(exclude)DECISIONS-LICOES.md' ':(exclude)DECISIONS-arquivo' ':(exclude).adas' 2>/dev/null | awk '
     /^\+\+\+ / { f = ($0 ~ /^\+\+\+ b\//) ? substr($0, 7) : ""; next }
     /^@@/      { split($0, a, " "); split(a[3], b, ","); ln = substr(b[1], 2) + 0; next }
     /^\+/      { if (f != "") { s = $0; while (match(s, /DA-[0-9]{3}/)) { print f ":" ln ":" substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH) } } ln++; next }
     /^-/       { next }
                { ln++ }')"
 else
-  hits="$(grep -rnoE 'DA-[0-9]{3}' --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=.venv --exclude-dir=DECISIONS-arquivo --exclude-dir=.adas --exclude="$DEC" --exclude=DECISIONS-INDEX.md --exclude='*.lock' . 2>/dev/null | sed 's#^\./##')"
+  hits="$(grep -rnoE 'DA-[0-9]{3}' --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=.venv --exclude-dir=DECISIONS-arquivo --exclude-dir=.adas --exclude="$DEC" --exclude=DECISIONS-INDEX.md --exclude=DECISIONS-LICOES.md --exclude='*.lock' . 2>/dev/null | sed 's#^\./##')"
 fi
 
+# cópia carimbada pelo `adas sync` não é texto da casa: cita o diário do produto e só muda no produto (sem isto, casa
+# com diário próprio tinha de reescrever o comentário dos scripts sincronizados para passar aqui)
+declare -A carimbado=()
+[ -f .adas/skeleton.lock ] && while IFS=$'\t' read -r _s a; do case "$_s" in ''|\#*) ;; ../*) carimbado["${a#../}"]=1 ;; *) carimbado["scripts/$a"]=1 ;; esac; done < .adas/skeleton.lock
 n_total=0; n_bad=0; bad_lines=""; bad_nums=""
 while IFS= read -r h; do
   [ -z "$h" ] && continue
+  [ -n "${carimbado[${h%%:*}]:-}" ] && continue
   n_total=$((n_total+1))
   num="${h##*DA-}"
   if [ -z "${exists[$((10#$num))]:-}" ]; then

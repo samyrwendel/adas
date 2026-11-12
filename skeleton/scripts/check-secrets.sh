@@ -301,9 +301,10 @@ if [ "$mode" != "staged" ] && [ -d .git ]; then
   # filtra por sufixo sozinho, então pega o nome de arquivo por commit (--name-only)
   # e só mantém o commit se SOBRAR pelo menos um arquivo que não é exemplo.
   hist_names=$(git log --all --full-history --format='@@%H %s' --name-only \
-    -- '*.env' '.env.*' 'auth.json' 2>/dev/null | awk '
+    -- '*.env' '.env.*' 'auth.json' 2>/dev/null | awk -v allow="$allow_paths" '
+    BEGIN { n=split(allow, L, "\n"); for (i=1; i<=n; i++) if (L[i] != "") A[L[i]]=1 }
     /^@@/ { if (commit != "" && keep) print commit; commit=$0; keep=0; next }
-    NF && $0 !~ /\.(example|sample|template)$/ { keep=1 }
+    NF && $0 !~ /\.(example|sample|template)$/ && !($0 in A) { keep=1 }
     END { if (commit != "" && keep) print commit }
   ')
   hist_content=""

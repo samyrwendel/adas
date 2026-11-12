@@ -7,7 +7,7 @@
 # tem que trazer uma linha **Mecanismo:** (ou **Mecanismo (…):**, ou um adendo numa DA posterior:
 # "**Mecanismo da DA-NNN:** <caminho>", uma linha — o diário é append-only) citando pelo menos UM caminho (arquivo,
 # diretório ou unit systemd) que EXISTE no disco. Sem isso:
-#   FAIL  se a DA tem data >= DA_MECANISMO_DESDE (padrão 2026-09-26) — DA nova não entra;
+#   FAIL  se a DA tem data >= DA_MECANISMO_DESDE (ou <raiz>/.adas/da-mecanismo-desde; padrão 2026-09-26) — DA nova não entra;
 #   WARN  se é anterior — vira fila (levantamento retroativo), não bloqueia.
 # "só" descritivo dentro da Regra não é isento: reescreva a Regra, não isente.
 #
@@ -23,7 +23,10 @@ for a in "$@"; do case "$a" in --list) LIST=1 ;; *) ARGS+=("$a") ;; esac; done
 DEC="${ARGS[0]:-DECISIONS.md}"
 [ -f "$DEC" ] || { echo "check-da-mecanismo: $DEC não existe"; exit 2; }
 ROOT="${ARGS[1]:-$(cd "$(dirname "$DEC")" && pwd)}"
-DESDE="${DA_MECANISMO_DESDE:-2026-09-26}"
+# Corte por casa: <raiz>/.adas/da-mecanismo-desde (o `adas sync` grava a data do dia em que este script chega a uma
+# casa que não o tinha — o diário de antes vira fila, não FAIL). Sem o arquivo, o padrão do produto.
+DESDE="${DA_MECANISMO_DESDE:-$(grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}' "$ROOT/.adas/da-mecanismo-desde" 2>/dev/null | head -1)}"
+DESDE="${DESDE:-2026-09-26}"
 # DA SEM data (formato de diário sem `data:`) cairia sempre no WARN — brecha. Corte por número:
 # DA-NNN acima do número gravado em <raiz>/.adas/da-mecanismo-corte (a maior DA na adoção) é nova.
 CORTE_NUM="${DA_MECANISMO_CORTE_NUM:-$(tr -dc '0-9' 2>/dev/null < "$ROOT/.adas/da-mecanismo-corte")}"

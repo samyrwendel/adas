@@ -8,7 +8,7 @@ T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 ok=0; ko=0; pass(){ echo "  ✓ $1"; ok=$((ok+1)); }; fail(){ echo "  ✗ $1"; ko=$((ko+1)); }
 export HOME="$T/home" ADAS_REPOS_CONF="$T/repos.conf"; mkdir -p "$HOME"; unset AXON_HEADLESS
 P="$T/produto"; mkdir -p "$P/host"   # só o necessário: host/jit pesa ~1 GB (vetores, caches)
-cp -r "$ROOT/skeleton" "$ROOT/skeleton-v4" "$ROOT/VERSION" "$ROOT/CHANGELOG.md" "$P/"; cp "$ROOT"/host/*.sh "$ROOT/host/adas" "$P/host/"
+cp -r "$ROOT/skeleton" "$ROOT/skeleton-v4" "$ROOT/VERSION" "$ROOT/CHANGELOG.md" "$P/"; cp "$ROOT"/host/*.sh "$ROOT/host/adas" "$ROOT/host/sync-triados.tsv" "$P/host/"
 SYNC="$P/host/adas-sync.sh"
 casa() {  # casa <dir> — repo git com o esqueleto de docs (sem scripts: quem traz é o sync)
   mkdir -p "$1"; cp "$ROOT"/skeleton/*.md "$1/"; git -C "$1" init -q
@@ -195,5 +195,56 @@ N="$T/casaN"; mkdir -p "$N"; git -C "$N" init -q; bash "$SYNC" --geracao skeleto
 [ ! -e "$N/mecanismo" ] && ! grep -q 'mecanismo/tests' "$N/.adas/skeleton.lock" && pass "casa v4 sem mecanismo/tests: o sync não cria o diretório nem carimba teste" || fail "sync criou mecanismo/tests em casa que não tem"
 O="$T/casaO"; casa "$O"; mkdir -p "$O/mecanismo/tests"; bash "$SYNC" "$O" >/dev/null 2>&1
 [ -z "$(ls "$O/mecanismo/tests")" ] && ! grep -q 'mecanismo/tests' "$O/.adas/skeleton.lock" && pass "geração skeleton (sem mecanismo no produto): nada entra" || fail "geração skeleton levou teste"
+
+echo "== 12) 1.4.4 (parecer 028): diário híbrido, triagem registrada, corte do check-da-mecanismo, aviso sem lock, refs de cópia carimbada"
+DI=(da-index.sh da-new.sh da-draft-head.py da-schema.tsv)
+Hb="$T/casaHib"; casa "$Hb"; mkdir -p "$Hb/scripts"; cp "$P"/skeleton-v4/scripts/*.sh "$Hb/scripts/"; for f in "${DI[@]}"; do cp "$P/skeleton/scripts/$f" "$Hb/scripts/"; done
+out="$(bash "$SYNC" --geracao skeleton-v4 "$Hb" 2>&1)"; rc=$?
+[ "$rc" = 1 ] && [ ! -f "$Hb/.adas/skeleton.lock" ] && grep -q -- '--diario skeleton' <<< "$out" && cmp -s "$P/skeleton/scripts/da-index.sh" "$Hb/scripts/da-index.sh" \
+  && pass "1º sync de casa v4 com o da-index do skeleton recusa e pede --diario (nada mudou)" || fail "v4 puro passou por cima do diário do skeleton (rc=$rc)"
+out="$(bash "$SYNC" --geracao skeleton-v4 --diario skeleton "$Hb" 2>&1)"; rc=$?
+ok_h=1; for f in "${DI[@]}"; do cmp -s "$P/skeleton/scripts/$f" "$Hb/scripts/$f" || ok_h=0; done
+for f in check-adas.sh check-mecanismo.sh check-secrets.sh; do cmp -s "$P/skeleton-v4/scripts/$f" "$Hb/scripts/$f" || ok_h=0; done
+[ "$rc" = 0 ] && [ "$ok_h" = 1 ] && grep -q '^# diario: skeleton$' "$Hb/.adas/skeleton.lock" && grep -q '^# geracao: skeleton-v4$' "$Hb/.adas/skeleton.lock" \
+  && [ "$(awk -F'\t' '$2=="da-index.sh"{print $1}' "$Hb/.adas/skeleton.lock")" = "$(sha256sum "$P/skeleton/scripts/da-index.sh" | cut -d' ' -f1)" ] \
+  && pass "--diario skeleton: diário do skeleton, resto do v4, lock com '# diario: skeleton'" || fail "híbrido não sincronizou certo (rc=$rc): $(tail -2 <<< "$out")"
+bash "$SYNC" --check "$Hb" >/dev/null && bash "$SYNC" "$Hb" >/dev/null && grep -q '^# diario: skeleton$' "$Hb/.adas/skeleton.lock" && cmp -s "$P/skeleton/scripts/da-index.sh" "$Hb/scripts/da-index.sh" \
+  && pass "--check limpo e 2º sync sem --diario mantém o diário do lock" || fail "2º sync perdeu o diário do lock"
+grep -q 'atrás do produto' <<< "$(bash "$SYNC" --check "$Hb")" && fail "--check acusou atraso falso no híbrido (comparou com a geração errada)" || pass "--check compara o diário com skeleton/scripts (sem atraso falso)"
+Hs="$T/casaHs"; casa "$Hs"; bash "$SYNC" --geracao skeleton --diario skeleton "$Hs" >/dev/null 2>&1; [ $? = 1 ] && [ ! -f "$Hs/.adas/skeleton.lock" ] && pass "--diario com geração skeleton recusa" || fail "--diario aceito fora do v4"
+out="$(bash "$Hb/scripts/check-adas.sh" "$Hb" 2>&1)"; grep -q 'difere do carimbo' <<< "$out" && fail "check-adas do híbrido reprova o próprio diário: $(grep -m1 'difere' <<< "$out")" || pass "check-adas do híbrido não acusa o diário carimbado"
+
+Tr="$T/casaTr"; casa "$Tr"; mkdir -p "$Tr/scripts"; cp "$P/skeleton/scripts/da-new.sh" "$Tr/scripts/"; echo "# triado $$" >> "$Tr/scripts/da-new.sh"
+bash "$SYNC" "$Tr" >/dev/null 2>&1; [ $? = 1 ] && pass "controle: cópia editada fora do registro recusa" || fail "controle: cópia editada passou"
+printf '%s\tskeleton/scripts/da-new.sh\tcasa de teste · DESCARTA — motivo\n' "$(git hash-object "$Tr/scripts/da-new.sh")" >> "$P/host/sync-triados.tsv"
+bash "$SYNC" "$Tr" >/dev/null 2>&1 && identicas "$Tr" skeleton && pass "blob em host/sync-triados.tsv troca sem --force" || fail "blob triado ainda exige --force"
+Tr2="$T/casaTr2"; casa "$Tr2"; mkdir -p "$Tr2/scripts"; cp "$P/skeleton/scripts/da-new.sh" "$Tr2/scripts/da-index.sh"; echo "# triado $$" >> "$Tr2/scripts/da-index.sh"
+bash "$SYNC" "$Tr2" >/dev/null 2>&1; [ $? = 1 ] && pass "triagem vale só para o arquivo registrado (mesmo blob noutro nome recusa)" || fail "triagem vazou para outro arquivo"
+
+Mc="$T/casaMc"; casa "$Mc"; printf '# D\n\n## DA-007 — x\n\n**Regra:** y.\n\n## DA-012 — z\n\n**Regra:** w.\n' > "$Mc/DECISIONS.md"
+bash "$SYNC" "$Mc" >/dev/null; [ "$(cat "$Mc/.adas/da-mecanismo-desde" 2>/dev/null)" = "$(date +%F)" ] && [ "$(cat "$Mc/.adas/da-mecanismo-corte" 2>/dev/null)" = 12 ] \
+  && pass "check-da-mecanismo chegou: sync grava da-mecanismo-desde (hoje) e corte (DA-012)" || fail "sem corte por casa: desde='$(cat "$Mc/.adas/da-mecanismo-desde" 2>/dev/null)' corte='$(cat "$Mc/.adas/da-mecanismo-corte" 2>/dev/null)'"
+echo 2026-01-01 > "$Mc/.adas/da-mecanismo-desde"; bash "$SYNC" "$Mc" >/dev/null
+[ "$(cat "$Mc/.adas/da-mecanismo-desde")" = 2026-01-01 ] && pass "re-sync (script já estava) não regrava o corte" || fail "re-sync reescreveu da-mecanismo-desde"
+Mc2="$T/casaMc2"; casa "$Mc2"; printf '# D\n\n## DA-001 — x\n`data: 2026-10-01`\n\n**Regra:** nunca publicar sem gate.\n' > "$Mc2/DECISIONS.md"
+o="$(bash "$P/skeleton-v4/scripts/check-da-mecanismo.sh" "$Mc2/DECISIONS.md" 2>&1)"; [ $? = 1 ] && pass "controle: DA de 01/10 sem mecanismo, sem corte da casa → FAIL" || fail "controle: check-da-mecanismo não reprovou: $o"
+mkdir -p "$Mc2/.adas"; echo 2026-11-12 > "$Mc2/.adas/da-mecanismo-desde"
+for g in skeleton skeleton-v4; do o="$(bash "$P/$g/scripts/check-da-mecanismo.sh" "$Mc2/DECISIONS.md" 2>&1)"; rc=$?
+  [ "$rc" = 0 ] && grep -q '1 WARN' <<< "$o" && pass "$g: corte da casa em .adas/da-mecanismo-desde → a DA anterior vira fila (WARN)" || fail "$g: corte da casa ignorado (rc=$rc): $o"; done
+
+Nl="$T/casaNl"; casa "$Nl"; bash "$SYNC" "$Nl" >/dev/null; rm "$Nl/.adas/skeleton.lock"
+for g in skeleton skeleton-v4; do cp "$P/$g/scripts/check-adas.sh" "$Nl/scripts/check-adas.sh"; out="$(bash "$Nl/scripts/check-adas.sh" "$Nl" 2>&1)"
+  grep -q 'sem .adas/skeleton.lock' <<< "$out" && pass "$g: check-adas avisa casa sem lock" || fail "$g: check-adas calado sem lock"; done
+
+Rf="$T/casaRf"; mkdir -p "$Rf/.adas"; git -C "$Rf" init -q; printf '# D\n\n## DA-001 — x\n\n**Regra:** y.\n' > "$Rf/DECISIONS.md"
+echo '{"modo": "mecanismo"}' > "$Rf/.adas/profile.json"; bash "$SYNC" --geracao skeleton-v4 "$Rf" >/dev/null
+"${G[@]}" -C "$Rf" add -A >/dev/null 2>&1; "${G[@]}" -C "$Rf" commit -qm base >/dev/null 2>&1
+echo "# ver DA-999 e DECISIONS-LICOES" > "$Rf/DECISIONS-LICOES.md"; echo "## Lição de DA-998" >> "$Rf/DECISIONS-LICOES.md"; git -C "$Rf" add -A
+(cd "$Rf" && bash scripts/check-da-refs.sh >/dev/null 2>&1) && pass "check-da-refs: DECISIONS-LICOES.md (derivado) fora da varredura" || fail "check-da-refs varreu DECISIONS-LICOES.md"
+"${G[@]}" -C "$Rf" commit -qm l >/dev/null 2>&1
+echo "# DA-997 citado no produto" >> "$Rf/scripts/check-adas.sh"; awk -F'\t' -v s="$(sha256sum "$Rf/scripts/check-adas.sh" | cut -d' ' -f1)" 'BEGIN{OFS="\t"} $2=="check-adas.sh"{$1=s} {print}' "$Rf/.adas/skeleton.lock" > "$T/l" && cat "$T/l" > "$Rf/.adas/skeleton.lock"; git -C "$Rf" add -A
+(cd "$Rf" && bash scripts/check-da-refs.sh >/dev/null 2>&1) && pass "check-da-refs: DA-NNN em cópia carimbada (texto do produto) não bloqueia" || fail "check-da-refs bloqueou cópia carimbada"
+echo "DA-996" > "$Rf/notas.md"; git -C "$Rf" add -A
+(cd "$Rf" && bash scripts/check-da-refs.sh >/dev/null 2>&1); [ $? = 1 ] && pass "check-da-refs: DA-NNN inexistente em arquivo da casa segue bloqueado (modo mecanismo)" || fail "check-da-refs deixou passar ref órfã da casa"
 
 echo "sync: $ok ok, $ko falha(s)"; [ "$ko" = 0 ]
