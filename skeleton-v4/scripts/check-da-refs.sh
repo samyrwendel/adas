@@ -38,7 +38,7 @@ fi
 # cópia carimbada pelo `adas sync` não é texto da casa: cita o diário do produto e só muda no produto (sem isto, casa
 # com diário próprio tinha de reescrever o comentário dos scripts sincronizados para passar aqui)
 declare -A carimbado=()
-[ -f .adas/skeleton.lock ] && while IFS=$'\t' read -r _s a; do case "$_s" in ''|\#*) ;; ../*) carimbado["${a#../}"]=1 ;; *) carimbado["scripts/$a"]=1 ;; esac; done < .adas/skeleton.lock
+[ -f .adas/skeleton.lock ] && while IFS=$'\t' read -r _s a; do case "$_s" in ''|\#*) continue ;; esac; case "$a" in ../*) carimbado["${a#../}"]=1 ;; *) carimbado["scripts/$a"]=1 ;; esac; done < .adas/skeleton.lock
 n_total=0; n_bad=0; bad_lines=""; bad_nums=""
 while IFS= read -r h; do
   [ -z "$h" ] && continue

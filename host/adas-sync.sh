@@ -18,7 +18,8 @@
 # 1º sync de casa v4 cujo da-index.sh é versão do skeleton é recusado até dizer --diario. Quando o check-da-mecanismo.sh
 # chega a uma casa que não o tinha, o sync grava .adas/da-mecanismo-desde (hoje) e .adas/da-mecanismo-corte (maior DA):
 # o diário de antes vira fila (WARN), não FAIL. host/sync-triados.tsv: cópia editada na casa que o produto já triou
-# (trecho subiu ou foi descartado com motivo) conta como versão antiga — sem --force.
+# (trecho subiu ou foi descartado com motivo) conta como versão antiga — sem --force. Linha não commitada nesse
+# arquivo carimba '+sujo' (revisão 030). --diario em casa JÁ carimbada sem diário (v4 puro) exige --force.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 CONF="${ADAS_REPOS_CONF:-$HOME/.claude/adas/repos.conf}"
@@ -32,7 +33,7 @@ while [ $# -gt 0 ]; do
     --all) ALL=1 ;;
     --geracao) shift; GER="${1:-}" ;;
     --diario) shift; DIARIO="${1:-}" ;;
-    -h|--help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*) echo "adas sync: flag desconhecida: $1" >&2; exit 2 ;;
     *) CASAS+=("$1") ;;
   esac; shift
@@ -47,8 +48,8 @@ fi
 
 VER="$(cat "$ROOT/VERSION")"
 COMMIT="$(git -C "$ROOT" rev-parse --short=7 HEAD 2>/dev/null || echo nao-registrada)"
-if [ "$MODE" = sync ] && [ -n "$(git -C "$ROOT" status --porcelain -- skeleton/scripts skeleton-v4/scripts skeleton-v4/mecanismo/tests 2>/dev/null)" ]; then
-  COMMIT="$COMMIT+sujo"; echo "⚠ adas sync: o produto tem mudança NÃO commitada em skeleton*/scripts ou mecanismo/tests — o carimbo sai '$COMMIT'; commite antes de levar às casas" >&2
+if [ "$MODE" = sync ] && [ -n "$(git -C "$ROOT" status --porcelain -- skeleton/scripts skeleton-v4/scripts skeleton-v4/mecanismo/tests host/sync-triados.tsv 2>/dev/null)" ]; then
+  COMMIT="$COMMIT+sujo"; echo "⚠ adas sync: o produto tem mudança NÃO commitada em skeleton*/scripts, mecanismo/tests ou host/sync-triados.tsv — o carimbo sai '$COMMIT'; commite antes de levar às casas" >&2
 fi
 sha() { sha256sum "$1" 2>/dev/null | cut -d' ' -f1; }
 # historico <geração> <nome> <arquivo> — rc 0 se o conteúdo é uma versão que ESSE arquivo já teve no produto: blob de
@@ -106,6 +107,9 @@ sincroniza() {  # sincroniza <casa>
   fi
   lockdia="$(sed -n 's/^# diario: //p' "$L" 2>/dev/null | head -1)"; dia="${DIARIO:-$lockdia}"
   if [ -n "$dia" ] && [ "$g" != skeleton-v4 ]; then echo "✗ $c: --diario só vale com a geração skeleton-v4 (pedido $g) — nada mudou"; return 1; fi
+  if [ -n "$lockger" ] && [ "$dia" != "$lockdia" ] && [ "$FORCE" = 0 ]; then   # revisão 030: mesmo desenho da troca de geração
+    echo "✗ $c: lock é de diário ${lockdia:-$lockger (sem --diario)}, pedido $dia — trocar o diário de casa já carimbada exige --force (nada mudou)"; return 1
+  fi
   if [ -z "$lockger" ] && [ "$g" = skeleton-v4 ] && [ -z "$dia" ] && [ -f "$c/scripts/da-index.sh" ] && historico skeleton da-index.sh "$c/scripts/da-index.sh"; then
     echo "✗ $c: casa v4 com o da-index.sh do skeleton (diário híbrido) — o v4 puro quebraria o diário; diga: adas sync --geracao skeleton-v4 --diario skeleton $c (nada mudou)"; return 1
   fi

@@ -218,8 +218,10 @@ Tr="$T/casaTr"; casa "$Tr"; mkdir -p "$Tr/scripts"; cp "$P/skeleton/scripts/da-n
 bash "$SYNC" "$Tr" >/dev/null 2>&1; [ $? = 1 ] && pass "controle: cópia editada fora do registro recusa" || fail "controle: cópia editada passou"
 printf '%s\tskeleton/scripts/da-new.sh\tcasa de teste · DESCARTA — motivo\n' "$(git hash-object "$Tr/scripts/da-new.sh")" >> "$P/host/sync-triados.tsv"
 bash "$SYNC" "$Tr" >/dev/null 2>&1 && identicas "$Tr" skeleton && pass "blob em host/sync-triados.tsv troca sem --force" || fail "blob triado ainda exige --force"
+grep -q '^# commit: .*+sujo$' "$Tr/.adas/skeleton.lock" && pass "revisão 030: linha NÃO commitada no sync-triados.tsv carimba +sujo" || fail "triagem não commitada carimbou commit limpo"
 Tr2="$T/casaTr2"; casa "$Tr2"; mkdir -p "$Tr2/scripts"; cp "$P/skeleton/scripts/da-new.sh" "$Tr2/scripts/da-index.sh"; echo "# triado $$" >> "$Tr2/scripts/da-index.sh"
 bash "$SYNC" "$Tr2" >/dev/null 2>&1; [ $? = 1 ] && pass "triagem vale só para o arquivo registrado (mesmo blob noutro nome recusa)" || fail "triagem vazou para outro arquivo"
+git -C "$P" checkout -q -- host/sync-triados.tsv
 
 Mc="$T/casaMc"; casa "$Mc"; printf '# D\n\n## DA-007 — x\n\n**Regra:** y.\n\n## DA-012 — z\n\n**Regra:** w.\n' > "$Mc/DECISIONS.md"
 bash "$SYNC" "$Mc" >/dev/null; [ "$(cat "$Mc/.adas/da-mecanismo-desde" 2>/dev/null)" = "$(date +%F)" ] && [ "$(cat "$Mc/.adas/da-mecanismo-corte" 2>/dev/null)" = 12 ] \
@@ -246,5 +248,25 @@ echo "# DA-997 citado no produto" >> "$Rf/scripts/check-adas.sh"; awk -F'\t' -v 
 (cd "$Rf" && bash scripts/check-da-refs.sh >/dev/null 2>&1) && pass "check-da-refs: DA-NNN em cópia carimbada (texto do produto) não bloqueia" || fail "check-da-refs bloqueou cópia carimbada"
 echo "DA-996" > "$Rf/notas.md"; git -C "$Rf" add -A
 (cd "$Rf" && bash scripts/check-da-refs.sh >/dev/null 2>&1); [ $? = 1 ] && pass "check-da-refs: DA-NNN inexistente em arquivo da casa segue bloqueado (modo mecanismo)" || fail "check-da-refs deixou passar ref órfã da casa"
+
+
+echo "== 13) revisão 030: teste carimbado fora da varredura de refs; --diario não troca o diário de casa já carimbada; higiene do sync-triados.tsv"
+Rt="$T/casaRt"; mkdir -p "$Rt/.adas" "$Rt/mecanismo/tests"; git -C "$Rt" init -q; printf '# D\n\n## DA-001 — x\n\n**Regra:** y.\n' > "$Rt/DECISIONS.md"
+echo '{"modo": "mecanismo"}' > "$Rt/.adas/profile.json"; bash "$SYNC" --geracao skeleton-v4 "$Rt" >/dev/null
+"${G[@]}" -C "$Rt" add -A >/dev/null 2>&1; "${G[@]}" -C "$Rt" commit -qm base >/dev/null 2>&1
+TT=mecanismo/tests/check-secrets.test.sh; echo "# DA-995 citado no produto" >> "$Rt/$TT"
+awk -F'\t' -v s="$(sha256sum "$Rt/$TT" | cut -d' ' -f1)" -v n="../$TT" 'BEGIN{OFS="\t"} $2==n{$1=s} {print}' "$Rt/.adas/skeleton.lock" > "$T/l" && cat "$T/l" > "$Rt/.adas/skeleton.lock"; git -C "$Rt" add -A
+(cd "$Rt" && bash scripts/check-da-refs.sh >/dev/null 2>&1) && pass "check-da-refs: DA-NNN no TESTE carimbado (../mecanismo/tests) não bloqueia" || fail "check-da-refs bloqueou o teste carimbado (chave do lock ../ não reconhecida)"
+Vp="$T/casaVp"; casa "$Vp"; bash "$SYNC" --geracao skeleton-v4 "$Vp" >/dev/null 2>&1; cp "$Vp/.adas/skeleton.lock" "$T/vp.lock"
+out="$(bash "$SYNC" --diario skeleton "$Vp" 2>&1)"; rc=$?
+[ "$rc" = 1 ] && cmp -s "$T/vp.lock" "$Vp/.adas/skeleton.lock" && cmp -s "$P/skeleton-v4/scripts/da-index.sh" "$Vp/scripts/da-index.sh" && grep -q -- '--force' <<< "$out" \
+  && pass "--diario em casa v4 pura JÁ carimbada recusa sem --force (nada mudou)" || fail "--diario trocou o diário de casa carimbada sem --force (rc=$rc)"
+bash "$SYNC" --diario skeleton --force "$Vp" >/dev/null 2>&1 && grep -q '^# diario: skeleton$' "$Vp/.adas/skeleton.lock" && cmp -s "$P/skeleton/scripts/da-index.sh" "$Vp/scripts/da-index.sh" \
+  && pass "com --force a troca de diário acontece e fica no lock" || fail "--diario --force não trocou o diário"
+ruim="$(awk -F'\t' '/^#/ || /^$/ {next} NF != 3 || $1 !~ /^[0-9a-f]+$/ || length($1) != 40 || $2 !~ /^skeleton(-v4)?\/(scripts|mecanismo\/tests)\// || $3 !~ / · (SOBE|JÁ ESTÁ|DESCARTA)/ {print NR}' "$ROOT/host/sync-triados.tsv" | tr '\n' ' ')"
+[ -z "$ruim" ] && pass "sync-triados.tsv: toda linha tem blob de 40 hex, caminho do produto e '<casa> · <decisão>'" || fail "sync-triados.tsv: linha(s) fora do formato: $ruim"
+ruim=""; while IFS=$'\t' read -r b cam _; do case "$b" in ''|\#*) continue;; esac
+  [ -f "$ROOT/$cam" ] || ruim="$ruim $cam(não existe)"; [ "$(git hash-object "$ROOT/$cam" 2>/dev/null)" = "$b" ] && ruim="$ruim $cam(é o blob atual)"; done < "$ROOT/host/sync-triados.tsv"
+[ -z "$ruim" ] && pass "sync-triados.tsv: todo caminho existe no produto e nenhum blob é a versão atual" || fail "sync-triados.tsv:$ruim"
 
 echo "sync: $ok ok, $ko falha(s)"; [ "$ko" = 0 ]

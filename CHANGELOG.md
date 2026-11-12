@@ -3,6 +3,14 @@
 Cada versão diz o que muda para quem usa, não a lista de commits. A primeira linha `Resumo:` de cada
 versão é a que aparece no aviso de versão nova da sessão.
 
+## 1.4.5 — 2026-11-12
+
+Resumo: `adas sync --diario` deixa de trocar o diário de casa já carimbada sem `--force`; o teste carimbado sai da varredura do `check-da-refs`; triagem não commitada carimba `+sujo`.
+
+- **`adas sync --diario skeleton` em casa já carimbada sem diário** (v4 puro, como a mesa-trading) é recusado sem `--force`, igual à troca de geração. Antes trocava o `da-index.sh` de 491 linhas pelo de 1187 calado, e o `da-index check` da casa passava a sair 1; `sync --all --diario skeleton` fazia isso em toda casa v4.
+- **`check-da-refs.sh` (v4)**: o teste que o sync carimba (`mecanismo/tests/…`, no lock como `../mecanismo/tests/…`) passa a ficar fora da varredura, como os scripts. A chave era montada a partir do hash, não do nome, e nunca casava.
+- **`host/sync-triados.tsv` com linha não commitada** carimba o lock com `+sujo` e avisa, como já acontecia com `skeleton*/scripts`. O `sync.test.sh` cobra o formato de cada linha e que nenhum blob registrado seja a versão atual.
+
 ## 1.4.4 — 2026-11-12
 
 Resumo: `adas sync` leva casa híbrida (base v4 + diário do skeleton) com `--diario skeleton`; triagem de cópia editada vira registro no produto; casa sem lock passa a ganhar aviso no `check-adas`.
