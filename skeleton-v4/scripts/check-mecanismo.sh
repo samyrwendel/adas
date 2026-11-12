@@ -18,7 +18,7 @@ cd "$DIR" || exit 2
 ADAS="${ADAS:-ADAS.md}"
 [ -f "$ADAS" ] || { echo "✗ check-mecanismo: sem $ADAS"; exit 1; }
 
-registros=(.claude/settings.json scripts/install-hooks.sh package.json Makefile)
+registros=(.claude/settings.json scripts/install-hooks.sh scripts/check-local.sh package.json Makefile)  # check-local.sh: o check-adas o executa (B4, revisão 020)
 hooks_dir="$(git rev-parse --git-path hooks 2>/dev/null || true)"
 [ -n "$hooks_dir" ] && registros+=("$hooks_dir/pre-commit")
 for w in .github/workflows/*.yml .github/workflows/*.yaml; do [ -f "$w" ] && registros+=("$w"); done
@@ -43,7 +43,7 @@ while IFS= read -r line; do
   elif [ ! -f "$mec" ]; then
     probs="mecanismo '$mec' não existe"
   elif ! registrado "$mec"; then
-    probs="mecanismo '$mec' existe mas NADA o executa (registre em settings.json / install-hooks.sh / package.json / Makefile / workflow)"
+    probs="mecanismo '$mec' existe mas NADA o executa (registre em scripts/check-local.sh / settings.json / install-hooks.sh / package.json / Makefile / workflow)"
   fi
   if [ -z "$tst" ]; then
     probs="${probs:+$probs; }sem teste: — invariante sem teste que falha é honra, não gatilho"

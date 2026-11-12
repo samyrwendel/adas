@@ -3,6 +3,17 @@
 Cada versão diz o que muda para quem usa, não a lista de commits. A primeira linha `Resumo:` de cada
 versão é a que aparece no aviso de versão nova da sessão.
 
+## 1.4.1 — 2026-11-12
+
+Resumo: trava própria da casa ganha lugar fixo (`scripts/check-local.sh`) e o 1º `adas sync` reconhece cópia só atrasada — sem `--force` em massa.
+
+- **`scripts/check-local.sh`** é da casa: fica fora do lock, o `adas sync` (nem com `--force`) nunca o toca, e o `check-adas.sh` das duas gerações o executa (rc≠0 = bloqueia, também no pre-commit e no CI). No modo mecanismo do v4, mecanismo chamado por ele conta como registrado. Trava de domínio (cor só no `tokens.css`, hosts da mesa) mora aqui, não numa cópia editada de script sincronizado.
+- **1º sync sem lock**: cópia igual a alguma versão antiga do produto (blob alcançável do HEAD do repo adas) é "atrasada", não "editada" — sincroniza sem `--force`. Só o que nunca existiu no produto é recusado.
+- **Sync atômico de verdade**: copia tudo para um estágio em `.adas/` antes de mexer na casa; falha no meio não deixa casa reprovando nem `lock.tmp` sobrando. O sync recusa o próprio produto; `--check` de casa que não existe reprova.
+- **Diário sem `data:`**: o 1º sync grava `ultima: DA-NNN` no `.adas/ficha-desde`; DA anterior à âncora não ganha aviso de ficha (antes: 473 avisos no claude-tg-tmux).
+- **`check-secrets.sh`** recebe dois consertos que viviam só nas casas: valor de `NOME_DA_CHAVE=` só reprova se parecer chave (prosa citada num diário não trava mais o gate, dramaker) e a allowlist é achada pelo repo varrido, não pelo diretório de quem chamou, com aviso quando nenhuma foi lida (claude-tg-tmux). O filtro de "valor fictício" do claude-tg-tmux não subiu: no produto, fixture com forma de chave sai só pela allowlist.
+- `contrato.test.sh` sem `| grep -q` sob pipefail (falhava ~1 em 6 rodadas).
+
 ## 1.4.0 — 2026-11-12
 
 Resumo: `adas sync` leva os scripts do produto às casas com carimbo sha256; cópia editada à mão reprova o check-adas.

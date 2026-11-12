@@ -127,7 +127,7 @@ grep -q 'WARN ficha: DA-002' <<< "$ck" && fail "a fixture montada do esquema nã
   || pass "DA montada do esquema passa no check da ficha"
 
 # ---- 4. ressalvas da revisão 018 (R1–R5): cada uma com dente ------------------------------------------
-ficha_avisa(){ bash "$IDX" update "$W" >/dev/null 2>&1; DA_FICHA_DESDE="${1:-}" bash "$IDX" check "$W" 2>&1 | grep -q "WARN ficha: $2"; }
+ficha_avisa(){ local o; bash "$IDX" update "$W" >/dev/null 2>&1; o="$(DA_FICHA_DESDE="${1:-}" bash "$IDX" check "$W" 2>&1)"; grep -q "WARN ficha: $2" <<< "$o"; }   # sem pipe: grep -q fecha cedo e o pipefail devolve 141
 semtipo(){ sed -i 's/ · `tipo: regra`//' "$W/DECISIONS.md"; }
 gera -; semtipo
 ficha_avisa 2026-11-13 DA-002 && pass "base: DA nova sem tipo avisa" || fail "base: DA nova sem tipo NÃO avisou"

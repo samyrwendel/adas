@@ -12,8 +12,8 @@ caso() { # <esperado: FAIL|OK|WARN> <rótulo> <corpo da DA (sem cabeçalho)>
   local exp="$1" label="$2" body="$3" out rc got
   printf '# diário\n\n## DA-900 — fixture\n%s\n' "$body" > "$T/DECISIONS.md"
   out="$(bash "$CHK" --list "$T/DECISIONS.md" "$T")"; rc=$?
-  if printf '%s\n' "$out" | grep -q '^FAIL DA-900'; then got=FAIL
-  elif printf '%s\n' "$out" | grep -q '^WARN DA-900'; then got=WARN
+  if grep -q '^FAIL DA-900' <<< "$out"; then got=FAIL
+  elif grep -q '^WARN DA-900' <<< "$out"; then got=WARN
   else got=OK; fi
   if [ "$got" = "$exp" ] && { [ "$exp" != FAIL ] || [ "$rc" -ne 0 ]; } && { [ "$exp" = FAIL ] || [ "$rc" -eq 0 ]; }; then
     echo "✓ $label → $got (exit $rc)"
@@ -76,7 +76,7 @@ adendo() { # <OK|WARN> <rótulo> <linha de adendo>
   printf '# diário\n\n## DA-900 — antiga\n%s\n**Regra:** Nunca publicar sem o gate.\n\n## DA-901 — adendo\n%s\n**Regra:** Declara mecanismos.\n%s\n' \
     "$META_VELHA" "$META_VELHA" "$3" > "$T/DECISIONS.md"
   local out got; out="$(bash "$CHK" --list "$T/DECISIONS.md" "$T")"
-  printf '%s\n' "$out" | grep -q '^WARN DA-900' && got=WARN || got=OK
+  grep -q '^WARN DA-900' <<< "$out" && got=WARN || got=OK
   [ "$got" = "$1" ] && echo "✓ $2 → $got" || { echo "✗ $2: esperava $1, veio $got"; fail=1; }
 }
 adendo OK   "adendo com caminho real tira a DA antiga da fila" '**Mecanismo da DA-900:** `scripts/trava-real.sh` reprova a publicação sem gate.'
@@ -88,7 +88,7 @@ vig() { # <FAIL|OK> <rótulo> <supersede da DA-901> — só DA vigente é cobrad
   printf '# diário\n\n## DA-900 — antiga\n%s\n**Regra:** Nunca publicar sem o gate.\n\n## DA-901 — cabeça\n`escopo: produto` · `saga: x` · `data: 2026-10-02` · `refs: —` · `consolida: —` · `supersede: %s`\n**Regra:** Publicar passa pelo gate.\n' \
     "$META_NOVA" "$3" > "$T/DECISIONS.md"
   local out got; out="$(bash "$CHK" --list "$T/DECISIONS.md" "$T")"
-  printf '%s\n' "$out" | grep -q '^FAIL DA-900' && got=FAIL || got=OK
+  grep -q '^FAIL DA-900' <<< "$out" && got=FAIL || got=OK
   [ "$got" = "$1" ] && echo "✓ $2 → $got" || { echo "✗ $2: esperava $1, veio $got"; printf '%s\n' "$out" | sed 's/^/    /'; fail=1; }
 }
 vig OK   "DA superada que proíbe sem Mecanismo não conta" "DA-900"
@@ -98,14 +98,14 @@ vig FAIL "a mesma DA vigente (sem supersede) conta"       "—"
 printf '# d\n\n## DA-001 — a\n%s\n**Regra:** Tudo certo.\n' "$META_NOVA" > "$T/DECISIONS.md"
 printf '# d\n\n## DA-900 — nova\n%s\n**Regra:** Nunca publicar sem o gate.\n' "$META_NOVA" > "$T/OUTRO.md"
 out="$(bash "$CHK" --list "$T/OUTRO.md" "$T")"
-printf '%s\n' "$out" | grep -q '^FAIL DA-900' \
+grep -q '^FAIL DA-900' <<< "$out" \
   && echo "✓ diário fora de <raiz>/DECISIONS.md é auditado inteiro" \
   || { echo "✗ vigência de outro diário silenciou DA nova"; fail=1; }
 
 # id que o índice não reconhece (cabeçalho fora do padrão dele) é auditado, não pulado (ramo CONH, N4 senior-010)
 printf '# d\n\n## DA-001 — a\n%s\n**Regra:** Tudo certo.\n\n## DA-900: nova\n%s\n**Regra:** Nunca publicar sem o gate.\n' "$META_NOVA" "$META_NOVA" > "$T/DECISIONS.md"
 out="$(bash "$CHK" --list "$T/DECISIONS.md" "$T")"   # captura: o check sai 1 no FAIL e o pipefail derrubaria o grep
-printf '%s\n' "$out" | grep -q '^FAIL DA-900' \
+grep -q '^FAIL DA-900' <<< "$out" \
   && echo "✓ id fora do índice é auditado" \
   || { echo "✗ id fora do índice foi pulado"; fail=1; }
 
@@ -113,7 +113,7 @@ ADAS_CHK="$(dirname "$CHK")/check-adas.sh"
 if [ -f "$ADAS_CHK" ]; then
   printf '# diário\n\n## DA-900 — fixture\n%s\n**Regra:** Nunca X.\n' "$META_NOVA" > "$T/DECISIONS.md"
   out="$(cd "$T" && DECISIONS="$T/DECISIONS.md" bash "$ADAS_CHK" "$T" 2>&1)"; rc=$?
-  if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -qF "sem **Mecanismo:** que exista"; then echo "✓ check-adas.sh bloqueia (exit 1)"
+  if [ "$rc" -eq 1 ] && grep -qF "sem **Mecanismo:** que exista" <<< "$out"; then echo "✓ check-adas.sh bloqueia (exit 1)"
   else echo "✗ check-adas.sh não bloqueou (exit $rc)"; fail=1; fi
 fi
 
@@ -122,10 +122,10 @@ if [ -f "$ADAS_CHK" ]; then
   # fixture mínima (não copia o pai: numa casa o pai traz .git e a asserção "sem git" mentiria)
   P="$T/proj/x"; mkdir -p "$P/.adas"; echo '{}' > "$P/.adas/profile.json"; cp -r "$(dirname "$ADAS_CHK")" "$P/scripts"
   out="$(cd "$P" && bash scripts/check-adas.sh 2>&1)"; rc=$?
-  if [ "$rc" -ne 0 ] && printf '%s\n' "$out" | grep -qF "ADAS-Projeto só entra em repo git (DA-530)"; then echo "✓ projeto sem git → BLOCK (DA-530)"
+  if [ "$rc" -ne 0 ] && grep -qF "ADAS-Projeto só entra em repo git (DA-530)" <<< "$out"; then echo "✓ projeto sem git → BLOCK (DA-530)"
   else echo "✗ projeto sem git não bloqueou (exit $rc)"; fail=1; fi
   out="$(cd "$P" && git init -q && bash scripts/check-adas.sh 2>&1)"; rc=$?
-  if ! printf '%s\n' "$out" | grep -qF "(DA-530)"; then echo "✓ depois de git init a DA-530 não acusa"
+  if ! grep -qF "(DA-530)" <<< "$out"; then echo "✓ depois de git init a DA-530 não acusa"
   else echo "✗ git init não liberou (exit $rc)"; fail=1; fi
 fi
 

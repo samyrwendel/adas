@@ -19,8 +19,8 @@ D
 printf '## DC-007 — c\n**Regra:** w\n' > "$T/CONDUCT.md"
 out="$(bash "$IDX" gatilhos "$T")"
 [ "$(echo "$out" | grep -c .)" = 3 ] && pass "3 linhas (DA-001 sem gatilho não sai)" || fail "esperava 3 linhas: $out"
-echo "$out" | grep -qP '^DA-002\tforma · reply · juiz · modo=aviso\tDA-002$' && pass "linha na própria DA" || fail "própria DA"
-echo "$out" | grep -qP '^DC-007\tforma · reply · juiz\tDA-003$' && pass "adendo de DC numa DA posterior" || fail "adendo DC"
+grep -qP '^DA-002\tforma · reply · juiz · modo=aviso\tDA-002$' <<< "$out" && pass "linha na própria DA" || fail "própria DA"
+grep -qP '^DC-007\tforma · reply · juiz\tDA-003$' <<< "$out" && pass "adendo de DC numa DA posterior" || fail "adendo DC"
 [ "$(echo "$out" | grep '^DA-002' | tail -1 | cut -f2)" = "forma · reply · juiz · modo=deny" ] && pass "última linha do id vence (adendo)" || fail "ordem"
 mkdir -p "$T/.adas"; printf 'saga-x|\n' > "$T/.adas/sagas.conf"
 ADAS_HOME_DIR="$T/.adas" bash "$NEW" --tipo regra produto saga-x "nova" "$T" >/dev/null 2>&1

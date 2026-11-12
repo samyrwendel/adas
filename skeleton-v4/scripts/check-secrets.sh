@@ -6,6 +6,7 @@
 #   bash scripts/check-secrets.sh --dir src  # um diretório
 #   bash scripts/check-secrets.sh --dominio  # credencial fora do domínio dono (regras em ~/.adas/credencial-dominio.conf)
 # Gate: "precommit": "bash scripts/check-secrets.sh"  ·  no deploy junto dos outros check-*.
+# Prova da allowlist (achada pelo repo, vale pro histórico): scripts/tests/check-secrets-allowlist.test.sh
 #
 # PORTAS 1 e 2 das "seis portas do app": são as duas MECÂNICAS (grep puro, sem prova humana — as
 # outras quatro exigem evidência e vivem em scripts/check-app-security.sh). Linhas
@@ -116,7 +117,14 @@ LO='(api[_-]?key|secret|passwd|password|access[_-]?token|auth[_-]?token)["'"'"' 
 # (AWS), xox[abp]- (Slack), "Bearer <token literal>", e KEY=valor dos quatro provedores
 # citados por nome. Reusa o HI de cima (mesma classe) mais o que falta pra cobrir a
 # lista exata da DA.
-FRONT_KEY='sk-[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{35}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16}|xox[abp]-[0-9A-Za-z-]{10,}|[Bb]earer +[A-Za-z0-9._-]{16,}|(ELEVENLABS_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|TELEGRAM_BOT_TOKEN) *[:=] *[A-Za-z0-9]{8,}|[0-9]{8,10}:AA[A-Za-z0-9_-]{33}'
+# NOME_DA_CHAVE=valor: o VALOR tem que PARECER chave — 20+ alfanuméricos, ou 8+ com ao menos um dígito. Palavra
+# pura de prosa ("OPENAI_API_KEY: exibindo o exemplo…", mensagem de erro citada num DECISIONS.md) tem 8+ letras e
+# nenhum dígito: antes casava e deixava o gate vermelho pra sempre (task 13-018). Teto: valor só de letras e
+# menor que 20 passa; chave real quase nunca tem essa forma. Teste: scripts/tests/check-secrets-valor.test.sh.
+_VAL='[A-Za-z0-9]{20,}|[A-Za-z]{7,}[0-9][A-Za-z0-9]*|[0-9][A-Za-z0-9]{7,}'
+for _p in 1 2 3 4 5 6; do _VAL="$_VAL|[A-Za-z]{$_p}[0-9][A-Za-z0-9]{$((7 - _p)),}"; done
+FRONT_KEY='sk-[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{35}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16}|xox[abp]-[0-9A-Za-z-]{10,}|[Bb]earer +[A-Za-z0-9._-]{16,}|(ELEVENLABS_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|TELEGRAM_BOT_TOKEN) *[:=] *('"$_VAL"')|[0-9]{8,10}:AA[A-Za-z0-9_-]{33}'
+
 # NEXT_PUBLIC_/VITE_/REACT_APP_ resolvem em BUILD TIME — o valor vai pro bundle público
 # mesmo que o código "pareça" server-side. Proibido quando o NOME da variável contém
 # KEY/SECRET/TOKEN/PASS (case-insensitive): a intenção do nome já denuncia segredo.
@@ -138,7 +146,22 @@ base="$dir"; [ "$mode" = "all" ] && base="."
 # reescrever a história "resolveria". Teto declarado: um segredo REAL que entrar num arquivo já
 # listado passa — por isso a lista é de caminhos de teste, curta e revisada; arquivo novo nunca
 # está nela. Exceção no CÓDIGO (regex solta) é proibida: a isenção mora no arquivo, com motivo.
-ALLOWLIST_FILE="${SECRETS_ALLOWLIST:-.adas/secrets-allowlist}"
+# A allowlist mora no REPO, não no CWD de quem chamou (achado 21/09, task 20260921-018):
+# o export roda `check-secrets --dir <snapshot>` de um diretório qualquer, o caminho
+# relativo ".adas/secrets-allowlist" virava "não existe", allow_paths ficava VAZIO e a
+# porta 2 passava a acusar as mesmas fixtures que a porta 1 já isenta — sem uma linha
+# dizendo que não leu allowlist nenhuma. Procura em ordem: $SECRETS_ALLOWLIST (override
+# explícito), o diretório VARRIDO (o snapshot carrega a própria allowlist), e a raiz do
+# repo git de onde a porta 2 lê o histórico.
+_git_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+ALLOWLIST_FILE="${SECRETS_ALLOWLIST:-}"
+if [ -z "$ALLOWLIST_FILE" ]; then
+  for _cand in "$dir/.adas/secrets-allowlist" "${_git_root:-.}/.adas/secrets-allowlist" ".adas/secrets-allowlist"; do
+    [ -f "$_cand" ] && { ALLOWLIST_FILE="$_cand"; break; }
+  done
+  ALLOWLIST_FILE="${ALLOWLIST_FILE:-.adas/secrets-allowlist}"
+fi
+allowlist_lida=0
 allow_paths=""
 if [ -f "$ALLOWLIST_FILE" ]; then
   while IFS= read -r _al; do
@@ -152,6 +175,7 @@ if [ -f "$ALLOWLIST_FILE" ]; then
     allow_paths="${allow_paths}${_ap}
 "
   done < "$ALLOWLIST_FILE"
+  allowlist_lida=1
   [ -n "$allow_paths" ] && echo "ℹ allowlist ($ALLOWLIST_FILE): $(printf '%s' "$allow_paths" | grep -c .) caminho(s) isento(s) por motivo declarado: $(printf '%s' "$allow_paths" | tr '\n' ' ')"
 fi
 is_allowed() { [ -n "$allow_paths" ] && printf '%s\n' "$allow_paths" | grep -qxF -- "${1#./}"; }
@@ -265,6 +289,7 @@ if [ "$mode" != "staged" ] && [ -d .git ]; then
     echo "✗ [BLOCK] [porta 2 — .env no histórico] segredo/arquivo sensível JÁ ESTEVE no git:"
     [ -n "$hist_names" ] && { echo "  arquivos (.env/.env.*/auth.json, exceto .example/.sample/.template):"; printf '%s\n' "$hist_names" | sed 's/^@@/    /' | head -6; }
     [ -n "$hist_content" ] && { echo "  commits com padrão de chave:"; printf '%s\n' "$hist_content" | sed 's/^/    /' | head -6; }
+    [ "$allowlist_lida" = 0 ] && echo "  (nenhuma allowlist foi lida — procurei $ALLOWLIST_FILE; se o caminho acusado é fixture conhecida, a isenção existe no repo e NÃO foi aplicada)"
     echo "  rotacione ANTES de limpar o histórico — apagar o arquivo no HEAD não apaga o commit antigo"
     block=1
   else

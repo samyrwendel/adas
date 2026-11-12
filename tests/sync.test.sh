@@ -87,4 +87,56 @@ out="$(bash "$P/host/update.sh" --yes 2>&1)"
 grep -q "$D: falta scripts/da-schema.tsv" <<< "$out" && pass "update.sh avisa casa sem da-schema.tsv" || fail "update.sh calado sem da-schema.tsv: $(tail -3 <<< "$out")"
 grep -q "✓ $A: lock" <<< "$out" && pass "update.sh confere a casa com lock (adas sync --check)" || fail "update.sh não conferiu o lock: $(tail -3 <<< "$out")"
 
+echo "== 7) revisão 020: falha no meio não deixa estado parcial; produto não é casa; casa que sumiu reprova; âncora do corte"
+E="$T/casaE"; casa "$E"; bash "$SYNC" "$E" >/dev/null
+echo "# v2 $$" >> "$P/skeleton/scripts/adas-report.sh"; chmod 000 "$P/skeleton/scripts/da-index.sh"
+bash "$SYNC" "$E" >/dev/null 2>&1; rc=$?; chmod 755 "$P/skeleton/scripts/da-index.sh"
+[ "$rc" = 1 ] && ! grep -q "v2 $$" "$E/scripts/adas-report.sh" && [ -z "$(find "$E/.adas" "$E/scripts" -name '*tmp*' -o -name 'sync-estagio*')" ] \
+  && bash "$E/scripts/check-adas.sh" "$E" >/dev/null 2>&1 && pass "falha no meio da cópia: nada mudou, sem resto, check-adas segue 0" || fail "falha no meio deixou estado parcial (rc=$rc)"
+bash "$SYNC" "$E" >/dev/null && identicas "$E" skeleton && pass "sync seguinte conclui" || fail "sync depois da falha não concluiu"
+bash "$SYNC" "$P" >/dev/null 2>&1; [ $? = 1 ] && [ ! -e "$P/scripts" ] && [ ! -e "$P/.adas/skeleton.lock" ] && pass "sync recusa o próprio produto" || fail "sync criou scripts/ no produto"
+bash "$SYNC" --check "$T/nao-existe" >/dev/null 2>&1; [ $? = 1 ] && pass "--check: casa que não existe reprova" || fail "--check passou casa inexistente"
+F="$T/casaF"; casa "$F"; printf '# D\n\n## DA-001 — antiga sem data\n\n**Regra:** x.\n\n## DA-002 — antiga sem data\n\n**Regra:** y.\n' > "$F/DECISIONS.md"
+bash "$SYNC" "$F" >/dev/null; grep -q '^ultima: DA-002$' "$F/.adas/ficha-desde" && pass "1º sync grava a âncora (ultima: DA-002)" || fail "ficha-desde sem âncora: $(cat "$F/.adas/ficha-desde" | tr '\n' ' ')"
+bash "$F/scripts/da-index.sh" update "$F" >/dev/null 2>&1; o="$(bash "$F/scripts/da-index.sh" check "$F" 2>&1)"
+grep -q 'WARN ficha' <<< "$o" && fail "diário sem data: DA anterior ao sync ganhou aviso: $(grep -m1 'WARN ficha' <<< "$o")" || pass "diário sem data: DA anterior ao sync não ganha aviso"
+printf '\n## DA-003 — nova sem data\n\n**Regra:** z.\n' >> "$F/DECISIONS.md"; bash "$F/scripts/da-index.sh" update "$F" >/dev/null 2>&1; o="$(bash "$F/scripts/da-index.sh" check "$F" 2>&1)"
+grep -q 'WARN ficha: DA-003' <<< "$o" && ! grep -q 'WARN ficha: DA-00[12]' <<< "$o" && pass "DA nova sem data, depois da âncora, não escapa" || fail "âncora: DA-003 nova não avisou (ou antiga avisou)"
+
+echo "== 8) B4: mecanismo da casa em scripts/check-local.sh — fora do lock, o --force não apaga, o check-adas executa"
+ls "$ROOT"/skeleton*/scripts/check-local.sh >/dev/null 2>&1 && fail "o produto traz scripts/check-local.sh (é da casa)" || pass "produto não traz check-local.sh"
+for g in skeleton skeleton-v4; do
+  K="$T/casaK-$g"; casa "$K"; bash "$SYNC" --geracao "$g" "$K" >/dev/null
+  printf 'echo "✗ trava da casa: cor fora do token"; exit 1\n' > "$K/scripts/check-local.sh"
+  out="$(bash "$K/scripts/check-adas.sh" "$K" 2>&1)"; rc=$?
+  [ "$rc" = 1 ] && grep -q 'trava da casa: cor fora do token' <<< "$out" && grep -q 'check-local.sh' <<< "$out" \
+    && pass "$g: check-local.sh rc 1 → check-adas rc 1 com a saída da trava" || fail "$g: check-adas ignorou a trava da casa (rc=$rc)"
+  echo "# remendo" >> "$K/scripts/adas-report.sh"; bash "$SYNC" --force "$K" >/dev/null
+  grep -q 'trava da casa' "$K/scripts/check-local.sh" && ! grep -q 'check-local' "$K/.adas/skeleton.lock" \
+    && pass "$g: sync --force não toca check-local.sh nem o carimba" || fail "$g: --force mexeu no check-local.sh"
+  printf 'echo "✓ trava da casa ok"\n' > "$K/scripts/check-local.sh"
+  out="$(bash "$K/scripts/check-adas.sh" "$K" 2>&1)"; rc=$?
+  [ "$rc" = 0 ] && grep -q 'check-local: ✓ trava da casa ok' <<< "$out" && pass "$g: trava verde → check-adas rc 0 e diz que rodou" || fail "$g: trava verde e check-adas rc=$rc"
+done
+M="$T/casaM"; mkdir -p "$M/scripts" "$M/tests"; git -C "$M" init -q
+printf '# M\n<!-- adas-core-start -->\n1. **hosts da lista** — mecanismo: scripts/check-casa.sh · teste: tests/casa.test.sh\n<!-- adas-core-end -->\n' > "$M/ADAS.md"
+echo 'exit 0' > "$M/scripts/check-casa.sh"; echo 'exit 0' > "$M/tests/casa.test.sh"; cp "$P/skeleton-v4/scripts/check-mecanismo.sh" "$M/scripts/"
+bash "$M/scripts/check-mecanismo.sh" "$M" >/dev/null 2>&1; [ $? = 1 ] && pass "v4: mecanismo que nada executa reprova (controle)" || fail "v4: check-mecanismo passou mecanismo solto"
+echo 'bash scripts/check-casa.sh' > "$M/scripts/check-local.sh"
+bash "$M/scripts/check-mecanismo.sh" "$M" >/dev/null 2>&1 && pass "v4: mecanismo chamado pelo check-local.sh conta como registrado" || fail "v4: check-mecanismo não aceita check-local.sh como registro"
+
+echo "== 9) B5: 1º sync (sem lock) separa cópia ATRASADA (blob do histórico do produto) de cópia EDITADA"
+"${G[@]}" -C "$P" add -A && "${G[@]}" -C "$P" commit -qm 'v-velha'
+velha="$(cat "$P/skeleton/scripts/adas-report.sh")"
+echo "# release nova $$" >> "$P/skeleton/scripts/adas-report.sh"; "${G[@]}" -C "$P" commit -qam 'v-nova'
+R="$T/casaR"; casa "$R"; mkdir -p "$R/scripts"; printf '%s\n' "$velha" > "$R/scripts/adas-report.sh"
+out="$(bash "$SYNC" "$R" 2>&1)"; rc=$?
+[ "$rc" = 0 ] && identicas "$R" skeleton && pass "cópia atrasada (versão antiga do produto) sincroniza sem --force" || fail "cópia atrasada recusada (rc=$rc): $(tail -2 <<< "$out")"
+S="$T/casaS"; casa "$S"; mkdir -p "$S/scripts"; printf '%s\n# edição da casa\n' "$velha" > "$S/scripts/adas-report.sh"
+bash "$SYNC" "$S" >/dev/null 2>&1; [ $? = 1 ] && [ ! -f "$S/.adas/skeleton.lock" ] && grep -q 'edição da casa' "$S/scripts/adas-report.sh" \
+  && pass "cópia editada (fora do histórico) segue recusada" || fail "cópia editada passou sem --force"
+echo "# rascunho no stash $$" >> "$P/skeleton/scripts/adas-report.sh"; cp "$P/skeleton/scripts/adas-report.sh" "$T/stash.sh"; git -C "$P" stash -q
+U="$T/casaU"; casa "$U"; mkdir -p "$U/scripts"; cp "$T/stash.sh" "$U/scripts/adas-report.sh"
+bash "$SYNC" "$U" >/dev/null 2>&1; [ $? = 1 ] && pass "blob só do stash (não alcançável do HEAD) não conta como histórico" || fail "blob do stash virou 'versão antiga'"
+
 echo "sync: $ok ok, $ko falha(s)"; [ "$ko" = 0 ]

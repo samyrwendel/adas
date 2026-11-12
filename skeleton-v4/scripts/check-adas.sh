@@ -264,7 +264,16 @@ if [ "$MODO" = mecanismo ]; then
   else note "modo mecanismo sem scripts/check-mecanismo.sh — nada cobra os invariantes"; warn=1; fi
 fi
 
-v="ok"; [ "$warn" -ne 0 ] && v="warn"; [ "$block" -ne 0 ] && v="block"
+# 15) MECANISMO PRÓPRIO DA CASA (B4 da revisão 020): scripts/check-local.sh é da casa, fica FORA do skeleton.lock e o
+#     `adas sync` (nem com --force) nunca o toca. Trava do domínio (cor só no tokens.css, hosts da mesa, ...) mora
+#     nele, não numa cópia editada de script sincronizado. rc≠0 = BLOCK; ele roda onde o check-adas roda (pre-commit, CI).
+local_fail=0
+if [ -f scripts/check-local.sh ]; then
+  if loc_out="$(bash scripts/check-local.sh "$PWD" 2>&1)"; then info "check-local: $(printf '%s\n' "$loc_out" | tail -1)"
+  else printf '%s\n' "$loc_out" | sed 's/^/  /'; note "MECANISMO DA CASA reprovou (scripts/check-local.sh) — ver acima"; local_fail=1; fi
+fi
+
+v="ok"; [ "$warn" -ne 0 ] && v="warn"; [ "$block" -ne 0 ] && v="block"; [ "$local_fail" -ne 0 ] && v="block"
 if [ "$SEAL" = "1" ]; then
   mkdir -p .adas
   { echo "selado: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -273,6 +282,7 @@ if [ "$SEAL" = "1" ]; then
   } > .adas/install-check
   echo "🔏 selo gravado em .adas/install-check (modo $MODO, veredito: $v, $notes aviso(s)) — versione-o: é a prova, não cache"
 fi
+if [ "$local_fail" -ne 0 ]; then echo "✗ check-adas: mecanismo da casa (scripts/check-local.sh) reprovou — corrija antes de seguir"; exit 1; fi
 if [ "$block" -ne 0 ]; then echo "✗ check-adas: bloqueado (acima) — corrija antes de seguir"; exit 1; fi
 if [ "$warn" -ne 0 ]; then echo "⚠ check-adas: $notes aviso(s) — não bloqueia (modo $MODO)"; exit 0; fi
 case "$MODO" in

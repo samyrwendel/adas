@@ -874,6 +874,10 @@ ficha_check() {
   # dela tem data anterior ao corte (R1 da revisão 018). As antigas sem data ficam todas antes da última datada antiga.
   local iso='^[0-9]{4}-[0-9]{2}-[0-9]{2}$' ult_antiga=-1
   for ((i=0; i<N; i++)); do [[ "${DATATAG[i]}" =~ $iso ]] && [[ "${DATATAG[i]}" < "$desde" ]] && ult_antiga=$i; done
+  # âncora de posição: a última DA que já existia no 1º sync (`ultima: DA-NNN` no .adas/ficha-desde). Sem ela, um
+  # diário inteiro sem `data:` (claude-tg-tmux, axon, radar-eleitor) ganhava aviso em toda DA antiga (revisão 020).
+  local ancora; ancora="$(sed -n 's/^ultima: //p' "$dir/.adas/ficha-desde" 2>/dev/null | head -1)"
+  [ -n "$ancora" ] && for ((i=0; i<N; i++)); do [ "${KEY[i]}" = "$ancora" ] && [ "$i" -gt "$ult_antiga" ] && ult_antiga=$i; done
   for ((i=0; i<N; i++)); do
     local d="${DATATAG[i]}"
     if [[ "$d" =~ $iso ]]; then [[ ! "$d" < "$desde" ]] || continue

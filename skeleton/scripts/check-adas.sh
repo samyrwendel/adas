@@ -25,6 +25,7 @@ ADAS="${ADAS:-ADAS.md}"
 DECISIONS="${DECISIONS:-DECISIONS.md}"
 warn=0; block=0; notes=0; lock_fail=0
 note(){ echo "• $*"; notes=$((notes+1)); }
+info(){ echo "ℹ $*"; }
 
 # 1) PLACEHOLDER não preenchido → bootstrap incompleto (WARN)
 # Conta só docs preenchíveis (.md das faixas/ADAS/DECISIONS/AGENTS + .css dos tokens da .specs): --include exclui o
@@ -394,8 +395,17 @@ if [ -f "$DECISIONS" ] && [ -f "$SELFDIR/check-da-gatilho.py" ]; then
   fi
 fi
 
+# 15) MECANISMO PRÓPRIO DA CASA (B4 da revisão 020): scripts/check-local.sh é da casa, fica FORA do skeleton.lock e o
+#     `adas sync` (nem com --force) nunca o toca. Trava do domínio (cor só no tokens.css, hosts da mesa, ...) mora
+#     nele, não numa cópia editada de script sincronizado. rc≠0 = BLOCK; ele roda onde o check-adas roda (pre-commit, CI).
+local_fail=0
+if [ -f scripts/check-local.sh ]; then
+  if loc_out="$(bash scripts/check-local.sh "$PWD" 2>&1)"; then info "check-local: $(printf '%s\n' "$loc_out" | tail -1)"
+  else printf '%s\n' "$loc_out" | sed 's/^/  /'; note "MECANISMO DA CASA reprovou (scripts/check-local.sh) — ver acima"; local_fail=1; fi
+fi
+
 # veredito
-v="ok"; [ "$warn" -ne 0 ] && v="warn"; [ "$block" -ne 0 ] && v="block"; [ "$lock_fail" -ne 0 ] && v="block"
+v="ok"; [ "$warn" -ne 0 ] && v="warn"; [ "$block" -ne 0 ] && v="block"; [ "$local_fail" -ne 0 ] && v="block"; [ "$lock_fail" -ne 0 ] && v="block"
 if [ "$SEAL" = "1" ]; then
   mkdir -p .adas
   { echo "selado: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -405,6 +415,7 @@ if [ "$SEAL" = "1" ]; then
   } > .adas/install-check
   echo "🔏 selo gravado em .adas/install-check (veredito: $v, $notes aviso(s)) — versione-o: é a prova, não cache"
 fi
+if [ "$local_fail" -ne 0 ]; then echo "✗ check-adas: mecanismo da casa (scripts/check-local.sh) reprovou — corrija antes de seguir"; exit 1; fi
 if [ "$lock_fail" -ne 0 ]; then echo "✗ check-adas: script sincronizado editado à mão (acima) — edite no produto e rode adas sync"; exit 1; fi
 if [ "$mec_block" -ne 0 ]; then echo "✗ check-adas: DA nova proíbe sem **Mecanismo:** que exista (DA-004 do repo adas) — corrija antes de seguir"; exit 1; fi
 if [ "$block" -ne 0 ]; then echo "✗ check-adas: faixa quebrada (frontmatter) — corrija antes de seguir"; exit 1; fi

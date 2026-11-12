@@ -33,20 +33,20 @@ out="$(bash scripts/check-adas.sh 2>"$T/doc.err")"; rc=$?
 n="$(printf '%s\n' "$out" | grep -c '^•')"
 [ "$rc" = 0 ] && ok "check-adas exit 0" || bad "check-adas exit $rc"
 [ "$n" = 1 ] && ok "exatamente 1 linha • (era 8 no esqueleto anterior)" || { bad "$n linhas • (esperado 1):"; printf '%s\n' "$out" | grep '^•' | sed 's/^/      /'; }
-printf '%s\n' "$out" | grep -q '^• PLACEHOLDER ainda presente — preencha: .*DECISIONS.md' && ok "o 1 aviso é o PLACEHOLDER, com a lista de arquivos" || bad "o aviso não é o PLACEHOLDER com lista"
+grep -q '^• PLACEHOLDER ainda presente — preencha: .*DECISIONS.md' <<< "$out" && ok "o 1 aviso é o PLACEHOLDER, com a lista de arquivos" || bad "o aviso não é o PLACEHOLDER com lista"
 [ -s "$T/doc.err" ] && { bad "stderr não vazio:"; sed 's/^/      /' "$T/doc.err"; } || ok "stderr vazio"
 for f in .adas/profile.json .adas/skeleton-version .adas/install-check; do [ -s "$f" ] && ok "$f gravado" || bad "$f ausente"; done
 grep -q '"modo": *"doc"' .adas/profile.json && ok "profile.json declara modo doc" || bad "modo não gravado no profile"
 grep -q '^modo: doc' .adas/install-check && ok "selo registra o modo" || bad "selo sem modo"
 [ -x .git/hooks/pre-commit ] && ok "pre-commit instalado pelo init" || bad "pre-commit não instalado"
 grep -q "$(date +%F)" DECISIONS.md && ok "DA-001 recebeu a data de adoção" || bad "data não carimbada na DA-001"
-printf '%s\n' "$out" | grep -q 'impede' && printf '%s\n' "$out" | grep -qv 'não impede' && bad "modo doc afirma que impede" || ok "modo doc não afirma impedir nada"
+grep -q 'impede' <<< "$out" && grep -qv 'não impede' <<< "$out" && bad "modo doc afirma que impede" || ok "modo doc não afirma impedir nada"
 
 echo "== 3) UM FORMATO SÓ — a DA-001 do template é lida pelo índice; da-new cria a DA-002 e o índice a vê"
 grep -q '^- DA-001 · produto · — — Este projeto adota o ADAS — ' DECISIONS-INDEX.md && ok "índice enxerga a DA-001 do template (título + Regra)" || bad "DA-001 do template invisível ao índice"
 bash scripts/da-index.sh update . 2>&1 | grep -q 'WARN c11' && bad "c11 acusa DA inexistente no dia 0" || ok "sem c11 no dia 0"
 newout="$(bash scripts/da-new.sh produto - "Segunda decisão de teste" . 2>&1)"; rc=$?
-[ "$rc" = 0 ] && printf '%s\n' "$newout" | grep -q '^DA-002$' && ok "da-new.sh gerou DA-002 (max+1)" || bad "da-new.sh não gerou DA-002: $newout"
+[ "$rc" = 0 ] && grep -q '^DA-002$' <<< "$newout" && ok "da-new.sh gerou DA-002 (max+1)" || bad "da-new.sh não gerou DA-002: $newout"
 bash scripts/da-index.sh check . >/dev/null 2>&1 && bad "check não acusou índice velho após da-new" || ok "índice velho após da-new é acusado (divergência nunca passa)"
 bash scripts/da-index.sh update . >/dev/null 2>&1
 bash scripts/da-index.sh list . | grep -q '^- DA-002 · produto · — — Segunda decisão de teste' && ok "list enxerga a DA-002 criada pelo caminho oficial" || bad "DA-002 não aparece no list"
@@ -57,7 +57,7 @@ echo "== 4) NÃO SUJA A HOME — de /tmp, sem [dir], da-new/da-index/check-adas 
 cd "$T"
 n0="$(ls -A "$HOME" | wc -l)"
 o="$(bash "$T/doc/scripts/da-new.sh" produto - "Terceira, rodada de fora" 2>&1)"; rc=$?
-[ "$rc" = 0 ] && printf '%s\n' "$o" | grep -q "$T/doc/DECISIONS.md" && ok "da-new sem [dir] escreveu em $T/doc" || bad "da-new sem [dir] não escreveu no repo: $o"
+[ "$rc" = 0 ] && grep -q "$T/doc/DECISIONS.md" <<< "$o" && ok "da-new sem [dir] escreveu em $T/doc" || bad "da-new sem [dir] não escreveu no repo: $o"
 grep -q '^## DA-003 — Terceira' "$T/doc/DECISIONS.md" && ok "DA-003 está no diário do repo" || bad "DA-003 não foi para o repo"
 bash "$T/doc/scripts/da-index.sh" update 2>&1 | grep -q '3 DAs' && ok "da-index sem [dir] atualizou o repo do script" || bad "da-index sem [dir] não agiu no repo do script"
 [ ! -e "$HOME/DECISIONS.md" ] && [ ! -e "$HOME/.adas" ] && [ "$(ls -A "$HOME" | wc -l)" = "$n0" ] && ok "\$HOME intocada" || { bad "\$HOME foi tocada:"; ls -la "$HOME" | sed 's/^/      /'; }
@@ -66,11 +66,11 @@ mkdir -p "$T/x"; cd "$T/x"; [ ! -e DECISIONS.md ] && ok "cwd (sem DECISIONS.md) 
 echo "== 5) check-adas [dir] — de fora, audita o alvo e não o cwd; git rev-parse (não [ -d .git ])"
 adopt "$T/b"; (cd "$T/b" && bash scripts/adas-init.sh --modo doc --fonte "$ROOT" >/dev/null 2>&1)
 cd "$T"; outb="$(bash "$T/doc/scripts/check-adas.sh" "$T/b" 2>&1)"
-printf '%s\n' "$outb" | grep -q 'PLACEHOLDER' && ok "check-adas <dir> audita o alvo (placeholder de B)" || bad "check-adas <dir> não auditou B"
+grep -q 'PLACEHOLDER' <<< "$outb" && ok "check-adas <dir> audita o alvo (placeholder de B)" || bad "check-adas <dir> não auditou B"
 (cd "$T/doc" && git add -A >/dev/null 2>&1 && git commit -qm "adota" >/dev/null 2>&1 && git worktree add -q "$T/wt" -b wt >/dev/null 2>&1)
 if [ -d "$T/wt" ]; then
   outw="$(bash "$T/wt/scripts/check-adas.sh" "$T/wt" 2>&1)"
-  printf '%s\n' "$outw" | grep -q 'sem git' && bad "worktree tratado como 'sem git'" || ok "worktree (.git é arquivo) reconhecido como git"
+  grep -q 'sem git' <<< "$outw" && bad "worktree tratado como 'sem git'" || ok "worktree (.git é arquivo) reconhecido como git"
 else bad "não consegui criar worktree para o teste"; fi
 
 echo "== 6) MODO MECANISMO — mesmo esqueleto virgem: 1 aviso + check-mecanismo FALHA (invariante sem gatilho não entra)"
@@ -81,8 +81,8 @@ grep -q '"modo": *"mecanismo"' .adas/profile.json && ok "profile.json declara mo
 outm="$(bash scripts/check-adas.sh 2>&1)"; rcm=$?
 [ "$rcm" = 1 ] && ok "check-adas exit 1 em modo mecanismo virgem (o contrato do modo)" || bad "check-adas exit $rcm (esperado 1)"
 [ "$(printf '%s\n' "$outm" | grep -c '^•')" = 1 ] && ok "ainda só 1 linha • (placeholder) — o FAIL é do mecanismo, não ruído" || bad "linhas • em mecanismo ≠ 1"
-printf '%s\n' "$outm" | grep -q '✓ \[mecanismo\] invariante 1 «Segredo nunca entra no repo»' && ok "invariante de referência (check-secrets + teste) PASSA" || bad "invariante de referência não passou"
-printf '%s\n' "$outm" | grep -q '✗ \[mecanismo\] invariante 2 .*não existe' && printf '%s\n' "$outm" | grep -q '✗ \[mecanismo\] invariante 3' && ok "invariantes-modelo sem gatilho são LISTADOS como FAIL" || bad "invariantes sem gatilho não listados"
+grep -q '✓ \[mecanismo\] invariante 1 «Segredo nunca entra no repo»' <<< "$outm" && ok "invariante de referência (check-secrets + teste) PASSA" || bad "invariante de referência não passou"
+grep -q '✗ \[mecanismo\] invariante 2 .*não existe' <<< "$outm" && grep -q '✗ \[mecanismo\] invariante 3' <<< "$outm" && ok "invariantes-modelo sem gatilho são LISTADOS como FAIL" || bad "invariantes sem gatilho não listados"
 [ "$out" != "$outm" ] && ok "saída do modo doc ≠ saída do modo mecanismo (o modo não é decorativo)" || bad "saídas iguais nos dois modos"
 git add -A >/dev/null 2>&1; git commit -qm "tenta" >/dev/null 2>&1 && bad "pre-commit deixou passar invariante sem gatilho" || ok "pre-commit BLOQUEIA o commit em modo mecanismo com invariante sem gatilho"
 
@@ -90,17 +90,17 @@ echo "== 7) check-mecanismo — fixture preenchida passa; tirar o teste: falha n
 sed -i '/^2\. /d; /^3\. /d' ADAS.md
 bash scripts/check-mecanismo.sh . >/dev/null 2>&1 && ok "só invariantes com gatilho+teste → PASSA" || bad "fixture preenchida não passou"
 printf '2. **Nunca editar settings.json à mão** — mecanismo: scripts/check-adas.sh\n' > "$T/inv"; sed -i "/^1\. /r $T/inv" ADAS.md
-o2="$(bash scripts/check-mecanismo.sh . 2>&1)"; [ $? = 1 ] && printf '%s\n' "$o2" | grep -q 'invariante 2 .*sem teste:' && ok "sem teste: → FAIL nomeando o invariante 2" || bad "sem teste: não falhou como esperado: $o2"
+o2="$(bash scripts/check-mecanismo.sh . 2>&1)"; [ $? = 1 ] && grep -q 'invariante 2 .*sem teste:' <<< "$o2" && ok "sem teste: → FAIL nomeando o invariante 2" || bad "sem teste: não falhou como esperado: $o2"
 sed -i '2,$ s/^2\. .*$/2. **Nunca editar settings.json à mão** — sem gatilho nenhum, só a frase/' ADAS.md
-o3="$(bash scripts/check-mecanismo.sh . 2>&1)"; [ $? = 1 ] && printf '%s\n' "$o3" | grep -q 'invariante sem gatilho não entra' && ok "frase sem mecanismo: é REJEITADA com a mensagem do modo" || bad "frase solta não rejeitada: $o3"
+o3="$(bash scripts/check-mecanismo.sh . 2>&1)"; [ $? = 1 ] && grep -q 'invariante sem gatilho não entra' <<< "$o3" && ok "frase sem mecanismo: é REJEITADA com a mensagem do modo" || bad "frase solta não rejeitada: $o3"
 sed -i '/^2\. /d' ADAS.md; mkdir -p hooks; printf '#!/usr/bin/env bash\nexit 0\n' > hooks/x.sh; printf '#!/usr/bin/env bash\nexit 0\n' > hooks/x.test.sh
 printf '2. **Regra com hook não registrado** — mecanismo: hooks/x.sh · teste: hooks/x.test.sh\n' > "$T/inv"; sed -i "/^1\. /r $T/inv" ADAS.md
-o4="$(bash scripts/check-mecanismo.sh . 2>&1)"; [ $? = 1 ] && printf '%s\n' "$o4" | grep -q 'NADA o executa' && ok "mecanismo existente mas não registrado → FAIL (gate que ninguém chama não é gate)" || bad "hook não registrado passou: $o4"
+o4="$(bash scripts/check-mecanismo.sh . 2>&1)"; [ $? = 1 ] && grep -q 'NADA o executa' <<< "$o4" && ok "mecanismo existente mas não registrado → FAIL (gate que ninguém chama não é gate)" || bad "hook não registrado passou: $o4"
 jq '.hooks.PreToolUse += [{"matcher":"Bash","hooks":[{"type":"command","command":"bash hooks/x.sh"}]}]' .claude/settings.json > "$T/s.json" && mv "$T/s.json" .claude/settings.json
 bash scripts/check-mecanismo.sh . >/dev/null 2>&1 && ok "registrado em settings.json → PASSA" || bad "hook registrado não passou"
 
 echo "== 8) adas-init sem --modo: exit 2 com a pergunta certa; idempotente em repo preenchido"
-o5="$(bash "$T/doc/scripts/adas-init.sh" "$T/doc" 2>&1)"; [ $? = 2 ] && printf '%s\n' "$o5" | grep -qi 'quem está no ato' && ok "sem --modo → exit 2 + 'quem está no ato?'" || bad "sem --modo não perguntou: $o5"
+o5="$(bash "$T/doc/scripts/adas-init.sh" "$T/doc" 2>&1)"; [ $? = 2 ] && grep -qi 'quem está no ato' <<< "$o5" && ok "sem --modo → exit 2 + 'quem está no ato?'" || bad "sem --modo não perguntou: $o5"
 cd "$T/doc"; sed -i 's/<PLACEHOLDER: quem decidiu, e a frase literal se houver>/Fulana, "vamos adotar"/' DECISIONS.md; bash scripts/da-index.sh update . >/dev/null 2>&1
 git add -A >/dev/null 2>&1; git commit -qm "preenche" >/dev/null 2>&1
 bash scripts/adas-init.sh --modo doc --fonte "$ROOT" >/dev/null 2>&1
@@ -137,10 +137,10 @@ git add -A >/dev/null 2>&1; git commit -qm "adota" >/dev/null 2>&1 || bad "commi
 mkdir -p src DECISIONS-arquivo; printf '# ver DA-002 e caderno 140\n' > src/a.txt; printf '## DA-140 — entrada do caderno\nDA-140 DA-207\n' > DECISIONS-arquivo/caderno.md
 git add src/a.txt DECISIONS-arquivo/caderno.md
 o11="$(bash scripts/check-da-refs.sh 2>&1)"; rc=$?
-[ "$rc" = 0 ] && printf '%s\n' "$o11" | grep -q '^✓ check-da-refs' && ok "DA local existente + 'caderno 140' + DECISIONS-arquivo/ com DA-140 → passa limpo" || bad "check-da-refs falhou onde devia passar (rc=$rc): $o11"
+[ "$rc" = 0 ] && grep -q '^✓ check-da-refs' <<< "$o11" && ok "DA local existente + 'caderno 140' + DECISIONS-arquivo/ com DA-140 → passa limpo" || bad "check-da-refs falhou onde devia passar (rc=$rc): $o11"
 printf '# ver DA-140\n' > src/b.txt; git add src/b.txt
 o12="$(bash scripts/check-da-refs.sh 2>&1)"; rc=$?
-[ "$rc" = 0 ] && printf '%s\n' "$o12" | grep -q 'src/b.txt:1 .*DA-140' && printf '%s\n' "$o12" | grep -q 'não impede' && ok "modo doc: DA-140 inexistente → aviso com arquivo:linha, exit 0" || bad "modo doc não avisou como esperado (rc=$rc): $o12"
+[ "$rc" = 0 ] && grep -q 'src/b.txt:1 .*DA-140' <<< "$o12" && grep -q 'não impede' <<< "$o12" && ok "modo doc: DA-140 inexistente → aviso com arquivo:linha, exit 0" || bad "modo doc não avisou como esperado (rc=$rc): $o12"
 git commit -qm "cita" >/dev/null 2>&1 && ok "pre-commit em modo doc deixa passar (o gate avisa, não impede)" || bad "pre-commit bloqueou em modo doc"
 jq '.modo="mecanismo"' .adas/profile.json > "$T/p.json" && mv "$T/p.json" .adas/profile.json
 printf '# ver DA-141\n' > src/c.txt; git add src/c.txt
@@ -156,11 +156,11 @@ bash scripts/adas-init.sh --modo doc >/dev/null 2>&1
 want="$(git -C "$ROOT" rev-parse --short=7 HEAD)"
 o12="$(bash scripts/adas-init.sh --modo doc --fonte "$ROOT" 2>&1)"
 [ "$(cat .adas/skeleton-version)" = "$want" ] && ok "2º init com --fonte SUBSTITUI nao-registrada por $want (o bug: [ ! -s ] ignorava)" || bad "2º init com --fonte deixou '$(cat .adas/skeleton-version)' (esperado $want)"
-printf '%s\n' "$o12" | grep -q "nao-registrada → $want" && ok "a substituição é anunciada (antes → depois)" || bad "substituição silenciosa: $o12"
+grep -q "nao-registrada → $want" <<< "$o12" && ok "a substituição é anunciada (antes → depois)" || bad "substituição silenciosa: $o12"
 bash scripts/adas-init.sh --modo doc >/dev/null 2>&1
 [ "$(cat .adas/skeleton-version)" = "$want" ] && ok "3º init sem --fonte mantém $want (não regride para nao-registrada)" || bad "3º init sem --fonte apagou a versão: '$(cat .adas/skeleton-version)'"
 o13="$(bash scripts/adas-init.sh --modo doc --fonte "$T/nao-e-git" 2>&1)"
-[ "$(cat .adas/skeleton-version)" = "$want" ] && printf '%s\n' "$o13" | grep -q 'não resolve' && ok "--fonte que não resolve: avisa e mantém $want" || bad "--fonte inválido: versão='$(cat .adas/skeleton-version)' saída: $o13"
+[ "$(cat .adas/skeleton-version)" = "$want" ] && grep -q 'não resolve' <<< "$o13" && ok "--fonte que não resolve: avisa e mantém $want" || bad "--fonte inválido: versão='$(cat .adas/skeleton-version)' saída: $o13"
 
 echo; echo "RESULTADO smoke-v4: $pass ok, $fail falha(s)"
 [ "$fail" = 0 ]

@@ -52,11 +52,11 @@ mkdir -p "$T/s3"; (cd "$T/s3" && git init -q && git config user.email t@t && git
 expect_exit 1 "fixture 'Bearer test-…' no histórico, SEM allowlist → BLOCK (porta 2)" bash -c "cd '$T/s3' && bash scripts/check-secrets.sh --all"
 (cd "$T/s3" && printf 'tests/fixture.test.js | token de teste do handler, sem valor real\n' > .adas/secrets-allowlist)
 out=$(cd "$T/s3" && bash scripts/check-secrets.sh --all 2>&1); rc=$?
-[ "$rc" = 1 ] && echo "$out" | grep -q 'allowlist: entrada INVÁLIDA' && ok "entrada sem DATA é ignorada com aviso — isenção sem motivo+data não vale" || bad "entrada inválida foi honrada (rc=$rc)"
+[ "$rc" = 1 ] && grep -q 'allowlist: entrada INVÁLIDA' <<< "$out" && ok "entrada sem DATA é ignorada com aviso — isenção sem motivo+data não vale" || bad "entrada inválida foi honrada (rc=$rc)"
 (cd "$T/s3" && printf 'tests/fixture.test.js | token de teste do handler, sem valor real | 2026-09-06\n' > .adas/secrets-allowlist)
 out=$(cd "$T/s3" && bash scripts/check-secrets.sh --all 2>&1); rc=$?
 [ "$rc" = 0 ] && ok "allowlist (caminho | motivo | data) → PASSA no --all (árvore + porta 2)" || bad "allowlist não isentou a fixture (rc=$rc): $(echo "$out" | grep '✗' | head -2)"
-echo "$out" | grep -q 'ℹ allowlist.*1 caminho' && ok "isenção é VISÍVEL na saída (nunca silenciosa)" || bad "isenção silenciosa"
+grep -q 'ℹ allowlist.*1 caminho' <<< "$out" && ok "isenção é VISÍVEL na saída (nunca silenciosa)" || bad "isenção silenciosa"
 (cd "$T/s3" && echo "k3='ghp_$(printf '3%.0s' $(seq 36))'" > n.js && git add n.js)
 expect_exit 1 "com allowlist, arquivo NOVO staged com segredo → BLOCK" bash -c "cd '$T/s3' && bash scripts/check-secrets.sh"
 (cd "$T/s3" && git rm -q --cached n.js && rm -f n.js && echo "tk='ghp_$(printf '2%.0s' $(seq 36))'" > tests/nova.test.js && git add -A && git commit -qm nova)
@@ -88,14 +88,14 @@ mkdir -p "$T/p2" && cd "$T/p2" && git init -q && cp -Rn "$d/skeleton/." . 2>/dev
 mkdir -p .adas && git -C "$d" rev-parse HEAD | cut -c1-7 > .adas/skeleton-version
 out=$(bash scripts/check-adas.sh); rc=$?
 [ "$rc" = 0 ] && ok "exit 0 (placeholder é warn, não block)" || bad "bloqueou o esqueleto (exit $rc)"
-echo "$out" | grep -q PLACEHOLDER && ok "acusa PLACEHOLDER pendente" || bad "não acusou placeholder"
+grep -q PLACEHOLDER <<< "$out" && ok "acusa PLACEHOLDER pendente" || bad "não acusou placeholder"
 
 echo "== 5) check-adas — núcleo adas-core e skeleton-version"
 mkdir -p "$T/p3/scripts" && cd "$T/p3" && cp "$ROOT/skeleton/scripts/check-adas.sh" scripts/
 printf '# X\nsem marcadores\n' > ADAS.md; echo "leia ADAS.md" > AGENTS.md; touch DECISIONS.md
 out=$(bash scripts/check-adas.sh 2>/dev/null)
-echo "$out" | grep -q "adas-core" && ok "acusa ADAS.md sem marcadores de núcleo" || bad "não acusou núcleo ausente"
-echo "$out" | grep -q "skeleton-version" && ok "acusa install sem skeleton-version" || bad "não acusou versão ausente"
+grep -q "adas-core" <<< "$out" && ok "acusa ADAS.md sem marcadores de núcleo" || bad "não acusou núcleo ausente"
+grep -q "skeleton-version" <<< "$out" && ok "acusa install sem skeleton-version" || bad "não acusou versão ausente"
 
 echo "== 6) hooks do host — reinjeção, envelope, roteador e guard"
 R="$T/repo"; mkdir -p "$R/.claude/hooks"
@@ -109,13 +109,13 @@ echo "$R" > "$T/repos.conf"
 export ADAS_REPOS_CONF="$T/repos.conf"
 export HOME="$T/home"; mkdir -p "$HOME"
 out=$(echo "{\"cwd\":\"$R\",\"session_id\":\"t\"}" | bash "$ROOT/host/adas-activate.sh")
-echo "$out" | grep -q NUCLEO-SENTINELA && ok "SessionStart reinjeta o núcleo do repo" || bad "activate não emitiu o núcleo"
+grep -q NUCLEO-SENTINELA <<< "$out" && ok "SessionStart reinjeta o núcleo do repo" || bad "activate não emitiu o núcleo"
 [ -f "$HOME/.claude/adas/repo.active" ] && ok "flag .active gravado (consumido pelo adas-report)" || bad "sem flag .active"
 out=$(CLAUDE_PROJECT_DIR="$R" bash "$ROOT/host/adas-subagent.sh")
 echo "$out" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1 \
   && ok "SubagentStart: envelope JSON válido" || bad "envelope inválido/ausente"
 out=$(echo "{\"tool_input\":{\"file_path\":\"$R/x.ts\"}}" | bash "$ROOT/host/adas-route.sh")
-echo "$out" | grep -q FAIXA-SENTINELA && ok "roteador delega ao adas-inject.sh do repo" || bad "roteador não delegou"
+grep -q FAIXA-SENTINELA <<< "$out" && ok "roteador delega ao adas-inject.sh do repo" || bad "roteador não delegou"
 out=$(echo "{\"tool_input\":{\"file_path\":\"$R/x.ts\"}}" | CLAUDE_PROJECT_DIR="$R" bash "$ROOT/host/adas-route.sh")
 [ -z "$out" ] && ok "guard anti-dupla: project==repo → silêncio" || bad "guard falhou (injeção dupla)"
 
@@ -141,29 +141,29 @@ echo "== 8) check-adas — ENFORCEMENT: instalação-fantasma NUNCA passa em sil
 mkdir -p "$R/scripts"; cp "$ROOT/skeleton/scripts/check-adas.sh" "$R/scripts/"
 cp "$ROOT/skeleton/.claude/settings.json" "$R/.claude/settings.json"
 out=$(cd "$R" && bash scripts/check-adas.sh 2>/dev/null)
-echo "$out" | grep -q "ENFORCEMENT" \
+grep -q "ENFORCEMENT" <<< "$out" \
   && bad "falso positivo: tudo instalado mas acusou enforcement" || ok "instalado → sem warn de enforcement"
 # fantasma (o caso clawd): máquina com ~/.claude mas ZERO runtime → ACUSA
 H2="$T/home2"; mkdir -p "$H2/.claude"
 out=$(cd "$R" && HOME="$H2" bash scripts/check-adas.sh 2>/dev/null)
-echo "$out" | grep -q "runtime host NÃO instalado" \
+grep -q "runtime host NÃO instalado" <<< "$out" \
   && ok "fantasma → acusa runtime ausente" || bad "instalação-fantasma passou em silêncio"
 # meia-instalação: hooks copiados, settings sem registro → ACUSA
 mkdir -p "$H2/.claude/hooks"; cp "$ROOT"/host/adas-*.sh "$H2/.claude/hooks/"; echo '{}' > "$H2/.claude/settings.json"
 out=$(cd "$R" && HOME="$H2" bash scripts/check-adas.sh 2>/dev/null)
-echo "$out" | grep -q "MEIA-INSTALA" \
+grep -q "MEIA-INSTALA" <<< "$out" \
   && ok "meia-instalação → acusa hooks sem registro" || bad "meia-instalação passou em silêncio"
 # instalado mas o repo FORA do repos.conf → ACUSA
 echo '{"hooks":"adas-activate adas-route"}' > "$H2/.claude/settings.json"
 echo "/outro/repo" > "$H2/rc"
 out=$(cd "$R" && HOME="$H2" ADAS_REPOS_CONF="$H2/rc" bash scripts/check-adas.sh 2>/dev/null)
-echo "$out" | grep -q "FORA do repos.conf" \
+grep -q "FORA do repos.conf" <<< "$out" \
   && ok "repo fora do repos.conf → acusa" || bad "repo não governado passou em silêncio"
 # JIT do repo desligado (sem adas-inject.sh) → ACUSA
 R2="$T/repo2"; mkdir -p "$R2/.claude" "$R2/scripts"; cp "$ROOT/skeleton/scripts/check-adas.sh" "$R2/scripts/"
 printf '# X\n' > "$R2/ADAS.md"; touch "$R2/DECISIONS.md"
 out=$(cd "$R2" && HOME="$H2" bash scripts/check-adas.sh 2>/dev/null)
-echo "$out" | grep -q "JIT (PASSO 6) não existe" \
+grep -q "JIT (PASSO 6) não existe" <<< "$out" \
   && ok "repo sem adas-inject.sh → acusa JIT desligado" || bad "JIT desligado passou em silêncio"
 
 echo "== 9) da-index — o índice nasce COM a DA e divergência NUNCA passa batido"
@@ -297,10 +297,10 @@ cat > "$D4/DECISIONS.md" <<'EOS'
 EOS
 bash "$D4/scripts/da-index.sh" update "$D4" >/dev/null 2>&1
 vig="$(bash "$D4/scripts/da-index.sh" list --vigentes "$D4" 2>&1)"
-{ ! echo "$vig" | grep -q '^- DA-001 ' && echo "$vig" | grep -q '^- DA-003 '; } \
+{ ! grep -q '^- DA-001 ' <<< "$vig" && grep -q '^- DA-003 ' <<< "$vig"; } \
   && ok "da-index: DA ½+📚 sai dos vigentes, cabeça fica" || bad "DA ½+📚 vigente ou cabeça sumiu: $vig"
 lst="$(bash "$D4/scripts/da-index.sh" list "$D4" 2>&1)"   # variável: pipefail+grep -q dá SIGPIPE
-echo "$lst" | grep -q '^- DA-001 .*📚 em DA-003' \
+grep -q '^- DA-001 .*📚 em DA-003' <<< "$lst" \
   && ok "da-index: DA ½+📚 mostra a marca 📚" || bad "DA-001 sem marca 📚"
 expect_exit 0 "check: sincronizado → verde" bash "$D/scripts/da-index.sh" check "$D"
 printf '\n## DA-004 — Anexada por fora do hook\ncorpo\n' >> "$D/DECISIONS.md"
@@ -322,15 +322,15 @@ printf 'quebrado tambem\n' > "$X/.claude/skills/vendor-git/sub/SKILL.md"
 printf '# ADAS de teste\n' > "$X/ADAS.md"; touch "$X/DECISIONS.md"
 out=$(cd "$X" && bash scripts/check-adas.sh 2>/dev/null); rc=$?
 [ "$rc" = 0 ] && ok "skill de terceiro quebrada NÃO bloqueia (exit 0)" || bad "dependência causou BLOCK (rc=$rc)"
-echo "$out" | grep -q "TRIGGER MAGRO.*nossa-faixa" && ok "governada (procedência) segue auditada" || bad "governada escapou da auditoria"
-echo "$out" | grep -q "2 skill(s) de DEPENDÊNCIA" && ok "dependências CONTADAS e declaradas (2)" || bad "contagem de dependência ausente/errada"
-echo "$out" | grep -q "vendor-plano\|vendor-git" && bad "achado de dependência vazou sem flag" || ok "sem flag → dependência não polui"
+grep -q "TRIGGER MAGRO.*nossa-faixa" <<< "$out" && ok "governada (procedência) segue auditada" || bad "governada escapou da auditoria"
+grep -q "2 skill(s) de DEPENDÊNCIA" <<< "$out" && ok "dependências CONTADAS e declaradas (2)" || bad "contagem de dependência ausente/errada"
+grep -q "vendor-plano\|vendor-git" <<< "$out" && bad "achado de dependência vazou sem flag" || ok "sem flag → dependência não polui"
 out=$(cd "$X" && ADAS_CHECK_DEPS=1 bash scripts/check-adas.sh 2>/dev/null)
-echo "$out" | grep -q "dep:.*vendor-plano" && ok "ADAS_CHECK_DEPS=1 exibe achados de dependência" || bad "flag não exibiu dependências"
+grep -q "dep:.*vendor-plano" <<< "$out" && ok "ADAS_CHECK_DEPS=1 exibe achados de dependência" || bad "flag não exibiu dependências"
 # skill nova de terceiro chega AMANHÃ: classificada certo SEM tocar em config
 mkdir -p "$X/.claude/skills/vendor-novo"; printf 'chegou hoje, sem frontmatter\n' > "$X/.claude/skills/vendor-novo/SKILL.md"
 out=$(cd "$X" && bash scripts/check-adas.sh 2>/dev/null); rc=$?
-[ "$rc" = 0 ] && echo "$out" | grep -q "3 skill(s) de DEPENDÊNCIA" \
+[ "$rc" = 0 ] && grep -q "3 skill(s) de DEPENDÊNCIA" <<< "$out" \
   && ok "skill de terceiro NOVA classificada certo no 1º dia, zero config" || bad "skill nova classificada errado"
 # adoção: citar no ADAS.md → vira governada (e o frontmatter quebrado agora BLOQUEIA)
 echo "faixa vendor-novo adotada" >> "$X/ADAS.md"
@@ -340,16 +340,16 @@ out=$(cd "$X" && bash scripts/check-adas.sh 2>/dev/null); rc=$?
 (cd "$X" && git init -q && git config user.email t@t && git config user.name t \
   && git add .claude/skills/vendor-plano/SKILL.md && git commit -qm x)
 out=$(cd "$X" && bash scripts/check-adas.sh 2>/dev/null); rc=$?
-[ "$rc" = 1 ] && echo "$out" | grep -q "vendor-plano" \
+[ "$rc" = 1 ] && grep -q "vendor-plano" <<< "$out" \
   && ok "fork COMMITADO = adotado → audita (conflito cai no lado seguro)" || bad "tracked não virou governada"
 
 # check-adas [dir] (task 20260906-041, bug 3): de FORA, audita o alvo; sem argumento audita o repo do
 # script (scripts/..), nunca o cwd — antes o argumento era aceito e ignorado (achado da 017).
 mkdir -p "$T/fora"
 out=$(cd "$T/fora" && bash "$X/scripts/check-adas.sh" "$X" 2>/dev/null)
-echo "$out" | grep -q "vendor-plano" && ok "check-adas <dir> de outro cwd audita <dir> (achou a fork commitada de X)" || bad "check-adas <dir> auditou o cwd, não <dir>"
+grep -q "vendor-plano" <<< "$out" && ok "check-adas <dir> de outro cwd audita <dir> (achou a fork commitada de X)" || bad "check-adas <dir> auditou o cwd, não <dir>"
 out=$(cd "$T/fora" && bash "$X/scripts/check-adas.sh" 2>/dev/null)
-echo "$out" | grep -q "vendor-plano" && ok "sem [dir]: audita o repo do script (scripts/..), não o cwd" || bad "sem [dir] auditou o cwd"
+grep -q "vendor-plano" <<< "$out" && ok "sem [dir]: audita o repo do script (scripts/..), não o cwd" || bad "sem [dir] auditou o cwd"
 [ -z "$(ls -A "$T/fora")" ] && ok "cwd de fora ficou intocado" || bad "cwd de fora recebeu arquivos: $(ls -A "$T/fora")"
 
 echo "== 11) selo de instalação (DA-165) — a prova de que o check RODOU"
@@ -358,15 +358,15 @@ cp "$ROOT/skeleton/scripts/check-adas.sh" "$S1/scripts/"
 printf '# X\n<!-- adas-core-start -->\nn\n<!-- adas-core-end -->\n' > "$S1/ADAS.md"
 echo "leia ADAS.md" > "$S1/AGENTS.md"; touch "$S1/DECISIONS.md"; echo "abc1234" > "$S1/.adas/skeleton-version"
 out=$(cd "$S1" && bash scripts/check-adas.sh 2>/dev/null)
-echo "$out" | grep -q "nunca foi PROVADA" && ok "sem selo → acusa instalação nunca provada" || bad "selo ausente passou calado"
+grep -q "nunca foi PROVADA" <<< "$out" && ok "sem selo → acusa instalação nunca provada" || bad "selo ausente passou calado"
 out=$(cd "$S1" && bash scripts/check-adas.sh --seal 2>/dev/null)
 [ -f "$S1/.adas/install-check" ] && grep -q "^veredito:" "$S1/.adas/install-check" \
   && ok "--seal grava .adas/install-check com veredito" || bad "--seal não gravou o selo"
 out=$(cd "$S1" && bash scripts/check-adas.sh 2>/dev/null)
-echo "$out" | grep -q "nunca foi PROVADA\|OBSOLETO" && bad "selado mas ainda acusa" || ok "selado + esqueleto igual → silêncio"
+grep -q "nunca foi PROVADA\|OBSOLETO" <<< "$out" && bad "selado mas ainda acusa" || ok "selado + esqueleto igual → silêncio"
 echo "def5678" > "$S1/.adas/skeleton-version"
 out=$(cd "$S1" && bash scripts/check-adas.sh 2>/dev/null)
-echo "$out" | grep -q "selo OBSOLETO" && ok "esqueleto atualizado → selo obsoleto acusa" || bad "selo obsoleto passou calado"
+grep -q "selo OBSOLETO" <<< "$out" && ok "esqueleto atualizado → selo obsoleto acusa" || bad "selo obsoleto passou calado"
 
 echo "== 12) install-hooks (DA-166) — o pre-commit BLOQUEIA de verdade"
 G="$T/gated"; mkdir -p "$G/scripts"
@@ -400,13 +400,13 @@ out=$(bash "$ROOT/host/adas-resolve.sh" "$R/sub/dir")
 bash "$ROOT/host/adas-resolve.sh" "/nao/e/governado" >/dev/null 2>&1
 expect_exit 1 "adas-resolve.sh: path fora de repo governado → rc=1" bash "$ROOT/host/adas-resolve.sh" "/nao/e/governado"
 out=$(bash "$ROOT/host/adas-secret-guard.sh" "cat .env")
-echo "$out" | grep -q '^block:seguranca-acesso' && ok "secret-guard BLOQUEIA cat .env" || bad "secret-guard não bloqueou cat .env (out=$out)"
+grep -q '^block:seguranca-acesso' <<< "$out" && ok "secret-guard BLOQUEIA cat .env" || bad "secret-guard não bloqueou cat .env (out=$out)"
 out=$(bash "$ROOT/host/adas-secret-guard.sh" "cat .env.example")
 [ "$out" = "allow" ] && ok "secret-guard PERMITE .env.example" || bad "secret-guard bloqueou .env.example por engano (out=$out)"
 out=$(bash "$ROOT/host/adas-secret-guard.sh" "ls -la")
 [ "$out" = "allow" ] && ok "secret-guard PERMITE comando inofensivo" || bad "secret-guard bloqueou comando inofensivo (out=$out)"
 out=$(bash "$ROOT/host/adas-secret-guard.sh" "cat .env && rm -rf /")
-echo "$out" | grep -q '^block:' && ok "secret-guard bloqueia mesmo com comando encadeado (&&)" || bad "secret-guard vazou comando encadeado (out=$out)"
+grep -q '^block:' <<< "$out" && ok "secret-guard bloqueia mesmo com comando encadeado (&&)" || bad "secret-guard vazou comando encadeado (out=$out)"
 unset ADAS_REPOS_CONF
 
 echo "== 14) plugins multi-harness — build/testes reais rodam (não só existem)"
@@ -436,7 +436,7 @@ mkdir -p "$T/sp1/static" && (cd "$T/sp1" && git init -q && git config user.email
 (cd "$T/sp1" && echo 'const k = "sk-ABCDEFGHIJKLMNOPQRSTUVWX";' > static/app.js && git add static/app.js)
 out=$(cd "$T/sp1" && bash scripts/check-secrets.sh 2>&1); rc=$?
 [ "$rc" = 1 ] && ok "porta 1 — chave sk- em static/ → FALHA" || bad "porta 1 (chave em static) não bloqueou (rc=$rc)"
-echo "$out" | grep -q "porta 1" || bad "porta 1: mensagem não identifica a porta"
+grep -q "porta 1" <<< "$out" || bad "porta 1: mensagem não identifica a porta"
 
 mkdir -p "$T/sp2" && (cd "$T/sp2" && git init -q && git config user.email t@t && git config user.name t \
   && mkdir -p scripts && cp "$ROOT/skeleton/scripts/check-secrets.sh" scripts/ \
@@ -456,7 +456,7 @@ mkdir -p "$T/sp3" && (cd "$T/sp3" && git init -q && git config user.email t@t &&
   && git rm -q .env && git commit -qm "remove env")
 out=$(cd "$T/sp3" && bash scripts/check-secrets.sh --all 2>&1); rc=$?
 [ "$rc" = 1 ] && ok "porta 2 — .env removido mas vivo no histórico → FALHA" || bad "porta 2 (.env no histórico) não bloqueou (rc=$rc)"
-echo "$out" | grep -qi "rotacione ANTES de limpar" || bad "porta 2: sem a instrução de rotacionar antes de limpar"
+grep -qi "rotacione ANTES de limpar" <<< "$out" || bad "porta 2: sem a instrução de rotacionar antes de limpar"
 
 mkdir -p "$T/sp3b" && (cd "$T/sp3b" && git init -q && git config user.email t@t && git config user.name t \
   && mkdir -p scripts && cp "$ROOT/skeleton/scripts/check-secrets.sh" scripts/ \
@@ -489,7 +489,7 @@ cat > "$T/sp5/.adas/seguranca-app.json" <<'EOS'
 EOS
 out=$(cd "$T/sp5" && bash scripts/check-app-security.sh 2>&1); rc=$?
 [ "$rc" = 1 ] && ok "porta 3 'passa' SEM evidência → FAIL (DA-174)" || bad "'passa' sem evidência não falhou (rc=$rc)"
-echo "$out" | grep -qi "DA-174" || bad "FAIL sem evidência não cita DA-174"
+grep -qi "DA-174" <<< "$out" || bad "FAIL sem evidência não cita DA-174"
 
 mkdir -p "$T/sp6/scripts" "$T/sp6/.adas" && cp "$ROOT/skeleton/scripts/check-app-security.sh" "$T/sp6/scripts/"
 cat > "$T/sp6/.adas/seguranca-app.json" <<'EOS'
@@ -502,7 +502,7 @@ cat > "$T/sp6/.adas/seguranca-app.json" <<'EOS'
 EOS
 out=$(cd "$T/sp6" && bash scripts/check-app-security.sh 2>&1); rc=$?
 [ "$rc" = 0 ] && ok "porta 3 'na' JUSTIFICADO → PASSA (não bloqueia)" || bad "'na' justificado bloqueou (rc=$rc)"
-echo "$out" | grep -q "N/A (justificado)" || bad "'na' justificado não imprimiu o veredito PASSA"
+grep -q "N/A (justificado)" <<< "$out" || bad "'na' justificado não imprimiu o veredito PASSA"
 
 mkdir -p "$T/sp7/scripts" "$T/sp7/.adas" && (cd "$T/sp7" && git init -q && git config user.email t@t && git config user.name t)
 cp "$ROOT/skeleton/scripts/check-secrets.sh" "$T/sp7/scripts/"
@@ -513,12 +513,12 @@ cp "$T/sp6/.adas/seguranca-app.json" "$T/sp7/.adas/"
   && printf '# X\n<!-- adas-core-start -->\nN\n<!-- adas-core-end -->\n' > ADAS.md \
   && touch DECISIONS.md && git add -A && git commit -qm init)
 out=$(cd "$T/sp7" && bash scripts/check-adas.sh 2>&1)
-echo "$out" | grep -q "SEIS PORTAS (DA-189):" && ok "check-adas.sh mostra o resumo das 6 portas" || bad "check-adas.sh não mostrou as 6 portas"
-echo "$out" | grep -q "1 chave-no-front=PASSA · 2 env-historico=PASSA" && ok "check-adas.sh: portas mecânicas (1/2) refletem o check-secrets.sh live" \
+grep -q "SEIS PORTAS (DA-189):" <<< "$out" && ok "check-adas.sh mostra o resumo das 6 portas" || bad "check-adas.sh não mostrou as 6 portas"
+grep -q "1 chave-no-front=PASSA · 2 env-historico=PASSA" <<< "$out" && ok "check-adas.sh: portas mecânicas (1/2) refletem o check-secrets.sh live" \
   || bad "check-adas.sh não rodou/leu as portas mecânicas"
-echo "$out" | grep -q "3 validacao-servidor=N/A (justificado)" && ok "check-adas.sh: porta 3 lê .adas/seguranca-app.json" \
+grep -q "3 validacao-servidor=N/A (justificado)" <<< "$out" && ok "check-adas.sh: porta 3 lê .adas/seguranca-app.json" \
   || bad "check-adas.sh não leu o estado da porta 3"
-echo "$out" | grep -q "5 erro-fala-demais=débito" && ok "check-adas.sh: porta sem prova aparece como débito" \
+grep -q "5 erro-fala-demais=débito" <<< "$out" && ok "check-adas.sh: porta sem prova aparece como débito" \
   || bad "check-adas.sh não marcou a porta sem prova como débito"
 
 echo "== 16) COBERTURA DE ATOR (task 20260905-008) — gatilho só-fala-do-dono acusa; com ato do agente, passa"
@@ -530,10 +530,10 @@ FILLER='lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod te
 printf -- '---\nname: so-dono\ndescription: "use SEMPRE que o dono disser: '"'"'vamos fazer assim'"'"', '"'"'fica assim'"'"', '"'"'a partir de agora'"'"', '"'"'sempre que'"'"', '"'"'nunca mais'"'"', '"'"'toda vez que'"'"', '"'"'regra nova'"'"', '"'"'padrão novo'"'"', '"'"'vamos adotar'"'"', '"'"'muda pra X'"'"', '"'"'reverte'"'"', '"'"'pode fazer'"'"', '"'"'aprovado'"'"', '"'"'ok'"'"', MESMO que o usuário não peça — '"$FILLER"'"\n---\nextraído de .specs/x — regra nossa.\n' > "$AT/.claude/skills/so-dono/SKILL.md"
 printf '# ADAS teste\nfaixa so-dono adotada\n' > "$AT/ADAS.md"; touch "$AT/DECISIONS.md"
 out=$(cd "$AT" && bash scripts/check-adas.sh 2>/dev/null)
-echo "$out" | grep -q "COBERTURA DE ATOR.*so-dono" && ok "faixa só-fala-do-dono → acusa COBERTURA DE ATOR" || bad "não acusou cobertura de ator (RED esperado)"
+grep -q "COBERTURA DE ATOR.*so-dono" <<< "$out" && ok "faixa só-fala-do-dono → acusa COBERTURA DE ATOR" || bad "não acusou cobertura de ator (RED esperado)"
 printf -- '---\nname: so-dono\ndescription: "use SEMPRE que o dono disser: '"'"'vamos fazer assim'"'"', '"'"'fica assim'"'"', '"'"'a partir de agora'"'"', '"'"'sempre que'"'"', '"'"'nunca mais'"'"', '"'"'toda vez que'"'"', '"'"'regra nova'"'"', '"'"'padrão novo'"'"', '"'"'vamos adotar'"'"', '"'"'muda pra X'"'"', '"'"'reverte'"'"', '"'"'pode fazer'"'"', '"'"'aprovado'"'"', '"'"'ok'"'"', MESMO que o usuário não peça; dispara IGUAL quando o agente decide sozinho, por conta própria, tipo '"'"'a partir de agora eu vou sempre conferir X antes de Y'"'"' — mais texto de enchimento pra passar o piso de tamanho, garantindo mais de quatrocentos caracteres no total desta description longa o bastante."\n---\nextraído de .specs/x — regra nossa.\n' > "$AT/.claude/skills/so-dono/SKILL.md"
 out=$(cd "$AT" && bash scripts/check-adas.sh 2>/dev/null)
-echo "$out" | grep -q "COBERTURA DE ATOR" && bad "com ato do agente citado, ainda acusa (GREEN esperado)" || ok "com ato do agente citado → passa (sem COBERTURA DE ATOR)"
+grep -q "COBERTURA DE ATOR" <<< "$out" && bad "com ato do agente citado, ainda acusa (GREEN esperado)" || ok "com ato do agente citado → passa (sem COBERTURA DE ATOR)"
 
 echo "== 17) ORÇAMENTO da emissão do SessionStart (adas_session_emit) — teto de 10 KiB do harness"
 # CONTEXTO: o Claude Code PERSISTE stdout de hook > 10 KiB e entrega ao modelo só um
@@ -647,8 +647,8 @@ cat > "$C12/DECISIONS.md" <<'EOS'
 EOS
 sha_before="$(sha256sum "$C12/DECISIONS.md" | cut -d" " -f1)"
 out=$(bash "$C12/scripts/da-index.sh" update "$C12" 2>&1)
-echo "$out" | grep -q "^WARN c12:" && bad "c12 ainda acusa (deveria estar DESLIGADO — task 028)" || ok "c12 desligado: fixture-c12-aberto (3ª rodada em aberto) não acusa mais"
-echo "$out" | grep -q "^WARN c9:" && bad "c9 ainda acusa (deveria estar DESLIGADO — task 028)" || ok "c9 desligado: fixture-c12-mau com 3 rodadas depois da cabeça não acusa mais"
+grep -q "^WARN c12:" <<< "$out" && bad "c12 ainda acusa (deveria estar DESLIGADO — task 028)" || ok "c12 desligado: fixture-c12-aberto (3ª rodada em aberto) não acusa mais"
+grep -q "^WARN c9:" <<< "$out" && bad "c9 ainda acusa (deveria estar DESLIGADO — task 028)" || ok "c9 desligado: fixture-c12-mau com 3 rodadas depois da cabeça não acusa mais"
 [ -f "$C12/DECISIONS-SAGAS.md" ] && bad "update ainda gera DECISIONS-SAGAS.md" || ok "update não gera DECISIONS-SAGAS.md"
 [ -z "$(ls "$C12"/DECISIONS-VIGENTE-*.md 2>/dev/null)" ] && ok "update não gera DECISIONS-VIGENTE-*.md" || bad "update ainda gera DECISIONS-VIGENTE-*.md"
 [ -f "$C12/DECISIONS-INDEX.md" ] && [ -f "$C12/DECISIONS-LICOES.md" ] && ok "INDEX e LICOES continuam sendo gerados" || bad "INDEX/LICOES sumiram junto (desligou demais)"
@@ -674,7 +674,7 @@ emit2(){ HOME="$IM" bash -c 'source "'"$ROOT"'/host/adas-lib.sh"; adas_session_e
 # A) sem ~/.claude/CLAUDE.md nenhum → fallback: núcleo inline + cache autocurado
 rm -f "$IM/.claude/CLAUDE.md" "$IM/.claude/adas-core-import.md"
 o="$(emit2)"
-echo "$o" | grep -q "NUCLEO-TESTE-2B" && ok "sem CLAUDE.md → fallback emite o núcleo inline" \
+grep -q "NUCLEO-TESTE-2B" <<< "$o" && ok "sem CLAUDE.md → fallback emite o núcleo inline" \
   || bad "sem CLAUDE.md: núcleo NÃO chegou por nenhum canal (o buraco que a DA-230 proíbe)"
 grep -q "NUCLEO-TESTE-2B" "$IM/.claude/adas-core-import.md" 2>/dev/null \
   && ok "autocura: cache criado com o núcleo atual mesmo no fallback" || bad "cache não foi autocurado"
@@ -682,23 +682,23 @@ grep -q "NUCLEO-TESTE-2B" "$IM/.claude/adas-core-import.md" 2>/dev/null \
 # B) CLAUDE.md existe mas SEM a linha de import → ainda fallback
 printf 'algum CLAUDE.md sem a linha magica\n' > "$IM/.claude/CLAUDE.md"
 o="$(emit2)"
-echo "$o" | grep -q "NUCLEO-TESTE-2B" && ok "CLAUDE.md sem linha de import → fallback emite núcleo inline" \
+grep -q "NUCLEO-TESTE-2B" <<< "$o" && ok "CLAUDE.md sem linha de import → fallback emite núcleo inline" \
   || bad "CLAUDE.md sem linha de import: núcleo sumiu"
 
 # C) CLAUDE.md COM a linha + cache já sincronizado (item A/B deixaram o cache = v1) → SUPRIME
 printf '@adas-core-import.md\n' > "$IM/.claude/CLAUDE.md"
 o="$(emit2)"
-echo "$o" | grep -q "NUCLEO-TESTE-2B" && bad "sincronizado mas emitiu inline mesmo assim (orçamento não foi liberado)" \
+grep -q "NUCLEO-TESTE-2B" <<< "$o" && bad "sincronizado mas emitiu inline mesmo assim (orçamento não foi liberado)" \
   || ok "import sincronizado → emissão inline SUPRIMIDA (orçamento inteiro livre pra camada 0)"
 
 # D) núcleo MUDA (edição real do ADAS.md) → cache antigo diverge → fallback reemite a versão NOVA
 printf '# ADAS teste import\n<!-- adas-core-start -->\nNUCLEO-TESTE-2B regra vigente v2 (mudou).\n<!-- adas-core-end -->\n' > "$IM/ADAS.md"
 o="$(emit2)"
-echo "$o" | grep -q "v2 (mudou)" && ok "núcleo mudou → cache desatualizado detectado, fallback reemite a versão NOVA" \
+grep -q "v2 (mudou)" <<< "$o" && ok "núcleo mudou → cache desatualizado detectado, fallback reemite a versão NOVA" \
   || bad "núcleo mudou e a versão nova não chegou (cache velho mascarou a mudança)"
 # self-heal: a chamada seguinte já deve vir suprimida com o cache atualizado pra v2
 o2="$(emit2)"
-echo "$o2" | grep -q "v2 (mudou)" && bad "cache autocurado mas 2ª chamada ainda emitiu inline" \
+grep -q "v2 (mudou)" <<< "$o2" && bad "cache autocurado mas 2ª chamada ainda emitiu inline" \
   || ok "cache autocurado pra v2 → 2ª chamada já vem suprimida"
 
 echo "== 20) fronteira de bloco (adas_emit_block) — DENTE genérico, não só do cabeçalho (task 20260906-009)"
@@ -799,7 +799,7 @@ echo 1.0.0 > "$VH/.claude/adas/VERSION"; rm -f "$VH/vc"
 o="$(vrun env ADAS_VERSION_URL="file://$T/cl.md" ADAS_VERSION_CHECK=off)"
 [ -z "$o" ] && ok "ADAS_VERSION_CHECK=off desliga" || bad "off não desligou"
 o="$(printf '{"cwd":"%s","session_id":"t"}' "$T" | HOME="$VH" ADAS_VERSION_URL="file://$T/cl.md" ADAS_VERSION_CACHE="$VH/vc2" bash "$ROOT/host/adas-activate.sh" 2>/dev/null)"
-printf '%s\n' "$o" | grep -q '^ADAS 1.1.0 disponível' && ok "no SessionStart o aviso sai em linha PRÓPRIA" || bad "aviso grudado ou ausente no activate: $(printf '%s' "$o" | tail -c 200)"
+grep -q '^ADAS 1.1.0 disponível' <<< "$o" && ok "no SessionStart o aviso sai em linha PRÓPRIA" || bad "aviso grudado ou ausente no activate: $(printf '%s' "$o" | tail -c 200)"
 BV="$(cat "$ROOT/VERSION")"
 # update: remoto bare com a árvore de trabalho atual (1.0.0) + um commit 1.1.0 por cima
 UB="$T/ub"; git clone -q "$ROOT" "$UB" 2>/dev/null
