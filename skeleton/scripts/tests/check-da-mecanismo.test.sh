@@ -102,6 +102,13 @@ printf '%s\n' "$out" | grep -q '^FAIL DA-900' \
   && echo "✓ diário fora de <raiz>/DECISIONS.md é auditado inteiro" \
   || { echo "✗ vigência de outro diário silenciou DA nova"; fail=1; }
 
+# id que o índice não reconhece (cabeçalho fora do padrão dele) é auditado, não pulado (ramo CONH, N4 senior-010)
+printf '# d\n\n## DA-001 — a\n%s\n**Regra:** Tudo certo.\n\n## DA-900: nova\n%s\n**Regra:** Nunca publicar sem o gate.\n' "$META_NOVA" "$META_NOVA" > "$T/DECISIONS.md"
+out="$(bash "$CHK" --list "$T/DECISIONS.md" "$T")"   # captura: o check sai 1 no FAIL e o pipefail derrubaria o grep
+printf '%s\n' "$out" | grep -q '^FAIL DA-900' \
+  && echo "✓ id fora do índice é auditado" \
+  || { echo "✗ id fora do índice foi pulado"; fail=1; }
+
 ADAS_CHK="$(dirname "$CHK")/check-adas.sh"
 if [ -f "$ADAS_CHK" ]; then
   printf '# diário\n\n## DA-900 — fixture\n%s\n**Regra:** Nunca X.\n' "$META_NOVA" > "$T/DECISIONS.md"

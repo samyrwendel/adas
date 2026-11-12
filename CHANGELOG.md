@@ -3,6 +3,15 @@
 Cada versão diz o que muda para quem usa, não a lista de commits. A primeira linha `Resumo:` de cada
 versão é a que aparece no aviso de versão nova da sessão.
 
+## 1.2.1 — 2026-11-12
+
+Resumo: o juiz liga em qualquer máquina com o redator mínimo do ADAS; trocar a chave não apaga mais o redator configurado.
+
+- **Redator mínimo no produto** (`host/jit/redator_min.py`): sem `ADAS_REDATOR`, o texto que vai pro juiz passa por ele (chaves `sk-`, GitHub, Google, AWS, Slack, bot do Telegram, Bearer, PEM, `api_key=…` e o valor de variável de ambiente com nome de segredo). Antes, fora de uma instância com redator próprio, o juiz nunca ligava. Quem tem cofre continua apontando `ADAS_REDATOR` pro dele.
+- **`adas juiz configurar`, `--auto` e `link` preservam a linha `ADAS_REDATOR`** do `juiz.env`. Antes a reescrita apagava a linha e o juiz desligava respondendo "LIGADO".
+- `ADAS_REDATOR=~/…` funciona no status igual ao uso (antes o status dizia DESLIGADO com o juiz funcionando).
+- Redator configurado que não existe: `configurar` diz "sem redator" e não culpa a chave (que nem foi testada).
+
 ## 1.2.0 — 2026-11-12
 
 Resumo: `adas test` roda todas as suítes do ADAS; um timer diário roda o mesmo e avisa quando fica vermelho.

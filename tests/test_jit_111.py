@@ -103,8 +103,44 @@ chk("com chave → silêncio", o.strip() == "", o)
 SEMRED = {k: v for k, v in LIMPO.items() if k != "ADAS_REDATOR"}
 for sub in (["status", "--aviso"], ["status"]):
     r = subprocess.run(["python3", os.path.join(J, "juiz_prov.py"), *sub], capture_output=True, text=True,
-                       env=dict(SEMRED, HOME=T, OPENROUTER_API_KEY="x"), timeout=30)
-    chk(f"com chave e SEM redator → {' '.join(sub)} diz 'sem redator' (não finge juiz ligado)", "Juiz DESLIGADO: sem redator" in r.stdout, r.stdout)
+                       env=dict(SEMRED, HOME=T, OPENROUTER_API_KEY="x", ADAS_REDATOR=os.path.join(T, "nao-existe.py")), timeout=30)
+    chk(f"com chave e redator configurado INEXISTENTE → {' '.join(sub)} diz 'sem redator' (não finge juiz ligado)", "Juiz DESLIGADO: sem redator" in r.stdout, r.stdout)
+r = subprocess.run(["python3", os.path.join(J, "juiz_prov.py"), "status", "--aviso"], capture_output=True, text=True,
+                   env=dict(SEMRED, HOME=T, OPENROUTER_API_KEY="x"), timeout=30)
+chk("N5: com chave e SEM ADAS_REDATOR → redator mínimo do produto, juiz ligado (sem aviso)", r.stdout.strip() == "", r.stdout)
+
+# N5: sem configuração, o texto passa pelo redator mínimo antes de sair (instalação limpa: nada de redator da instância)
+_r0, _c0, _p0 = jp.REDATOR, jp._RED, jp._post
+jp.REDATOR, jp._RED = None, None
+_a = "abcdefghij0123456789ABCDEFGHIJ0123456789"  # chaves falsas montadas em runtime (o pre-commit reprova literal)
+_falsas = ["sk-" + "proj" + _a[:30], "gh" + "p_" + _a[:36], "1234567890:" + "AA" + _a[:33], "Bearer " + _a]
+_corpo = []
+jp._post = lambda url, corpo, key, prazo: (_corpo.append(corpo), {"answers": {"DA-1": {"noul": 0.5}}})[1]
+jp.perguntar("deploy " + " ".join(_falsas), [{"id": "DA-1", "pergunta": "p"}], time.time() + 5,
+             provs=[{"nome": "stub", "tipo": "systemone", "url": "x", "model": "m", "key": "k"}])
+_env = json.dumps(_corpo, ensure_ascii=False)
+chk("N5: redator mínimo apaga as chaves falsas do payload", bool(_corpo) and _a[:16] not in _env and "«redigido»" in _env, _env[:300])
+jp.REDATOR, jp._RED, jp._post = _r0, _c0, _p0
+
+# N2: trocar a chave não apaga o redator do juiz.env
+os.makedirs(os.path.dirname(jp.CONF), exist_ok=True)
+open(jp.CONF, "w").write(f"ADAS_JUIZ_ORDEM=openrouter\nADAS_REDATOR={STUB}\n")
+_f, jp.funciona = jp.funciona, (lambda p: True)
+_r, jp.REDATOR = jp.REDATOR, None
+jp.salvar_chave("openrouter", "y")
+chk("N2: configurar preserva ADAS_REDATOR no juiz.env", jp.conf().get("ADAS_REDATOR") == STUB, open(jp.CONF).read())
+# N1: ~ no caminho vale igual no aviso e no redigir (STUB mora dentro de T = HOME do teste)
+open(jp.CONF, "w").write("ADAS_JUIZ_ORDEM=openrouter\nOPENROUTER_API_KEY=x\nADAS_REDATOR=~/" + os.path.relpath(STUB, T) + "\n")
+_n0 = os.environ.get("ADAS_JIT_NIVEL"); os.environ["ADAS_JIT_NIVEL"] = "3"
+chk("N1: redator com ~ não dispara 'sem redator'", "sem redator" not in jp.aviso() and not jp._sem_redator(), jp.aviso())
+# N3: redator configurado que não existe → configurar diz a causa e não culpa a chave
+open(jp.CONF, "w").write(f"ADAS_REDATOR={os.path.join(T, 'nao-existe.py')}\n")
+ok_, msg_ = jp.salvar_chave("openrouter", "k")
+chk("N3: redator inexistente, salvar_chave recusa dizendo 'sem redator'", not ok_ and "sem redator" in msg_ and "não respondeu" not in msg_, msg_)
+os.remove(jp.CONF)
+if _n0 is None: os.environ.pop("ADAS_JIT_NIVEL", None)
+else: os.environ["ADAS_JIT_NIVEL"] = _n0
+jp.funciona, jp.REDATOR = _f, _r
 os.makedirs(os.path.join(T, ".claude", "adas"), exist_ok=True)
 open(os.path.join(T, ".claude", "adas", "source"), "w").write(ROOT)
 o = run(["bash", os.path.join(ROOT, "host", "adas-activate.sh")], {"ADAS_VERSION_CHECK": "off", "ADAS_JIT_NIVEL": "3"}, inp="{}").stdout
@@ -199,8 +235,8 @@ def get(u, data=None):
             return x.status, x.read().decode()
     except urllib.error.HTTPError as x:
         return x.code, ""
-    except urllib.error.URLError:
-        return 0, ""  # servidor já saiu: link queimado
+    except (urllib.error.URLError, ConnectionError):
+        return 0, ""  # servidor já saiu (ou fechando: reset na leitura, o urllib não embrulha): link queimado
 s1, b1 = get(url.rsplit("/", 1)[0] + "/token-errado")
 s2, b2 = get(url)
 chk("link: escuta em 127.0.0.1, token errado = 410, token certo = formulário", url.startswith("http://127.0.0.1:") and s1 == 410
@@ -234,7 +270,9 @@ open(os.path.join(repo, "pag.py"), "w").write("def cobrar(): pix()\n"); g("add",
 chk("código toca dinheiro + 2º agente no repo → nível 3", termo().get("nivel") == 3)
 g("rm", "-q", "pag.py"); g("commit", "-qm", "z")
 hoje = datetime.date.today()
-open(os.path.join(H2, ".claude", "bus", "juiz-reply.log"), "w").write(json.dumps({"ts": f"{hoje}T10:00:00", "decisao": "aviso"}) + "\n")
+# achado de 1 h atrás: "hoje T10:00" ficava no FUTURO antes das 10h e o termostato ignora (t <= AGORA) — vermelho às 06:40
+_ts = (datetime.datetime.now() - datetime.timedelta(hours=1)).isoformat(timespec="seconds")
+open(os.path.join(H2, ".claude", "bus", "juiz-reply.log"), "w").write(json.dumps({"ts": _ts, "decisao": "aviso"}) + "\n")
 chk("achado do juiz há < 30 dias → nível 3", termo().get("nivel") == 3)
 depois = (hoje + datetime.timedelta(days=31)).isoformat()
 r = termo("--agora", depois)
