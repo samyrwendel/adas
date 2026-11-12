@@ -129,7 +129,7 @@ echo "$sagasmd" | grep -qF -- '- — · DA-014 ·' && pass "DA-014 (sem nenhuma 
 
 echo "== da-new.sh: número novo, snapshot, diário original intocado (fora deste dir) =="
 before_sha="$(sha256sum "$TMP/DECISIONS.md" | cut -d' ' -f1)"
-newout="$(ADAS_HOME_DIR="$TMP/.adas" bash "$DANEW" instância "nova/teste-harness" "DA de teste do harness" "$TMP")"
+newout="$(ADAS_HOME_DIR="$TMP/.adas" bash "$DANEW" --tipo regra instância "nova/teste-harness" "DA de teste do harness" "$TMP")"
 echo "$newout" | grep -q '^DA-015$' && pass "da-new.sh calculou DA-015 (max+1)" || fail "da-new.sh não calculou o número certo: $newout"
 [ -d "$TMP/.adas/snapshots" ] && [ -n "$(ls -A "$TMP/.adas/snapshots" 2>/dev/null)" ] && pass "snapshot criado antes de anexar" || fail "snapshot ausente"
 after_sha_realhome="$(sha256sum "$HOME/DECISIONS.md" 2>/dev/null | cut -d' ' -f1)"
@@ -140,13 +140,13 @@ SAGACONF_TMP="$TMP/.adas-slugtest"; mkdir -p "$SAGACONF_TMP"
 printf 'saga-existente|produto|\n' > "$SAGACONF_TMP/sagas.conf"
 before2="$(sha256sum "$TMP/DECISIONS.md" | cut -d' ' -f1)"
 rc=0
-out2="$(ADAS_HOME_DIR="$TMP/.adas" ADAS_SAGAS_CONF="$SAGACONF_TMP/sagas.conf" bash "$DANEW" instância "saga-que-nao-existe" "titulo x" "$TMP" 2>&1)" || rc=$?
+out2="$(ADAS_HOME_DIR="$TMP/.adas" ADAS_SAGAS_CONF="$SAGACONF_TMP/sagas.conf" bash "$DANEW" --tipo regra instância "saga-que-nao-existe" "titulo x" "$TMP" 2>&1)" || rc=$?
 after2="$(sha256sum "$TMP/DECISIONS.md" | cut -d' ' -f1)"
 [ "$rc" = 2 ] && pass "da-new.sh recusa slug inexistente com exit 2" || fail "da-new.sh não recusou slug inexistente (rc=$rc)"
 [ "$before2" = "$after2" ] && pass "DECISIONS.md intocado após recusa" || fail "DECISIONS.md foi alterado mesmo com slug recusado"
 echo "$out2" | grep -q 'saga-existente' && pass "mensagem de recusa lista os slugs válidos" || fail "mensagem de recusa não lista slugs válidos"
 rc3=0
-out3="$(ADAS_HOME_DIR="$TMP/.adas" ADAS_SAGAS_CONF="$SAGACONF_TMP/sagas.conf" bash "$DANEW" instância "nova/saga-x" "titulo x" "$TMP" 2>&1)" || rc3=$?
+out3="$(ADAS_HOME_DIR="$TMP/.adas" ADAS_SAGAS_CONF="$SAGACONF_TMP/sagas.conf" bash "$DANEW" --tipo regra instância "nova/saga-x" "titulo x" "$TMP" 2>&1)" || rc3=$?
 [ "$rc3" = 0 ] && echo "$out3" | grep -q '^DA-016$' && pass "'nova/saga-x' anexa normalmente (DA-016)" || fail "'nova/saga-x' deveria ter anexado: rc=$rc3 out=$out3"
 
 echo "== da-new.sh: snapshot isolado do [dir] (não vaza pro ~/.adas real) + rotação a 30 =="
@@ -154,7 +154,7 @@ DIRTEST="$TMP/copia-isolada"; mkdir -p "$DIRTEST/.adas/snapshots"
 cp "$TMP/DECISIONS.md" "$DIRTEST/DECISIONS.md"
 for i in $(seq -w 1 32); do : > "$DIRTEST/.adas/snapshots/DECISIONS.md.202601${i}T000000Z"; done
 realhome_before="$(ls -1 "$HOME/.adas/snapshots" 2>/dev/null | wc -l)"
-bash "$DANEW" instância "nova/rotacao-teste" "titulo rotacao" "$DIRTEST" >/dev/null
+bash "$DANEW" --tipo regra instância "nova/rotacao-teste" "titulo rotacao" "$DIRTEST" >/dev/null
 realhome_after="$(ls -1 "$HOME/.adas/snapshots" 2>/dev/null | wc -l)"
 [ "$realhome_before" = "$realhome_after" ] && pass "snapshot NÃO vazou pro ~/.adas/snapshots real (sem ADAS_HOME_DIR, dir≠\$HOME)" || fail "snapshot vazou pro servidor real!"
 count_dirtest="$(ls -1 "$DIRTEST/.adas/snapshots" | wc -l)"
@@ -225,6 +225,53 @@ grep -q '^- DA-002' <<< "$vg" \
   && pass "D-C4: título copiado no Histórico ('supersede') não marca a DA-002" || fail "D-C4: Histórico marcou a DA-002 como superada"
 grep -E 'c11' <<< "$ck" | grep -qE 'DA-(777|009)' \
   && fail "D-C4: c11 acusa id de passa-a-limpo/📦" || pass "D-C4: c11 ignora passa-a-limpo e '📦 <repo> DA-NNN'"
+
+echo "== Fase 2: parcial: (alias do ½) e ficha contra o da-schema.tsv =="
+F2="$TMP/fase2"; mkdir -p "$F2"
+R300="$(printf 'abcdefghij%.0s' $(seq 1 30))"   # 300 caracteres
+{
+cat <<'MD'
+# DECISIONS
+
+## DA-900 — alvo parcial
+`escopo: produto` · `saga: nova/t` · `data: 2026-11-01` · `refs: —` · `consolida: —` · `supersede: —`
+**Regra:** Regra da DA-900 que segue vigente depois do parcial.
+
+## DA-901 — antiga absorvida
+`escopo: produto` · `saga: nova/t` · `data: 2026-11-01` · `refs: —` · `consolida: —` · `supersede: —`
+**Regra:** Regra antiga que a cabeça DA-902 absorveu inteira.
+
+## DA-902 — cabeça
+`escopo: produto` · `saga: nova/t` · `data: 2026-11-01` · `refs: —` · `consolida: DA-901` · `supersede: —`
+**Regra:** Cabeça que consolida a DA-901 e segue vigente.
+
+### Histórico
+- DA-901 — antiga — Regra
+
+MD
+printf '## DA-903 — antiga com Regra de 300\n`escopo: produto` · `saga: nova/t` · `data: 2026-11-01` · `refs: —` · `consolida: —` · `supersede: —`\n**Regra:** %s\n\n' "$R300"
+printf '## DA-904 — nova com Regra de 300\n`escopo: produto` · `saga: nova/t` · `data: 2026-11-20` · `tipo: regra` · `gravidade: norma` · `refs: —` · `consolida: —` · `supersede: —` · `parcial: DA-900 (só o teto)`\n**Regra:** %s\n**Gatilho:** tema\n**Exemplo:** ✗ a → ✓ b\n**Motivo:** m\n**Trade-off:** t\n**Lição:** l\n\n' "$R300"
+cat <<'MD'
+## DA-905 — nova que aponta a absorvida
+`escopo: produto` · `saga: nova/t` · `data: 2026-11-20` · `tipo: regra` · `gravidade: norma` · `refs: —` · `consolida: —` · `supersede: —` · `parcial: DA-901`
+**Regra:** Regra curta e completa da DA-905.
+**Gatilho:** tema
+**Exemplo:** ✗ a → ✓ b
+**Motivo:** m
+**Trade-off:** t
+**Lição:** l
+**Detalhe operacional:** 
+MD
+} > "$F2/DECISIONS.md"
+bash "$DAIDX" update "$F2" >/dev/null 2>&1
+vg2="$(bash "$DAIDX" list --vigentes "$F2" 2>&1)"; ck2="$(DA_FICHA_DESDE=2026-11-13 bash "$DAIDX" check "$F2" 2>&1)"
+tem -E '^- DA-900 .*½ por DA-904' <<< "$vg2" && pass "parcial: DA-900 marca ½ e ela segue em list --vigentes" || fail "parcial: não marcou ½ / tirou dos vigentes: $(grep DA-900 <<< "$vg2")"
+tem 'WARN ficha: DA-904 Regra com 300 caracteres' <<< "$ck2" && pass "ficha: DA nova (acima do corte) com Regra de 300 → WARN" || fail "ficha: Regra de 300 acima do corte sem WARN"
+tem 'DA-903' <<< "$(grep 'ficha' <<< "$ck2")" && fail "ficha: DA abaixo do corte foi julgada" || pass "ficha: DA abaixo do corte (Regra de 300) → silêncio"
+tem 'WARN ficha: DA-905 parcial aponta DA-901, que não é vigente (📚 em DA-902) — aponte para a cabeça DA-902' <<< "$ck2" \
+  && pass "ficha: parcial com alvo 📚 → WARN apontando a cabeça" || fail "ficha: alvo 📚 sem WARN: $(grep 905 <<< "$ck2")"
+tem 'WARN ficha: DA-905 Detalhe operacional vazio — preencha ou apague a linha' <<< "$ck2" && pass "ficha: linha deixada vazia → WARN" || fail "ficha: linha vazia sem WARN"
+tem -E 'WARN ficha: DA-905 (sem|.*caracteres)' <<< "$ck2" && fail "ficha: DA-905 completa ganhou aviso indevido" || pass "ficha: DA completa sem aviso de campo"
 
 echo
 if [ "$FAIL" = 0 ]; then

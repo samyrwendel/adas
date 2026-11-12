@@ -411,16 +411,19 @@ unset ADAS_REPOS_CONF
 
 echo "== 14) plugins multi-harness — build/testes reais rodam (não só existem)"
 if command -v npm >/dev/null 2>&1 && [ -d "$ROOT/host/openclaw-plugin/node_modules/openclaw" ]; then
-  ( cd "$ROOT/host/openclaw-plugin" && npm test >/tmp/adas-openclaw-smoke.log 2>&1 )
+  # log por rodada (O4 da revisão 016): duas árvores ao mesmo tempo não citam o log uma da outra; some se passou
+  oc_log="$(mktemp "${TMPDIR:-/tmp}/adas-openclaw-smoke.XXXXXX")"
+  ( cd "$ROOT/host/openclaw-plugin" && npm test >"$oc_log" 2>&1 )
   oc_rc=$?
-  [ "$oc_rc" = 0 ] && ok "adas-openclaw: build+vitest verdes" || bad "adas-openclaw: npm test falhou (rc=$oc_rc, ver /tmp/adas-openclaw-smoke.log)"
+  [ "$oc_rc" = 0 ] && { ok "adas-openclaw: build+vitest verdes"; rm -f "$oc_log"; } || bad "adas-openclaw: npm test falhou (rc=$oc_rc, ver $oc_log)"
 else
   echo "  (pulado — sem npm/openclaw linkado neste ambiente; rode 'npm test' manualmente em host/openclaw-plugin/)"
 fi
 if command -v python3 >/dev/null 2>&1 && python3 -c "import pytest" >/dev/null 2>&1; then
-  ( cd "$ROOT/host/hermes-plugin" && python3 -m pytest test_adas_hermes.py -q >/tmp/adas-hermes-smoke.log 2>&1 )
+  hm_log="$(mktemp "${TMPDIR:-/tmp}/adas-hermes-smoke.XXXXXX")"
+  ( cd "$ROOT/host/hermes-plugin" && python3 -m pytest test_adas_hermes.py -q >"$hm_log" 2>&1 )
   hm_rc=$?
-  [ "$hm_rc" = 0 ] && ok "adas-hermes: pytest verde" || bad "adas-hermes: pytest falhou (rc=$hm_rc, ver /tmp/adas-hermes-smoke.log)"
+  [ "$hm_rc" = 0 ] && { ok "adas-hermes: pytest verde"; rm -f "$hm_log"; } || bad "adas-hermes: pytest falhou (rc=$hm_rc, ver $hm_log)"
 else
   echo "  (pulado — sem pytest neste ambiente)"
 fi

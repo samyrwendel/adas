@@ -40,9 +40,18 @@ done
 # Uma rodada por árvore: duas ao mesmo tempo disputam o que é da árvore (o npm test do smoke recompila
 # host/openclaw-plugin/dist, logs fixos em /tmp) e dão vermelho que não é defeito — 2 de 9 rodadas
 # simultâneas reprovaram em 12/11 (task 20261112-015), 0 em série. A segunda espera a primeira.
+# Espera com PRAZO (O1 da revisão 016): trava presa (teste travado, filho órfão herdando o fd 9) não pode parar o
+# pre-commit para sempre nem matar o timer nos 600 s sem status. 480 s fica abaixo do TimeoutStartSec=600 da unit:
+# estourou → a rodada vira VERMELHA (com --selftest grava o status e alerta na transição) sem rodar as suítes.
+TRAVA_PRESA=""
+LOCKF="${TMPDIR:-/tmp}/adas-test.$(printf '%s' "$ROOT" | cksum | cut -d' ' -f1).lock"
 if command -v flock >/dev/null 2>&1; then
-  exec 9>"${TMPDIR:-/tmp}/adas-test.$(printf '%s' "$ROOT" | cksum | cut -d' ' -f1).lock"
-  flock -n 9 || { echo "adas test: outra rodada nesta árvore em andamento — aguardando"; flock 9; }
+  if ! exec 9>"$LOCKF"; then
+    echo "adas test: não abri a trava $LOCKF — seguindo SEM trava (rodada simultânea pode dar vermelho falso)"   # O2
+  elif ! flock -n 9; then
+    echo "adas test: outra rodada nesta árvore em andamento — aguardando (até ${ADAS_TEST_ESPERA:-480}s)"
+    flock -w "${ADAS_TEST_ESPERA:-480}" 9 || TRAVA_PRESA="trava $LOCKF presa há ${ADAS_TEST_ESPERA:-480}s (veja: lslocks | grep adas-test)"
+  fi
 fi
 
 # Isolamento: dentro do pre-commit o git exporta GIT_DIR/GIT_INDEX_FILE e um teste que faz `git init`
@@ -86,11 +95,16 @@ varredura_da530() {
 }
 
 echo "adas test — $ROOT"
-for f in "$ROOT"/skeleton/scripts/tests/*.sh; do roda "skeleton/$(basename "$f")" bash "$f"; done
-roda "skeleton/da-index/run-tests.sh" bash "$ROOT/skeleton/scripts/tests/da-index/run-tests.sh"
-roda "tests/smoke.sh"    bash "$ROOT/tests/smoke.sh"
-roda "tests/smoke-v4.sh" bash "$ROOT/tests/smoke-v4.sh"
-[ "$VARRE" = 1 ] && roda "varredura DA-530 (pasta .adas sem git)" varredura_da530
+if [ -n "$TRAVA_PRESA" ]; then
+  echo "  ✗ $TRAVA_PRESA — suítes não rodaram"
+  falhas+=("trava-presa"); log+="=== trava presa"$'\n'"$TRAVA_PRESA"$'\n'
+else
+  for f in "$ROOT"/skeleton/scripts/tests/*.sh; do roda "skeleton/$(basename "$f")" bash "$f"; done
+  roda "skeleton/da-index/run-tests.sh" bash "$ROOT/skeleton/scripts/tests/da-index/run-tests.sh"
+  roda "tests/smoke.sh"    bash "$ROOT/tests/smoke.sh"
+  roda "tests/smoke-v4.sh" bash "$ROOT/tests/smoke-v4.sh"
+  [ "$VARRE" = 1 ] && roda "varredura DA-530 (pasta .adas sem git)" varredura_da530
+fi
 
 total=$(( $(date +%s) - t0 ))
 if [ "${#falhas[@]}" = 0 ]; then estado=verde; echo "VERDE — todas as suítes passaram (${total}s)"

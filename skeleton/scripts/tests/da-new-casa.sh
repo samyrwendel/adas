@@ -5,7 +5,7 @@ S="$(cd "$(dirname "$0")/.." && pwd)"; T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/home/.adas" "$T/app/scripts"; printf '# d\n' > "$T/home/DECISIONS.md"; printf '# d\n' > "$T/app/DECISIONS.md"; : > "$T/app/scripts/da-new.sh"
 printf '%s|produto,projeto/app\n' "$T/app" > "$T/home/.adas/rotas.conf"
 ok=0; bad=0
-t() { local esp="$1"; shift; HOME="$T/home" bash "$S/da-new.sh" "$@" >/dev/null 2>&1; local rc=$?
+t() { local esp="$1"; shift; HOME="$T/home" bash "$S/da-new.sh" --tipo regra "$@" >/dev/null 2>&1; local rc=$?
       if [ "$rc" = "$esp" ]; then ok=$((ok+1)); else bad=$((bad+1)); echo "✗ esperava rc=$esp, veio $rc: $*"; fi; }
 t 2 projeto/app nova/x "t"                       # só projeto, casa existe → recusa
 t 0 projeto/app nova/casa-app "t"                # ponteiro 📦

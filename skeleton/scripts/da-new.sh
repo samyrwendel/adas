@@ -2,21 +2,61 @@
 # da-new.sh — porta única de escrita do DECISIONS.md (DA-181 §2.2).
 #
 # flock em ~/.adas/da.lock, snapshot do diário em ~/.adas/snapshots/ ANTES de
-# anexar, número = max(DA-NNN existente)+1, esqueleto do cabeçalho anexado no
-# FIM do arquivo (nunca no meio — é aqui que se evita o vetor da DA-127/DA-012:
-# dois escritores ou um Edit por old_string/new_string num arquivo de 1 MB).
-# O agente preenche o esqueleto (Regra/Motivo/Trade-off/Lição) por Edit DEPOIS,
-# dentro da DA recém-criada — nunca editando DAs anteriores.
+# anexar, número = max(DA-NNN existente)+1, esqueleto anexado no FIM do arquivo
+# (nunca no meio — é aqui que se evita o vetor da DA-127/DA-012: dois escritores
+# ou um Edit por old_string/new_string num arquivo de 1 MB). O agente preenche o
+# esqueleto por Edit DEPOIS, dentro da DA recém-criada — nunca em DA anterior.
 #
-# uso: da-new.sh <escopo> <saga> "<título>" [dir]
+# O esqueleto, a instrução e a ficha SAEM de da-schema.tsv (ao lado deste script), o contrato
+# único da DA: este script não conhece nome de campo nenhum (Fase 2, task 20261112-017).
+#
+# uso: da-new.sh --tipo <tipo> <escopo> <saga> "<título>" [dir]
+#      da-new.sh --ajuda        instrução de preenchimento (campos, obrigatoriedade, tetos)
+#      da-new.sh --ficha        a ficha em markdown (docs/ficha.md do produto é esta saída)
+#   tipo:   um dos valores da etiqueta tipo no esquema (regra · registro · princípio)
 #   escopo: produto | instância | projeto/<nome> (composto: "produto,instância")
 #   saga:   slug existente em ~/.adas/sagas.conf, ou "nova/<slug>" se for nova
 #   dir:    onde vive DECISIONS.md (default: $HOME)
 set -uo pipefail
 
-usage() { echo 'uso: da-new.sh <escopo> <saga> "<título>" [dir]'; exit 2; }
-[ $# -ge 3 ] || usage
-ESCOPO="$1"; SAGA="$2"; TITULO="$3"; DIR="${4:-$HOME}"
+SCHEMA="${ADAS_DA_SCHEMA:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/da-schema.tsv}"
+[ -f "$SCHEMA" ] || { echo "✗ da-new: contrato da DA não encontrado: $SCHEMA" >&2; exit 2; }
+linhas() { awk -F'\t' '!/^#/ && NF>=9' "$SCHEMA"; }   # onde chave rotulo obrigatorio teto molde default valores ajuda
+valores_de() { linhas | awk -F'\t' -v k="$1" '$2==k{print $8; exit}'; }
+
+ajuda() {
+  linhas | awk -F'\t' '{ t = ($5 == "-") ? "" : "teto " $5 " · "
+    printf "  %s [%s]%s %s%s\n", $3, $4, ($6 == "n" ? " (fora do molde)" : ""), t, $9 }'
+}
+ficha() {
+  echo "# Ficha da DA"
+  echo
+  echo "Gerada de \`skeleton/scripts/da-schema.tsv\` por \`bash skeleton/scripts/da-new.sh --ficha\` — não edite à mão."
+  echo "A ordem das linhas é a ordem da ficha. Teto \`alvo/corte\`: o check avisa só acima do corte."
+  echo
+  echo "| Campo | Onde | Obrigatório | Teto | No molde | Valores | Como escrever |"
+  echo "|---|---|---|---|---|---|---|"
+  linhas | awk -F'\t' '{ printf "| %s | %s | %s | %s | %s | %s | %s |\n", ($1=="cab" ? "`" $3 ":`" : "**" $3 ":**"), $1, $4, $5, ($6=="s" ? "sim" : "não"), $8, $9 }'
+}
+usage() { echo 'uso: da-new.sh --tipo <'"$(valores_de tipo)"'> <escopo> <saga> "<título>" [dir]   ·   da-new.sh --ajuda | --ficha' >&2; exit 2; }
+
+TIPO=""; POS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --ajuda) ajuda; exit 0 ;;
+    --ficha) ficha; exit 0 ;;
+    --tipo) TIPO="${2:-}"; shift 2 || usage ;;
+    --tipo=*) TIPO="${1#--tipo=}"; shift ;;
+    *) POS+=("$1"); shift ;;
+  esac
+done
+[ "${#POS[@]}" -ge 3 ] || usage
+if [ -z "$TIPO" ] || [[ "|$(valores_de tipo)|" != *"|$TIPO|"* ]]; then
+  echo "✗ da-new: --tipo é obrigatório e vale $(valores_de tipo) (veio '${TIPO}')." >&2
+  echo "  regra manda ou proíbe; registro é fato (o que foi feito, onde roda) e não vira cartão." >&2
+  usage
+fi
+ESCOPO="${POS[0]}"; SAGA="${POS[1]}"; TITULO="${POS[2]}"; DIR="${POS[3]:-$HOME}"
 DEC="$DIR/DECISIONS.md"
 [ -f "$DEC" ] || { echo "✗ da-new: $DEC não existe"; exit 2; }
 
@@ -89,19 +129,15 @@ data_hoje="$(date +%F)"
 {
   echo ""
   echo "## $novokey — $TITULO"
-  echo "\`escopo: $ESCOPO\` · \`saga: $SAGA\` · \`data: $data_hoje\` · \`refs: —\` · \`consolida: —\` · \`supersede: —\`"
-  echo "**Regra:** "
-  echo "**Motivo:** "
-  echo "**Trade-off:** "
-  echo "**Lição:** "
-  echo "**Mecanismo:** "
-  echo "**Gatilho:** tema"
-  echo "**Exemplo:** "
+  linhas | awk -F'\t' -v e="$ESCOPO" -v s="$SAGA" -v h="$data_hoje" -v t="$TIPO" '
+    $6 != "s" { next }
+    $1 == "cab"   { v = $7; if (v == "$ESCOPO") v = e; else if (v == "$SAGA") v = s; else if (v == "$HOJE") v = h; else if (v == "$TIPO") v = t
+                    cab = cab (cab == "" ? "" : " · ") "`" $3 ": " v "`"; next }
+    $1 == "corpo" { corpo = corpo "**" $3 ":** " $7 "\n" }
+    END { print cab; printf "%s", corpo }'
 } >> "$DEC"
 
 echo "✓ da-new: $novokey anexada no fim de $DEC (snapshot: $ADAS_DIR/snapshots/DECISIONS.md.$ts)"
-echo "  Preencha Regra/Motivo/Trade-off/Lição por Edit dentro de $novokey — nunca em DA anterior."
-echo "  Mecanismo (DA-527): Regra que proíbe (nunca/só/proibido) traz o caminho REAL da trava/teste que reprova a violação; não proíbe = apague a linha."
-echo "  Exemplo: a violação CONCRETA que a regra pega (msg/comando real). Vira exemplo[] do cartão; vazio = apague a linha."
-echo "  Gatilho (ADAS-JIT): tema | evento · <superfície> · … | forma · reply · hook=<guard> | forma · reply · juiz [· modo=aviso|deny] [· pergunta=\"…\"] [· conserto=\"…\"]"
+echo "  Preencha por Edit dentro de $novokey — nunca em DA anterior. Linha que não se aplica: apague. Contrato: $SCHEMA"
+ajuda
 echo "$novokey"

@@ -37,6 +37,6 @@ case "$out" in
 esac
 reason="$(printf '%s' "$out" | cut -f2)"
 
-msg="⚠️ ADAS/DA-199 — isto parece REGRA DE TRABALHO em memória privada (${reason}). Memória privada não governa outro agente: quem executa a task não lê a memória de quem a escreveu (caso medido, DA-198). AÇÃO: registre no diário de decisões — ~/scripts/da-new.sh <escopo> <saga> \"<título>\" — e deixe AQUI só o ponteiro (\"regra vive na DA-NNN\"). Se for só PREFERÊNCIA de interação/identidade (idioma, tom, formato, quem é o dono), ignore este aviso: memória é o lugar certo."
+msg="⚠️ ADAS/DA-199 — isto parece REGRA DE TRABALHO em memória privada (${reason}). Memória privada não governa outro agente: quem executa a task não lê a memória de quem a escreveu (caso medido, DA-198). AÇÃO: registre no diário de decisões — ~/scripts/da-new.sh --tipo regra <escopo> <saga> \"<título>\" — e deixe AQUI só o ponteiro (\"regra vive na DA-NNN\"). Se for só PREFERÊNCIA de interação/identidade (idioma, tom, formato, quem é o dono), ignore este aviso: memória é o lugar certo."
 jq -n --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$m}}'
 exit 0

@@ -13,6 +13,7 @@
 #   da-index.sh show DA-NNN [dir] | show --saga slug [dir] | show --anexos DA-NNN [dir]
 #   da-index.sh export-saga slug [dir]
 #   da-index.sh gatilhos [dir]                         # TSV id⇥gatilho⇥fonte (ADAS-JIT, DA-468)
+#   da-index.sh dump [dir]                             # TSV id⇥marca⇥<campos do da-schema.tsv> — acesso único aos campos
 #   da-index.sh draft-head <saga> [--ids DA-a,DA-b] [dir]   # rascunho de cabeça v2 (só lê; recusa >1 gatilho vivo)
 #   da-index.sh draft-head --confere DA-a,DA-b [dir]        # cabeças já escritas: avisa termo distintivo perdido (DA-546)
 # [dir] = onde vivem DECISIONS.md e os gerados (default: $HOME — NUNCA o cwd; DA-196).
@@ -222,6 +223,7 @@ cur == "" { next }
         else if (key == "refs") e_refs = csv_add(e_refs, val)
         else if (key == "consolida") e_consolida = csv_add(e_consolida, val)
         else if (key == "supersede") { e_supersede = csv_add(e_supersede, val); supfield_seen = 1 }
+        else if (key == "parcial") { pb = val; gsub(/\([^)]*\)/, "", pb); mark_targets("par", refs_in_plain(pb), curraw) }   # alias do ½ (OS 005 item 7)
         else if (key == "medido") e_medido = val
       }
     }
@@ -772,7 +774,148 @@ run_quality_checks() {
   done
   [ -n "$unknown" ] && { echo "WARN c11: citações a número inexistente no diário: $unknown"; warn=1; }
   # c12 (3ª rodada da mesma saga em <=7d, DA-234): DESLIGADO, task 20260906-028.
+  # ficha: DA nova (data >= DA_FICHA_DESDE) contra o contrato da-schema.tsv — só WARN (Fase 2)
+  local fo; fo="$(ficha_check "$dir")"; [ -n "$fo" ] && { printf '%s\n' "$fo"; warn=1; }
   return $fail
+}
+
+# ============================================================================
+# 5b) CONTRATO DA DA — da-schema.tsv (Fase 2, task 20261112-017). dump = acesso único aos campos;
+#     ficha_check = a DA nova (data >= DA_FICHA_DESDE) validada contra o esquema. Só WARN.
+# ============================================================================
+DA_SCHEMA="${ADAS_DA_SCHEMA:-$SELFDIR/da-schema.tsv}"
+AUSENTE='∅'   # no dump: campo cuja linha/etiqueta não existe (≠ linha presente e vazia)
+
+# um registro por DA (mesma ordem dos ## DA-NNN — do parser): valores na ordem do esquema, separados por SEP
+_dump_awk() {
+cat <<'AWKEOF'
+BEGIN { SEP = sprintf("%c", 31); nf = 0 }
+function trim(x) { gsub(/^[ \t]+|[ \t]+$/, "", x); return x }
+function flush(   i, o, x) {
+  if (!cur) return
+  o = ""
+  for (i = 1; i <= nf; i++) { x = (i in v) ? v[i] : AUS; gsub(SEP, " ", x); gsub(/\t/, " ", x); o = o (i > 1 ? SEP : "") x }
+  print o
+}
+FNR == NR { if ($0 ~ /^#/ || split($0, c, "\t") < 9) next; nf++; onde[nf] = c[1]; ch[nf] = c[2]; rot[nf] = c[3]; next }
+/^## DA-[0-9]+ — / { flush(); cur = 1; bl = 0; tag = 0; split("", v); next }
+!cur { next }
+{
+  bl++
+  if (bl <= 3 && !tag && $0 ~ /^`[a-z-]+:/ && (index($0, "`escopo:") || index($0, "`saga:"))) {
+    tag = 1; s = $0
+    while (match(s, /`[^`]+`/)) {
+      t = substr(s, RSTART + 1, RLENGTH - 2); s = substr(s, RSTART + RLENGTH); ci = index(t, ":")
+      if (!ci) continue
+      k = trim(substr(t, 1, ci - 1)); val = trim(substr(t, ci + 1))
+      for (i = 1; i <= nf; i++) if (onde[i] == "cab" && ch[i] == k && !(i in v)) v[i] = val
+    }
+    next
+  }
+  for (i = 1; i <= nf; i++)
+    if (onde[i] == "corpo" && !(i in v) && index($0, "**" rot[i] ":**") == 1) { v[i] = trim(substr($0, length(rot[i]) + 6)); break }
+}
+END { flush() }
+AWKEOF
+}
+
+declare -a SCH_ONDE SCH_CHAVE SCH_ROT SCH_OBR SCH_TETO SCH_VAL
+load_schema() {
+  [ -f "$DA_SCHEMA" ] || { echo "✗ da-index: contrato da DA não encontrado: $DA_SCHEMA" >&2; return 1; }
+  SCH_ONDE=(); SCH_CHAVE=(); SCH_ROT=(); SCH_OBR=(); SCH_TETO=(); SCH_VAL=()
+  local o c r ob te _m _d va _a
+  # TAB é espaço para o IFS do read (colunas vazias colapsariam): troca por SEP antes
+  while IFS="$SEP" read -r o c r ob te _m _d va _a; do
+    case "$o" in cab|corpo) ;; *) continue ;; esac
+    SCH_ONDE+=("$o"); SCH_CHAVE+=("$c"); SCH_ROT+=("$r"); SCH_OBR+=("$ob"); SCH_TETO+=("$te"); SCH_VAL+=("$va")
+  done < <(awk -F'\t' -v OFS="$SEP" '!/^#/ && NF >= 9 { $1 = $1; print }' "$DA_SCHEMA")
+}
+
+declare -a DUMP_ROW   # DUMP_ROW[i] = valores (SEP) da DA i, na ordem do esquema
+load_dump() {
+  local dir="$1" i=0 row
+  DUMP_ROW=()
+  while IFS= read -r row; do DUMP_ROW[i]="$row"; i=$((i+1)); done \
+    < <(awk -v AUS="$AUSENTE" "$(_dump_awk)" "$DA_SCHEMA" "$dir/DECISIONS.md")
+}
+
+cmd_dump() {
+  local dir="${1:-$DA_DIR_DEFAULT}" i m
+  load_records "$dir"; load_schema || exit 2; load_dump "$dir"
+  { printf 'id\tmarca'; printf '\t%s' "${SCH_CHAVE[@]}"; echo; } 
+  for ((i=0; i<N; i++)); do
+    m="$(mark_of "$i")"
+    printf '%s\t%s\t%s\n' "${KEY[i]}" "${m:--}" "${DUMP_ROW[i]//$SEP/$'\t'}"
+  done
+}
+
+_ficha_lista_pura() {  # _ficha_lista_pura <valor> <ids|ids()> → 0 se só há ids
+  local x="$1"
+  [ "$2" = "ids()" ] && x="$(sed -E 's/\([^)]*\)//g' <<< "$x")"
+  x="$(sed -E 's/DA-[0-9]+[a-z]?//g; s/[,;[:space:]]//g; s/^(—|-)$//' <<< "$x")"
+  [ -z "$x" ]
+}
+
+ficha_check() {
+  local dir="$1" desde="${DA_FICHA_DESDE:-2026-11-13}" LC_ALL=C.UTF-8
+  load_schema || return 0
+  load_dump "$dir"
+  local proibe='(^|[^[:alnum:]_])(nunca|proibid[oa]s?|n[ãa]o pode|jamais|somente|s[óo])([^[:alnum:]_]|$)'
+  declare -A idx_of=()
+  local i j
+  for ((i=0; i<N; i++)); do idx_of["${KEY[i]}"]=$i; idx_of["DA-$(nv "${RAWNUM[i]}")"]=$i; done
+  local tipo_j=-1 regra_j=-1
+  for j in "${!SCH_CHAVE[@]}"; do
+    [ "${SCH_CHAVE[j]}" = tipo ] && tipo_j=$j; [ "${SCH_CHAVE[j]}" = regra ] && regra_j=$j
+  done
+  for ((i=0; i<N; i++)); do
+    local d="${DATATAG[i]}"
+    [ -n "$d" ] && [[ ! "$d" < "$desde" ]] || continue
+    local -a val; IFS="$SEP" read -ra val <<< "${DUMP_ROW[i]}$SEP"   # SEP final: preserva campo vazio no fim
+    local tipo="" regra=""; [ "$tipo_j" -ge 0 ] && tipo="${val[tipo_j]:-}"; [ "$regra_j" -ge 0 ] && regra="${val[regra_j]:-}"
+    for j in "${!SCH_CHAVE[@]}"; do
+      local v="${val[j]-$AUSENTE}" r="${SCH_ROT[j]}" ob="${SCH_OBR[j]}" te="${SCH_TETO[j]}" va="${SCH_VAL[j]}" cobra=0
+      case "$ob" in
+        sim) cobra=1 ;;
+        regra) [ "$tipo" = registro ] || cobra=1 ;;
+      esac
+      if [ "$v" = "$AUSENTE" ]; then
+        [ "$cobra" = 1 ] && echo "WARN ficha: ${KEY[i]} sem $r (contrato: da-new.sh --ajuda)"
+        continue
+      fi
+      if [ -z "$v" ]; then
+        if [ "$cobra" = 1 ]; then echo "WARN ficha: ${KEY[i]} $r vazio — preencha"
+        elif [ "$ob" != proibe ] || grep -qiE "$proibe" <<< "$regra"; then echo "WARN ficha: ${KEY[i]} $r vazio — preencha ou apague a linha"
+        else echo "WARN ficha: ${KEY[i]} $r vazio e a Regra não proíbe — apague a linha"; fi
+        continue
+      fi
+      case "$te" in
+        *+*) local lado n="${te%%+*}"
+             while IFS= read -r lado; do lado="$(sed -E 's/^[[:space:]]*(✗|❌|✓|✅)?[[:space:]]*//; s/[[:space:]]+$//' <<< "$lado")"
+               [ "${#lado}" -gt "$n" ] && echo "WARN ficha: ${KEY[i]} $r com lado de ${#lado} caracteres (teto $n por lado): ${lado:0:60}…"
+             done < <(sed -E 's/[[:space:]]*(→|->)[[:space:]]*/\n/' <<< "$v") ;;
+        */*) [ "${#v}" -gt "${te#*/}" ] && echo "WARN ficha: ${KEY[i]} $r com ${#v} caracteres (alvo ${te%/*}, corte ${te#*/}) — o resto vai no Detalhe operacional" ;;
+        [0-9]*) [ "${#v}" -gt "$te" ] && echo "WARN ficha: ${KEY[i]} $r com ${#v} caracteres (teto $te)" ;;
+      esac
+      case "$va" in
+        -|'') ;;
+        ids|'ids()') _ficha_lista_pura "$v" "$va" || echo "WARN ficha: ${KEY[i]} $r não é lista pura de ids: $v" ;;
+        *) [[ "|$va|" == *"|$v|"* ]] || echo "WARN ficha: ${KEY[i]} $r '$v' fora de $va" ;;
+      esac
+      # supersede/parcial apontam para a CABEÇA vigente: alvo já consolidado/superado por OUTRA DA → aviso
+      if [ "${SCH_ONDE[j]}" = cab ] && [ "$va" = "ids()" ]; then
+        local alvo
+        for alvo in $(sed -E 's/\([^)]*\)//g' <<< "$v" | grep -oE 'DA-[0-9]+'); do
+          local ai="${idx_of[DA-$(nv "${alvo#DA-}")]:-}"; [ -n "$ai" ] || continue
+          local mk; mk="$(mark_of "$ai")"
+          case "$mk" in
+            sup:*|con:*) [ "$(nv "${mk#*:}")" = "$(nv "${RAWNUM[i]}")" ] && continue
+                         echo "WARN ficha: ${KEY[i]} $r aponta $alvo, que não é vigente ($(mark_render "$ai")) — aponte para a cabeça DA-$(nv "${mk#*:}")" ;;
+          esac
+        done
+      fi
+    done
+  done
 }
 
 # ============================================================================
@@ -785,6 +928,7 @@ usage() {
   echo "     da-index.sh show DA-NNN|--saga slug|--anexos DA-NNN [dir]"
   echo "     da-index.sh export-saga slug [dir]"
   echo "     da-index.sh gatilhos [dir]"
+  echo "     da-index.sh dump [dir]          # TSV: id, marca de vigência e cada campo do da-schema.tsv (∅ = linha ausente)"
   exit 2
 }
 
@@ -1024,6 +1168,7 @@ case "$MODE" in
   show) cmd_show "$@" ;;
   export-saga) cmd_export_saga "$@" ;;
   gatilhos) cmd_gatilhos "$@" ;;
+  dump) cmd_dump "$@" ;;
   draft-head) exec python3 -I "$SELFDIR/da-draft-head.py" "$@" ;;
   *) usage ;;
 esac

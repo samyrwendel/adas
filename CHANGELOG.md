@@ -3,6 +3,18 @@
 Cada versão diz o que muda para quem usa, não a lista de commits. A primeira linha `Resumo:` de cada
 versão é a que aparece no aviso de versão nova da sessão.
 
+## 1.3.0 — 2026-11-12
+
+Resumo: a ficha da DA virou um arquivo só (`da-schema.tsv`); o molde, a instrução e o aviso de ficha fora do padrão saem dele.
+
+- **Contrato único da DA** (`scripts/da-schema.tsv`): campos, ordem da ficha v2, obrigatoriedade, tetos e valores, uma linha por campo. A ordem das linhas é a ordem da ficha. A tabela legível está em `docs/ficha.md`, gerada por `da-new.sh --ficha`.
+- **`da-new.sh` exige `--tipo`** (`regra` · `registro` · `princípio`): `da-new.sh --tipo regra <escopo> <saga> "<título>" [dir]`. O esqueleto e a instrução saem do esquema; o script não escreve nome de campo. O molde ganhou `tipo`, `gravidade`, a ordem v2 (Regra · Gatilho · Exemplo · Motivo · Trade-off · Lição · Mecanismo · Detalhe operacional) e o Gatilho nasce vazio. `--ajuda` imprime a instrução.
+- **`da-index.sh check` confere a DA nova contra o esquema** (só aviso): campo obrigatório ausente ou vazio, linha deixada vazia, Regra acima de 240 (alvo 120), Lição acima de 300, lado do Exemplo acima de 140, `tipo`/`gravidade` fora dos valores, `consolida`/`supersede` que não são lista de ids, e `parcial`/`supersede` apontando DA que já não é vigente ("aponte para a cabeça"). Vale para DA com `data:` a partir de 2026-11-13 (`DA_FICHA_DESDE`); DA existente não ganha aviso. O corte é por data e não por número porque cada diário tem a sua numeração.
+- **`parcial: DA-NNN`** no cabeçalho marca ½ (mesmo efeito de `supersede: DA-NNN (só …)`, que segue valendo); a DA alvo continua vigente. O cartão e o grafo do JIT leem a etiqueta (aresta `parcial`, classe explícita).
+- **`da-index.sh dump [dir]`**: TSV com id, marca de vigência e cada campo do esquema (`∅` = linha ausente). É o acesso único aos campos para os outros leitores.
+- **Teste de contrato** (`skeleton/scripts/tests/contrato.test.sh`, dentro do `adas test`): o molde segue o esquema, cada campo que um leitor consome existe no esquema e o leitor reage quando o campo muda. Apagar do esquema um campo lido derruba o teste; trocar a ordem de duas linhas muda o molde e o teste segue verde.
+- **`adas test` espera a trava por no máximo 480 s**: trava presa vira rodada vermelha (com `--selftest`, grava o status e alerta) em vez de esperar para sempre (O1 da revisão 016). Lock que não abre diz que segue sem trava (O2). O smoke grava o log do openclaw e do hermes num arquivo por rodada (O4).
+
 ## 1.2.2 — 2026-11-12
 
 Resumo: o relógio não dá mais vermelho falso por horário nem por duas rodadas ao mesmo tempo.

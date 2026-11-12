@@ -141,7 +141,7 @@ def meta_da(b):
     """Linha de metadados da DA (`escopo: …` · `saga: …` · `refs: …`) → dict. '—' vira vazio."""
     hdr = (b.split("\n", 2) + ["", ""])[1]
     out = {}
-    for k in ("escopo", "saga", "refs", "consolida", "supersede", "tipo", "gravidade"):
+    for k in ("escopo", "saga", "refs", "consolida", "supersede", "parcial", "tipo", "gravidade"):  # parcial: alias do ½ (OS 005 item 8)
         m = re.search(r"`" + k + r":\s*([^`]*)`", hdr)
         v = m.group(1).strip() if m else ""
         out[k] = "" if v in ("—", "-") else v
@@ -186,7 +186,7 @@ def cosseno():
         return lambda a, b: (sum(x * y for x, y in zip(a, b)) / ((math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))) or 1.0))
 
 # espécie da sinapse (GLOSSARIO.md): `tipo` diz a ORIGEM da aresta, `classe` a espécie. `aprendida` nasce com o B1.
-CLASSE = {"refs": "explícita", "consolida": "explícita", "supersede": "explícita", "mecanismo-de": "explícita",
+CLASSE = {"refs": "explícita", "consolida": "explícita", "supersede": "explícita", "parcial": "explícita", "mecanismo-de": "explícita",
           "saga": "pertencimento", "semântica": "semântica", "adesao": "aprendida", "entidade": "entidade"}
 
 # Ponte por ENTIDADE (task 20261110-009): bot, unit systemd, arquivo e app citados no texto da DA viram nó que liga
@@ -260,7 +260,7 @@ def compila_grafo(cards, out, cache, home=HOME):
             if E.get(k, (0,))[0] < w or (t == "mecanismo-de" and E[k][1] != t): E[k] = (w, t, u, v)
     saga = {}
     for c in cards:
-        for fld in ("refs", "consolida", "supersede"):
+        for fld in ("refs", "consolida", "supersede", "parcial"):
             for v in ids_de(c.get(fld)): add(c["id"], f'{c["casa"]}:{v}' if c.get("casa") else v, 1.0, fld)
         for v in c.get("filhos") or []: add(c["id"], v, 1.0, "mecanismo-de")
         if c.get("saga") and c["saga"] != "conduta": saga.setdefault((c.get("casa"), c["saga"]), []).append(c["id"])

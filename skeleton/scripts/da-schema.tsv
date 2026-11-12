@@ -1,0 +1,32 @@
+# da-schema.tsv — CONTRATO ÚNICO da DA (Fase 2 do plano estrutural, task 20261112-017).
+# Uma linha por campo, separada por TAB. A ORDEM DAS LINHAS é a ordem da ficha (cabeçalho e corpo).
+# Quem deriva daqui: da-new.sh (molde, instrução, --ficha → docs/ficha.md), da-index.sh (dump, check da ficha).
+# Colunas:
+#   onde         cab (etiqueta `chave: valor` na 2ª linha) | corpo (linha **Rótulo:**)
+#   chave        nome estável do campo (é a coluna do `da-index.sh dump`)
+#   rotulo       como aparece no diário
+#   obrigatorio  sim | regra (só tipo regra/princípio) | proibe (só se a Regra proíbe — cobrado pelo check-da-mecanismo) | opcional
+#   teto         - | N (caracteres) | alvo/corte (avisa só acima do corte) | N+N (par ✗ … → ✓ …, cada lado)
+#   molde        s = o da-new.sh imprime a linha · n = só quando se aplica
+#   default      valor no molde ($ESCOPO $SAGA $HOJE $TIPO vêm da linha de comando)
+#   valores      - | a|b|c (um dos) | ids (lista pura de DA-NNN) | ids() (idem, com anotação entre parênteses)
+#   ajuda        a instrução impressa pelo da-new.sh e na ficha
+cab	escopo	escopo	sim	-	s	$ESCOPO	-	produto · instância · projeto/<nome> (pode compor)
+cab	saga	saga	sim	-	s	$SAGA	-	slug do sagas.conf ou nova/<slug>
+cab	data	data	sim	-	s	$HOJE	-	data do registro
+cab	tipo	tipo	sim	-	s	$TIPO	regra|registro|princípio	regra manda ou proíbe · registro é fato (não vira cartão) · princípio
+cab	gravidade	gravidade	sim	-	s	norma	piso|norma|preferência	quem promove a piso ou rebaixa a preferência é o dono
+cab	refs	refs	sim	-	s	—	-	ids citados
+cab	consolida	consolida	sim	-	s	—	ids	ids que esta cabeça absorve, lista pura
+cab	supersede	supersede	sim	-	s	—	ids()	ids que esta DA revoga; parcial = DA-NNN (só …), sempre apontando a cabeça vigente
+cab	parcial	parcial	opcional	-	n	—	ids()	mudança parcial de outra DA (marca ½); acrescente a etiqueta só quando houver
+corpo	regra	Regra	sim	120/240	s		-	uma frase no imperativo; alvo 120, o cartão corta em 240; o resto vai no Detalhe operacional
+corpo	gatilho	Gatilho	regra	-	s		-	evento · <superfície> · … | forma · reply · … | tema (normativa sem gatilho de máquina); registro apaga a linha
+corpo	exemplo	Exemplo	regra	140+140	s		-	par ✗ <o que saiu> → ✓ <como devia sair>, caso real
+corpo	fonte	Fonte do exemplo	opcional	-	n		-	onde o caso está (msg, log com data, DA); fica fora do cartão
+corpo	motivo	Motivo	sim	-	s		-	abre pelo incidente e pela ordem do dono, com data; termine com Decidido por
+corpo	tradeoff	Trade-off	sim	-	s		-	+ o que ganha · − o que perde · o que foi rejeitado
+corpo	licao	Lição	sim	300	s		-	geral e portátil, sem caminho de arquivo nem nome próprio
+corpo	mecanismo	Mecanismo	proibe	-	s		-	caminho REAL da trava/teste que reprova a violação (DA-527); Regra que não proíbe apaga a linha
+corpo	padrao	Padrão sem ADAS	opcional	-	n		-	a reação default do modelo que a regra troca
+corpo	detalhe	Detalhe operacional	opcional	-	s		-	valores, limiares, exceções, passos; não se aplica = apague a linha
