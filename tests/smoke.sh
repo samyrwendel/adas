@@ -83,7 +83,7 @@ rm "$d/skeleton/README.md" && { cp -Rn "$d/skeleton/." . || true; } \
 [ -f scripts/check-adas.sh ] && ok "arquivos novos vieram" || bad "cópia incompleta"
 
 echo "== 4) check-adas no esqueleto recém-copiado (working tree) — warn, nunca block"
-mkdir -p "$T/p2" && cd "$T/p2" && cp -Rn "$d/skeleton/." . 2>/dev/null
+mkdir -p "$T/p2" && cd "$T/p2" && git init -q && cp -Rn "$d/skeleton/." . 2>/dev/null   # ADAS-Projeto só em repo git (DA-530)
 mkdir -p .adas && git -C "$d" rev-parse HEAD | cut -c1-7 > .adas/skeleton-version
 out=$(bash scripts/check-adas.sh); rc=$?
 [ "$rc" = 0 ] && ok "exit 0 (placeholder é warn, não block)" || bad "bloqueou o esqueleto (exit $rc)"

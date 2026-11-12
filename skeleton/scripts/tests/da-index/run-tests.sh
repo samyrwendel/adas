@@ -100,8 +100,9 @@ sagasout="$(bash "$DAIDX" sagas "$TMP")"
 echo "$sagasout" | grep -qE '^- regra-fallback-swallow .*Regra: (por:|-|\*\*|"|fragmento)' \
   && fail "saga regra-fallback-swallow ainda mostra fragmento" || pass "saga regra-fallback-swallow sem fragmento"
 
+# A linha de saga não traz mais "membros: DA-…" desde o item 2a (da88a74, 05/09): asserção atualizada, código intacto.
 echo "== fixture 8: rótulo curto ('**O problema.**') não vira Regra — cai em ver DA-NNN =="
-echo "$sagasout" | grep -qF -- '- regra-fallback-curto · produto · cabeça: — · 1 DA · membros: DA-008 · Regra: ver DA-008' \
+echo "$sagasout" | grep -qF -- '- regra-fallback-curto · produto · cabeça: — · 1 DA · Regra: ver DA-008' \
   && pass "DA-008 (frase-rótulo curta) cai em 'ver DA-008', não usa 'O problema.'" || fail "DA-008 não caiu no fallback 'ver DA-NNN'"
 
 echo "== fixture 9: Decisão em lista de alternativas extrai frase do primeiro item =="
@@ -117,7 +118,7 @@ grep -q '^- DA-011 .*— Este parágrafo é o conteúdo de verdade' "$TMP/DECISI
   && pass "DA-011 pula 'Decidido por:' e usa o parágrafo seguinte" || fail "DA-011 usou a linha de atribuição como Regra"
 
 echo "== fixture 12: frase >240 chars não vira Regra — cai em ver DA-NNN =="
-echo "$sagasout" | grep -qF -- '- regra-fallback-longa · produto · cabeça: — · 1 DA · membros: DA-012 · Regra: ver DA-012' \
+echo "$sagasout" | grep -qF -- '- regra-fallback-longa · produto · cabeça: — · 1 DA · Regra: ver DA-012' \
   && pass "DA-012 (frase longa demais) cai em 'ver DA-012'" || fail "DA-012 não caiu no fallback por tamanho"
 
 echo "== fixture 13/14: fallback de data do Histórico (tag → **Data:** → data isolada no corpo → —) =="

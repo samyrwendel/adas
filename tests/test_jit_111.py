@@ -52,8 +52,19 @@ sys.path.insert(0, J)
 os.environ.clear(); os.environ.update(LIMPO, HOME=T)
 import juiz_prov as jp  # noqa: E402
 jp.H = T; jp.CONF = os.path.join(T, ".adas", "juiz.env")
+# HOME falso não tem o redator da instância (claude-tg-tmux); desde a e753230 o juiz é fail-closed sem ele.
+# Redator falso: identidade, só pra exercitar provedores. O fail-closed é provado logo abaixo.
+STUB = os.path.join(T, "redator-falso.py")
+open(STUB, "w").write("def carregar_segredos():\n    return []\ndef redigir(t, s):\n    return t, 0\n")
+jp.REDATOR = os.path.join(T, "nao-existe.py")
+try:
+    jp.perguntar("x", [{"id": "DA-1", "pergunta": "p"}], time.time() + 5, provs=[]); _fc = False
+except RuntimeError as e:
+    _fc = "redator indisponível" in str(e)
+jp.REDATOR = STUB; LIMPO["ADAS_REDATOR"] = STUB  # subprocessos (juiz-reply, configurar) também
 
 print("== juiz: provedores e chave sem chat (task 20261101-001, DA-479)")
+chk("sem redator o texto não sai: RuntimeError antes de qualquer provedor (e753230)", _fc)
 CART = [{"id": "DA-1", "pergunta": "chama o setup de Stormer?"}]
 ps = [{"nome": "typesafe", "tipo": "systemone", "url": BASE + "/ruim/systemone", "model": "jev-latest", "key": "k1"},
       {"nome": "openrouter", "tipo": "systemone", "url": BASE + "/bom/systemone", "model": "jev-latest", "key": "k2"}]

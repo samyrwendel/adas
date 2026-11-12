@@ -84,12 +84,33 @@ adendo WARN "adendo com caminho inventado não conta"            '**Mecanismo da
 adendo WARN "adendo pra OUTRA DA não vale pra esta"             '**Mecanismo da DA-899:** `scripts/trava-real.sh`.'
 
 # ponta a ponta: o check-adas.sh (ao lado) BLOQUEIA (exit 1) com a mesma DA nova sem trava
+vig() { # <FAIL|OK> <rótulo> <supersede da DA-901> — só DA vigente é cobrada (DA-A da OS 005)
+  printf '# diário\n\n## DA-900 — antiga\n%s\n**Regra:** Nunca publicar sem o gate.\n\n## DA-901 — cabeça\n`escopo: produto` · `saga: x` · `data: 2026-10-02` · `refs: —` · `consolida: —` · `supersede: %s`\n**Regra:** Publicar passa pelo gate.\n' \
+    "$META_NOVA" "$3" > "$T/DECISIONS.md"
+  local out got; out="$(bash "$CHK" --list "$T/DECISIONS.md" "$T")"
+  printf '%s\n' "$out" | grep -q '^FAIL DA-900' && got=FAIL || got=OK
+  [ "$got" = "$1" ] && echo "✓ $2 → $got" || { echo "✗ $2: esperava $1, veio $got"; printf '%s\n' "$out" | sed 's/^/    /'; fail=1; }
+}
+vig OK   "DA superada que proíbe sem Mecanismo não conta" "DA-900"
+vig FAIL "a mesma DA vigente (sem supersede) conta"       "—"
+
 ADAS_CHK="$(dirname "$CHK")/check-adas.sh"
 if [ -f "$ADAS_CHK" ]; then
   printf '# diário\n\n## DA-900 — fixture\n%s\n**Regra:** Nunca X.\n' "$META_NOVA" > "$T/DECISIONS.md"
   out="$(cd "$T" && DECISIONS="$T/DECISIONS.md" bash "$ADAS_CHK" "$T" 2>&1)"; rc=$?
   if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -qF "sem **Mecanismo:** que exista"; then echo "✓ check-adas.sh bloqueia (exit 1)"
   else echo "✗ check-adas.sh não bloqueou (exit $rc)"; fail=1; fi
+fi
+
+# DA-530: ADAS-Projeto (tem .adas/profile.json) fora de repo git = BLOCK; com git init passa.
+if [ -f "$ADAS_CHK" ]; then
+  P="$T/proj"; mkdir -p "$P"; cp -r "$(dirname "$ADAS_CHK")/.." "$P/x"; P="$P/x"
+  out="$(cd "$P" && bash scripts/check-adas.sh 2>&1)"; rc=$?
+  if [ "$rc" -ne 0 ] && printf '%s\n' "$out" | grep -qF "ADAS-Projeto só entra em repo git (DA-530)"; then echo "✓ projeto sem git → BLOCK (DA-530)"
+  else echo "✗ projeto sem git não bloqueou (exit $rc)"; fail=1; fi
+  out="$(cd "$P" && git init -q && bash scripts/check-adas.sh 2>&1)"; rc=$?
+  if ! printf '%s\n' "$out" | grep -qF "(DA-530)"; then echo "✓ depois de git init a DA-530 não acusa"
+  else echo "✗ git init não liberou (exit $rc)"; fail=1; fi
 fi
 
 [ "$fail" = 0 ] && echo "TODOS OK" || echo "FALHOU"

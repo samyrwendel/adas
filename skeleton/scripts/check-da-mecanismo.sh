@@ -14,6 +14,9 @@
 # Uso: check-da-mecanismo.sh [--list] [DECISIONS.md] [raiz]
 #   --list  imprime também os WARN um a um (padrão: só a contagem)
 #   raiz    onde resolver caminho relativo do Mecanismo (padrão: dir do DECISIONS.md)
+# Caminho em OUTRO host (frota multi-host): qualifique com `host:/caminho` (ex.: `outro-host:/usr/local/sbin/x.sh`).
+# Checado por ssh (BatchMode, ConnectTimeout 4, tenta `host` e `host-ts`); se o host não responde a DA NÃO reprova:
+# vira linha "UNVERIFIED DA-NNN …" (aviso). Host que responde e não tem o caminho = não existe.
 # Saída: linhas "FAIL DA-NNN …" / "WARN DA-NNN …" e um resumo; exit 1 se houver FAIL.
 set -uo pipefail
 export LC_ALL=C.UTF-8  # classe de caractere e -i do grep sobre acento (ó, ã) precisam de UTF-8
@@ -65,11 +68,30 @@ extrai() {
 # 0 se algum caminho citado no Mecanismo existe. Candidatos: tokens entre crases e
 # tokens soltos com "/" ou extensão de arquivo/unit. Resolve ~/, absoluto, relativo à raiz,
 # nome solto em raiz/ e raiz/scripts/, e unit via systemctl (user e system).
+declare -A REMOTO=()  # cache host:caminho -> 0 existe · 1 não existe · 2 host mudo
+remoto_existe() {  # $1=host $2=caminho
+  local k="$1:$2" h rc
+  [ -n "${REMOTO[$k]:-}" ] && return "${REMOTO[$k]}"
+  REMOTO[$k]=2
+  for h in "$1" "$1-ts"; do
+    ssh -o BatchMode=yes -o ConnectTimeout=4 "$h" "test -e '$2'" </dev/null >/dev/null 2>&1; rc=$?
+    [ "$rc" -ne 255 ] && { REMOTO[$k]=$rc; break; }
+  done
+  [ "${REMOTO[$k]}" -gt 1 ] && REMOTO[$k]=2
+  return "${REMOTO[$k]}"
+}
 caminho_existe() {
-  local mec="$1" t p
+  local mec="$1" t p rr
+  UNVER=""
   while IFS= read -r t; do
     t="${t%%[),.;:]}"; t="${t#(}"
     [ -z "$t" ] && continue
+    if [[ "$t" =~ ^([a-z][a-z0-9_-]*):(/.*)$ ]]; then
+      remoto_existe "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; rr=$?
+      [ "$rr" = 0 ] && return 0
+      [ "$rr" = 2 ] && UNVER="$UNVER $t"
+      continue
+    fi
     case "$t" in "~/"*) p="$HOME/${t#\~/}" ;; /*) p="$t" ;; *) p="$ROOT/$t" ;; esac
     [ -e "$p" ] && return 0
     case "$t" in */*) ;; *) [ -e "$ROOT/scripts/$t" ] && return 0 ;; esac
@@ -83,10 +105,20 @@ caminho_existe() {
       printf '%s\n' "$mec" | tr ' ' '\n' | grep -E '/|\.(sh|py|js|ts|md|json|service|timer|path|socket)$'
     } | grep -vE '^\*|^-' | sort -u
   )
+  [ -n "$UNVER" ] && return 2
   return 1
 }
 
-nfail=0; nwarn=0; nproib=0; nok=0
+nfail=0; nwarn=0; nunver=0; nproib=0; nok=0; npulo=0
+# Só DA VIGENTE é cobrada (fila nasceu como "DAs vigentes sem trava"): superada/consolidada responde
+# pela cabeça. Vigência vem do da-index.sh (raiz ou ao lado deste script); sem ele, audita tudo.
+declare -A VIG=(); TEM_VIG=0
+for idx in "$ROOT/scripts/da-index.sh" "$(dirname "$0")/da-index.sh"; do
+  [ -f "$idx" ] || continue
+  vout="$(bash "$idx" list --vigentes "$ROOT" 2>/dev/null)" || break
+  while read -r v; do VIG[$v]=1; TEM_VIG=1; done < <(printf '%s\n' "$vout" | grep -oE '^- DA-[0-9]+' | cut -c3-)
+  break
+done
 declare -A ADENDO=()
 REGS=()
 while IFS=$'\037' read -r id dt regra mec; do
@@ -96,12 +128,15 @@ for reg in ${REGS[@]+"${REGS[@]}"}; do
   IFS=$'\037' read -r id dt regra mec <<< "$reg"
   mec="$mec ${ADENDO[$id]:-}"
   printf '%s\n' "$regra" | grep -qiE "$PROIBE" || continue
+  if [ "$TEM_VIG" = 1 ] && [ -z "${VIG[$id]:-}" ]; then npulo=$((npulo + 1)); continue; fi
   nproib=$((nproib + 1))
   motivo=""
   if [ -z "${mec// /}" ]; then
     motivo="Regra proíbe e não há **Mecanismo:**"
-  elif ! caminho_existe "$mec"; then
-    motivo="**Mecanismo:** não cita caminho/unit que exista no disco"
+  else
+    caminho_existe "$mec"; rc=$?
+    if [ "$rc" = 2 ]; then echo "UNVERIFIED $id — host remoto não respondeu, mecanismo não verificado:$UNVER"; nunver=$((nunver + 1)); continue
+    elif [ "$rc" != 0 ]; then motivo="**Mecanismo:** não cita caminho/unit que exista no disco"; fi
   fi
   if [ -z "$motivo" ]; then nok=$((nok + 1)); continue; fi
   nova=0
@@ -115,5 +150,5 @@ for reg in ${REGS[@]+"${REGS[@]}"}; do
   fi
 done
 
-echo "check-da-mecanismo: $nproib DA(s) com proibição na Regra · $nok com mecanismo existente · $nfail FAIL (>= $DESDE) · $nwarn WARN (antigas, fila)"
+echo "check-da-mecanismo: $nproib DA(s) com proibição na Regra · $nok com mecanismo existente · $nfail FAIL (>= $DESDE) · $nwarn WARN (antigas, fila) · $nunver não verificado(s) · $npulo não vigente(s) pulada(s)"
 [ "$nfail" -eq 0 ]

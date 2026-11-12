@@ -24,5 +24,8 @@ echo "$out" | grep -qP '^DC-007\tforma · reply · juiz\tDA-003$' && pass "adend
 [ "$(echo "$out" | grep '^DA-002' | tail -1 | cut -f2)" = "forma · reply · juiz · modo=deny" ] && pass "última linha do id vence (adendo)" || fail "ordem"
 mkdir -p "$T/.adas"; printf 'saga-x|\n' > "$T/.adas/sagas.conf"
 ADAS_HOME_DIR="$T/.adas" bash "$NEW" produto saga-x "nova" "$T" >/dev/null 2>&1
-tail -1 "$T/DECISIONS.md" | grep -qx '\*\*Gatilho:\*\* tema' && pass "da-new.sh emite **Gatilho:** tema" || fail "template sem Gatilho"
+# Procura no BLOCO da DA criada (a última), não na última linha: o molde ganhou linhas depois do Gatilho.
+blk="$(awk '/^## DA-/{b=""} {b=b $0 "\n"} END{printf "%s", b}' "$T/DECISIONS.md")"
+[ "$(printf '%b' "$blk" | grep -c '^\*\*Gatilho:\*\*')" = 1 ] && printf '%b' "$blk" | grep -qx '\*\*Gatilho:\*\* tema' \
+  && pass "da-new.sh emite uma linha **Gatilho:** tema no bloco" || fail "template sem Gatilho"
 echo "gatilhos: $ok ok, $ko falha(s)"; [ "$ko" = 0 ]

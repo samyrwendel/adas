@@ -282,10 +282,11 @@ mec_block=0
 if [ -f "$DECISIONS" ] && [ -f "$SELFDIR/check-da-mecanismo.sh" ]; then
   mec_out="$(bash "$SELFDIR/check-da-mecanismo.sh" "$DECISIONS" "$DIR" 2>&1)"; mec_rc=$?
   while IFS= read -r l; do note "$l"; done < <(printf '%s\n' "$mec_out" | grep '^FAIL ')
+  while IFS= read -r l; do note "$l"; warn=1; done < <(printf '%s\n' "$mec_out" | grep '^UNVERIFIED ')
   [ "$mec_rc" -ne 0 ] && { block=1; mec_block=1; }
   mec_warn="$(printf '%s\n' "$mec_out" | sed -n 's/.* \([0-9][0-9]*\) WARN .*/\1/p')"
   if [ "${mec_warn:-0}" -gt 0 ]; then
-    note "$mec_warn DA(s) antigas proíbem sem **Mecanismo:** existente — fila; liste com: bash $SELFDIR/check-da-mecanismo.sh --list $DECISIONS"; warn=1
+    note "$mec_warn DA(s) vigentes antigas proíbem sem **Mecanismo:** existente — fila; liste com: bash $SELFDIR/check-da-mecanismo.sh --list $DECISIONS"; warn=1
   fi
 fi
 
@@ -303,6 +304,14 @@ if [ "$SEAL" != "1" ]; then
       note "selo OBSOLETO (provado em '${sealed_v:-?}', esqueleto agora '$cur_v') — re-sele: bash scripts/check-adas.sh --seal"; warn=1
     fi
   fi
+fi
+
+# 11b) ADAS-PROJETO SÓ EM REPO GIT (DA-530). Diretório com .adas/profile.json (marca que o bootstrap
+# copia do esqueleto) fora de work tree git = BLOCK: sem git não há portão de commit para o projeto.
+# A home (raiz de governança, espécie conduta) também tem profile.json e não é git — fica de fora.
+if [ -f .adas/profile.json ] && [ "$(pwd -P)" != "$(cd "$HOME" 2>/dev/null && pwd -P)" ] \
+   && ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  note "ADAS-Projeto só entra em repo git (DA-530) — $(pwd -P) tem .adas/profile.json e não é repo git; rode git init ou tire o ADAS-Projeto daqui"; block=1
 fi
 
 # 12) SEIS PORTAS DE SEGURANÇA DO APP (DA-189) → WARN. Todo projeto que nasce com

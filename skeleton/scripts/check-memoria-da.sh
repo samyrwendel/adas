@@ -52,6 +52,17 @@ classify_stream() {
   a="$(printf '%s' "$body" | grep -ioE "$RE_A" | sort -u | head -3 | paste -sd, -)"
   w="$(printf '%s' "$body" | grep -ioE "$RE_W" | sort -u | head -3 | paste -sd, -)"
   p="$(printf '%s' "$body" | grep -ioE "$RE_P" | sort -u | head -3 | paste -sd, -)"
+  # DA-199 CUMPRIDA: a nota que JÁ cita o ponteiro do DC/DA onde a regra
+  # vive fez exatamente o que a DA-199 pede (registrar no diário + deixar o ponteiro na
+  # memória) → não é infração. "regra vive na DA/DC", "DC-NNN", "DA-NNN" ou um link [[..]].
+  # Trade-off aceito: nota que cita uma DA mas embute OUTRA regra nova sem registro escapa;
+  # a revisão periódica + a nota nova (sem ponteiro) pegam esse caso.
+  local ptr
+  ptr="$(printf '%s' "$body" | grep -ioE 'regra vive n[ao]|\bDC-[0-9]+|\bDA-[0-9]+|\[\[' | head -1)"
+  if [ -n "$ptr" ]; then
+    printf '%s\t%s\n' CLEAN "ponteiro DC/DA presente (DA-199 cumprida: regra no diário, memória é o ponteiro)"
+    return
+  fi
   local label reason
   if [ -n "$a" ] && [ -n "$w" ] && [ -z "$p" ]; then
     label=RULE
