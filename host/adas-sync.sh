@@ -10,6 +10,9 @@
 # Recusa é por casa e atômica: nada muda nela. Na 1ª vez grava .adas/ficha-desde (corte do contrato da DA, R5 da
 # revisão 018, e a âncora `ultima: DA-NNN`): DA anterior ao sync não ganha aviso. A geração (skeleton/skeleton-v4) fica no lock e não muda
 # sem --force. repos.conf: $ADAS_REPOS_CONF ou ~/.claude/adas/repos.conf.
+# Teste que o produto escreve para um script que ele leva viaja junto (revisão 025): em casa que tem mecanismo/tests/,
+# os arquivos de <geração>/mecanismo/tests/ entram no sync e no lock como `../mecanismo/tests/<nome>` (o nome do lock é
+# relativo a scripts/, então o check-adas.sh da casa confere o hash sem mudar). Teste próprio da casa, ali, fica intocado.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 CONF="${ADAS_REPOS_CONF:-$HOME/.claude/adas/repos.conf}"
@@ -35,8 +38,8 @@ fi
 
 VER="$(cat "$ROOT/VERSION")"
 COMMIT="$(git -C "$ROOT" rev-parse --short=7 HEAD 2>/dev/null || echo nao-registrada)"
-if [ "$MODE" = sync ] && [ -n "$(git -C "$ROOT" status --porcelain -- skeleton/scripts skeleton-v4/scripts 2>/dev/null)" ]; then
-  COMMIT="$COMMIT+sujo"; echo "⚠ adas sync: o produto tem mudança NÃO commitada em skeleton*/scripts — o carimbo sai '$COMMIT'; commite antes de levar às casas" >&2
+if [ "$MODE" = sync ] && [ -n "$(git -C "$ROOT" status --porcelain -- skeleton/scripts skeleton-v4/scripts skeleton-v4/mecanismo/tests 2>/dev/null)" ]; then
+  COMMIT="$COMMIT+sujo"; echo "⚠ adas sync: o produto tem mudança NÃO commitada em skeleton*/scripts ou mecanismo/tests — o carimbo sai '$COMMIT'; commite antes de levar às casas" >&2
 fi
 sha() { sha256sum "$1" 2>/dev/null | cut -d' ' -f1; }
 # historico <geração> <nome> <arquivo> — rc 0 se o conteúdo é uma versão que ESSE arquivo já teve no produto: blob de
@@ -46,10 +49,18 @@ BLOBS=""
 historico() {
   if [ -z "$BLOBS" ]; then
     BLOBS="$(mktemp)"; trap 'rm -f "$BLOBS"' EXIT
-    git -C "$ROOT" log --format= --raw --no-abbrev --no-renames -m HEAD -- skeleton/scripts skeleton-v4/scripts 2>/dev/null \
+    git -C "$ROOT" log --format= --raw --no-abbrev --no-renames -m HEAD -- skeleton/scripts skeleton-v4/scripts skeleton-v4/mecanismo/tests 2>/dev/null \
       | awk -F'\t' '/^:/ {split($1, m, " "); print m[4] " " $2}' | sort -u > "$BLOBS"
   fi
-  grep -qxF "$(git hash-object --no-filters "$3" 2>/dev/null) $1/scripts/$2" "$BLOBS"
+  grep -qxF "$(git hash-object --no-filters "$3" 2>/dev/null) $1/$(na_casa "$2")" "$BLOBS"
+}
+na_casa() { case "$1" in ../*) echo "${1#../}" ;; *) echo "scripts/$1" ;; esac; }   # nome do lock → caminho na casa (e, sob a geração, no produto)
+itens() {  # itens <geração> <casa> — nomes do lock (relativos a scripts/): os scripts e, em casa com mecanismo/tests/, os testes do produto
+  local f
+  for f in "$ROOT/$1/scripts"/*; do [ -f "$f" ] && basename "$f"; done
+  [ -d "$2/mecanismo/tests" ] || return 0
+  for f in "$ROOT/$1/mecanismo/tests"/*; do [ -f "$f" ] && echo "../mecanismo/tests/$(basename "$f")"; done
+  return 0
 }
 lock_sha() { awk -F'\t' -v a="$2" '!/^#/ && $2==a {print $1; exit}' "$1" 2>/dev/null; }
 
@@ -69,7 +80,7 @@ confere() {  # confere <casa> — rc 1 se algum arquivo do lock está fora do ha
 }
 
 sincroniza() {  # sincroniza <casa>
-  local c="$1" L="$1/.adas/skeleton.lock" g src f a cur novo old ruins=() lockger
+  local c="$1" L="$1/.adas/skeleton.lock" g src f a cur novo old ruins=() lockger its=() i
   [ -d "$c" ] || { echo "✗ $c: não existe"; return 1; }
   if [ -d "$c/skeleton/scripts" ] && [ -f "$c/host/adas-sync.sh" ]; then echo "✗ $c: é o produto ADAS (fonte dos scripts) — não é casa; nada mudou"; return 1; fi
   lockger="$(sed -n 's/^# geracao: //p' "$L" 2>/dev/null | head -1)"
@@ -81,8 +92,9 @@ sincroniza() {  # sincroniza <casa>
     echo "✗ $c: lock é da geração $lockger, pedido $g — trocar de geração exige --force (nada mudou)"; return 1
   fi
   src="$ROOT/$g/scripts"
-  for f in "$src"/*; do
-    [ -f "$f" ] || continue; a="$(basename "$f")"
+  mapfile -t its < <(itens "$g" "$c")
+  for a in "${its[@]}"; do
+    f="$src/$a"
     [ -f "$c/scripts/$a" ] || continue
     cur="$(sha "$c/scripts/$a")"; novo="$(sha "$f")"
     [ "$cur" = "$novo" ] && continue
@@ -99,7 +111,7 @@ sincroniza() {  # sincroniza <casa>
   if [ "${#ruins[@]}" -gt 0 ]; then   # --force sobre edição NÃO commitada não tem volta (o git da casa não guarda) — revisão 022
     local sujos=()
     for a in "${ruins[@]}"; do
-      git -C "$c" ls-files --error-unmatch "scripts/$a" >/dev/null 2>&1 && ! git -C "$c" diff --quiet HEAD -- "scripts/$a" 2>/dev/null && sujos+=("$a")
+      git -C "$c" ls-files --error-unmatch "$(na_casa "$a")" >/dev/null 2>&1 && ! git -C "$c" diff --quiet HEAD -- "$(na_casa "$a")" 2>/dev/null && sujos+=("$a")
     done
     if [ "${#sujos[@]}" -gt 0 ]; then
       echo "✗ $c: --force apagaria edição NÃO commitada, sem volta: ${sujos[*]} — commite, ou descarte de propósito (git -C $c checkout -- scripts/<arquivo>) e rode de novo. Nada mudou"; return 1
@@ -107,16 +119,17 @@ sincroniza() {  # sincroniza <casa>
   fi
   mkdir -p "$c/scripts" "$c/.adas" || return 1
   local st="$c/.adas/sync-estagio.$$"; rm -rf "$st"; mkdir "$st" || return 1
-  for f in "$src"/*; do   # 1º tempo: tudo para o estágio; falha aqui = nada mudou na casa
-    [ -f "$f" ] || continue; a="$(basename "$f")"
+  i=0
+  for a in "${its[@]}"; do   # 1º tempo: tudo para o estágio (arquivo N = item N); falha aqui = nada mudou na casa
     [ -d "$c/scripts/$a" ] && { echo "✗ $c: scripts/$a é diretório — nada mudou" >&2; rm -rf "$st"; return 1; }
-    cp -p "$f" "$st/$a" || { echo "✗ $c: falhou copiando $a — nada mudou" >&2; rm -rf "$st"; return 1; }
+    cp -p "$src/$a" "$st/$i" || { echo "✗ $c: falhou copiando $a — nada mudou" >&2; rm -rf "$st"; return 1; }
+    i=$((i+1))
   done
   { echo "# adas skeleton.lock — gerado por 'adas sync'; NÃO edite (nem os scripts listados: edite no produto)"
     echo "# geracao: $g"; echo "# versao: $VER"; echo "# commit: $COMMIT"
-    for f in "$st"/*; do a="$(basename "$f")"; printf '%s\t%s\n' "$(sha "$f")" "$a"; done
+    i=0; for a in "${its[@]}"; do printf '%s\t%s\n' "$(sha "$st/$i")" "$a"; i=$((i+1)); done
   } > "$L.tmp" || { rm -rf "$st" "$L.tmp"; return 1; }
-  for f in "$st"/*; do mv "$f" "$c/scripts/$(basename "$f")" || { echo "✗ $c: falhou movendo $(basename "$f") — rode de novo" >&2; rm -rf "$st" "$L.tmp"; return 1; }; done
+  i=0; for a in "${its[@]}"; do mv "$st/$i" "$c/scripts/$a" || { echo "✗ $c: falhou movendo $a — rode de novo" >&2; rm -rf "$st" "$L.tmp"; return 1; }; i=$((i+1)); done
   rmdir "$st"; mv "$L.tmp" "$L" || return 1
   echo "$COMMIT" > "$c/.adas/skeleton-version"
   if [ ! -s "$c/.adas/ficha-desde" ]; then

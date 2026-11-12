@@ -161,4 +161,39 @@ out="$(bash "$SYNC" --force "$Y2" 2>&1)"; rc=$?
 "${G[@]}" -C "$Y2" commit -qam 'edição da casa' >/dev/null 2>&1
 bash "$SYNC" --force "$Y2" >/dev/null 2>&1 && identicas "$Y2" skeleton && pass "depois de commitada, --force sobrescreve (o git da casa guarda a versão)" || fail "--force recusou edição já commitada"
 
+echo "== 11) revisão 025: teste do produto (mecanismo/tests) viaja com o script que ele prova e entra no lock"
+TN=mecanismo/tests/check-secrets.test.sh; LN="../$TN"
+cp "$P/skeleton-v4/$TN" "$T/teste-velho.sh"; echo "# teste da release nova $$" >> "$P/skeleton-v4/$TN"; "${G[@]}" -C "$P" commit -qam 'teste-novo'
+H="$T/casaH"; casa "$H"; mkdir -p "$H/scripts" "$H/mecanismo/tests"; cp "$P"/skeleton-v4/scripts/*.sh "$H/scripts/"
+cp "$T/teste-velho.sh" "$H/$TN"; echo 'exit 0 # teste da casa' > "$H/mecanismo/tests/da-casa.test.sh"
+out="$(bash "$SYNC" --geracao skeleton-v4 "$H" 2>&1)"; rc=$?
+[ "$rc" = 0 ] && cmp -s "$P/skeleton-v4/$TN" "$H/$TN" && identicas "$H" skeleton-v4 \
+  && [ "$(awk -F'\t' -v a="$LN" '$2==a{print $1}' "$H/.adas/skeleton.lock")" = "$(sha256sum "$P/skeleton-v4/$TN" | cut -d' ' -f1)" ] \
+  && pass "teste atrasado (versão antiga do produto) é trocado sem --force e carimbado" || fail "teste do produto não viajou (rc=$rc): $(tail -2 <<< "$out")"
+grep -q 'teste da casa' "$H/mecanismo/tests/da-casa.test.sh" && ! grep -q 'da-casa' "$H/.adas/skeleton.lock" \
+  && pass "teste próprio da casa em mecanismo/tests fica intocado e fora do lock" || fail "sync mexeu no teste próprio da casa"
+bash "$H/$TN" >/dev/null 2>&1 && pass "na casa, o teste sincronizado passa contra o check-secrets sincronizado" || fail "teste sincronizado falha na casa"
+"${G[@]}" -C "$H" add -A >/dev/null 2>&1; "${G[@]}" -C "$H" commit -qm 'casa commita o sync' >/dev/null 2>&1
+out="$(cd "$H" && bash scripts/check-secrets.sh 2>&1)"; rc=$?
+[ "$rc" = 0 ] && pass "casa que commita o teste do produto não acusa o próprio teste (porta 2 do histórico)" || fail "o teste do produto dispara o check-secrets da casa: $(grep -m1 -A2 'porta 2' <<< "$out" | tr '\n' ' ')"
+bash "$SYNC" --check "$H" >/dev/null && pass "--check: casa com teste carimbado rc 0" || fail "--check reprovou casa limpa com teste carimbado"
+echo "# remendo no teste" >> "$H/$TN"
+out="$(bash "$H/scripts/check-adas.sh" "$H" 2>&1)"; rc=$?
+[ "$rc" != 0 ] && grep -q "$TN difere do carimbo" <<< "$out" && pass "check-adas v4 reprova teste editado à mão e aponta o arquivo" || fail "check-adas v4 não viu o teste editado (rc=$rc)"
+bash "$SYNC" --check "$H" >/dev/null; [ $? = 1 ] && pass "--check: rc 1 com teste editado" || fail "--check não acusou teste editado"
+bash "$SYNC" "$H" >/dev/null 2>&1; [ $? = 1 ] && grep -q 'remendo no teste' "$H/$TN" && pass "sync sem --force não sobrescreve teste editado" || fail "sync sobrescreveu teste editado sem --force"
+out="$(bash "$SYNC" --force "$H" 2>&1)"; rc=$?
+[ "$rc" = 1 ] && grep -q 'remendo no teste' "$H/$TN" && grep -q "NÃO commitada, sem volta: $LN" <<< "$out" \
+  && pass "--force recusa apagar edição não commitada do teste (trava da revisão 022 vale para ele)" || fail "--force apagou edição não commitada do teste (rc=$rc)"
+"${G[@]}" -C "$H" commit -qam 'remendo da casa' >/dev/null 2>&1
+bash "$SYNC" --force "$H" >/dev/null 2>&1 && cmp -s "$P/skeleton-v4/$TN" "$H/$TN" && pass "depois de commitado, --force restaura o teste" || fail "--force não restaurou o teste"
+J="$T/casaJ"; casa "$J"; mkdir -p "$J/scripts" "$J/mecanismo/tests"; cp "$P"/skeleton-v4/scripts/*.sh "$J/scripts/"
+cp "$T/teste-velho.sh" "$J/$TN"; echo "# edição da casa" >> "$J/$TN"
+bash "$SYNC" --geracao skeleton-v4 "$J" >/dev/null 2>&1; [ $? = 1 ] && [ ! -f "$J/.adas/skeleton.lock" ] && grep -q 'edição da casa' "$J/$TN" \
+  && pass "1º sync: teste editado na casa (fora do histórico) recusa, nada muda" || fail "1º sync passou por cima de teste editado na casa"
+N="$T/casaN"; mkdir -p "$N"; git -C "$N" init -q; bash "$SYNC" --geracao skeleton-v4 "$N" >/dev/null 2>&1
+[ ! -e "$N/mecanismo" ] && ! grep -q 'mecanismo/tests' "$N/.adas/skeleton.lock" && pass "casa v4 sem mecanismo/tests: o sync não cria o diretório nem carimba teste" || fail "sync criou mecanismo/tests em casa que não tem"
+O="$T/casaO"; casa "$O"; mkdir -p "$O/mecanismo/tests"; bash "$SYNC" "$O" >/dev/null 2>&1
+[ -z "$(ls "$O/mecanismo/tests")" ] && ! grep -q 'mecanismo/tests' "$O/.adas/skeleton.lock" && pass "geração skeleton (sem mecanismo no produto): nada entra" || fail "geração skeleton levou teste"
+
 echo "sync: $ok ok, $ko falha(s)"; [ "$ko" = 0 ]

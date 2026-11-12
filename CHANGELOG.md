@@ -3,6 +3,14 @@
 Cada versão diz o que muda para quem usa, não a lista de commits. A primeira linha `Resumo:` de cada
 versão é a que aparece no aviso de versão nova da sessão.
 
+## 1.4.3 — 2026-11-12
+
+Resumo: o `adas sync` leva também o teste do produto em `mecanismo/tests/` (casa v4 no modo mecanismo) — teste velho contra script novo deixa de reprovar o `check-mecanismo`.
+
+- **`adas sync` em casa com `mecanismo/tests/`**: os arquivos de `skeleton-v4/mecanismo/tests/` do produto (hoje `check-secrets.test.sh`, o teste do invariante 1) são copiados junto com `scripts/` e entram no `.adas/skeleton.lock` como `../mecanismo/tests/<nome>`. Antes só `scripts/` viajava: a casa ficava com o `check-secrets.sh` novo e o teste antigo, e o `check-mecanismo` reprovava o invariante 1 (mesa-trading, na 1.4.2). Valem as mesmas regras dos scripts: cópia igual a versão antiga do produto é trocada sem `--force`; teste editado na casa é recusado sem `--force` e reprova o `check-adas.sh`; teste próprio da casa no mesmo diretório fica intocado e fora do lock. Casa sem `mecanismo/tests/` não ganha o diretório.
+- **O teste do invariante 1 não dispara mais o próprio gate**: a versão da 1.4.2 trazia um Bearer de fixture literal; commitado numa casa, o `check-secrets.sh` acusava o arquivo na porta 2 (histórico) para sempre. O valor passou a ser montado em runtime, como os outros tokens falsos do teste. No produto, o commit `1e7171a` fica coberto por uma linha na `.adas/secrets-allowlist`. Nenhuma casa chegou a commitar a versão antiga.
+- Nenhum script que vai às casas mudou: casa já sincronizada na 1.4.2 segue em dia.
+
 ## 1.4.2 — 2026-11-12
 
 Resumo: `adas test` deixa de ficar vermelho em falso sob carga; casa v4 sem lock não vira skeleton calada no 1º sync; o filtro de valor fictício do `check-secrets` sobe ao produto (DA-584).

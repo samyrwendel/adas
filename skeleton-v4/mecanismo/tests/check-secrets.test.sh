@@ -12,6 +12,9 @@ CS="$HERE/../../scripts/check-secrets.sh"
 [ -f "$CS" ] || { echo "✗ sem scripts/check-secrets.sh"; exit 1; }
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 tk="ghp_$(printf '0%.0s' $(seq 36))"
+# Bearer sem marca de fixture, também montado em runtime: literal aqui, este arquivo acusaria a porta 2 (histórico)
+# de toda casa que o commitasse — e do próprio produto (revisão 025; aconteceu no 1e7171a).
+bz="Bearer zK7qPmRv$(printf '4Xn2Ld9wTbH6')"
 
 mkdir -p "$T/sujo/scripts" && cd "$T/sujo" && git init -q && git config user.email t@t && git config user.name t \
   && cp "$CS" scripts/ && echo "tk='$tk'" > c.js && git add -A && git commit -qm x
@@ -30,7 +33,7 @@ bash scripts/check-secrets.sh >/dev/null 2>&1 || { echo "✗ repo limpo foi bloq
 # allowlist declarada (caminho | motivo | data): fixture com padrão de chave no histórico passa SÓ com o
 # arquivo versionado; fixture nova com segredo real continua bloqueada (o gate é calibrado, não desligado).
 mkdir -p "$T/fx/scripts" "$T/fx/tests" "$T/fx/.adas" && cd "$T/fx" && git init -q && git config user.email t@t && git config user.name t \
-  && cp "$CS" scripts/ && echo "hdr = 'Bearer zK7qPmRv4Xn2Ld9wTbH6'" > tests/fixture.test.js && git add -A && git commit -qm fixture
+  && cp "$CS" scripts/ && echo "hdr = '$bz'" > tests/fixture.test.js && git add -A && git commit -qm fixture
 bash scripts/check-secrets.sh >/dev/null 2>&1 && { echo "✗ Bearer sem marca de fixture e sem allowlist passou (porta 2)"; exit 1; }
 printf 'tests/fixture.test.js | token de teste, sem valor real | 2026-09-06\n' > .adas/secrets-allowlist
 bash scripts/check-secrets.sh >/dev/null 2>&1 || { echo "✗ allowlist declarada não isentou a fixture"; exit 1; }

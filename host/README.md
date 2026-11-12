@@ -98,6 +98,8 @@ O produto é o único lugar editável dos scripts do ADAS. `adas sync <casa>` (o
 copia `skeleton*/scripts/` para a casa e grava `.adas/skeleton.lock` (sha256 por arquivo); o `check-adas.sh` da
 casa reprova cópia fora do hash. Cópia editada na casa só é sobrescrita com `--force`. `adas sync --check` só confere.
 No 1º sync (sem lock), cópia igual a uma versão antiga do produto conta como atrasada e sincroniza sem `--force`.
+Em casa com `mecanismo/tests/` (v4, modo mecanismo), o teste que o produto escreve para um script seu viaja junto e
+entra no lock (`../mecanismo/tests/<nome>`); teste próprio da casa, no mesmo diretório, fica intocado.
 Trava própria da casa vai em `scripts/check-local.sh`: fica fora do lock, o sync nunca a toca e o `check-adas.sh`
 a executa (rc≠0 bloqueia). Na casa, sync casa a casa; `--all` só com o `repos.conf` conferido.
 
