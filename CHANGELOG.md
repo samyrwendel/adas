@@ -3,6 +3,15 @@
 Cada versão diz o que muda para quem usa, não a lista de commits. A primeira linha `Resumo:` de cada
 versão é a que aparece no aviso de versão nova da sessão.
 
+## 1.4.2 — 2026-11-12
+
+Resumo: `adas test` deixa de ficar vermelho em falso sob carga; casa v4 sem lock não vira skeleton calada no 1º sync; o filtro de valor fictício do `check-secrets` sobe ao produto (DA-584).
+
+- **Pipefail + `grep -q` (SIGPIPE)**: `printf … | grep -q` e `processo | grep -q` sob `pipefail` saíam 141 quando o grep fechava cedo. Trocados por captura em variável nos scripts que vão às casas (`check-adas.sh` das duas gerações — detector de ator, portas, secret-guard —, `check-da-mecanismo.sh`, `da-index.sh`, `check-secrets.sh`), no `adas-secret-guard.sh` e nos testes. Era o "vermelho em 2 de 13 rodadas" do relógio.
+- **1º sync de casa v4 sem lock**: casa sem lock com cara de skeleton-v4 (`check-mecanismo.sh` ou `adas-init.sh`) e sem `--geracao` é recusada sem mexer em nada (antes virava skeleton calada, rc 0); e blob que só existiu em OUTRO arquivo do produto não conta mais como cópia "atrasada" — o histórico é conferido por caminho.
+- **`check-secrets.sh` (duas gerações, portas 1 e 2)**: valor com marca de fixture (`test-`, `fake`, `xxxx`, `example`…) passa sem allowlist; formato forte de chave real nunca é isento. Corrige o CHANGELOG do 1.4.1 ("fixture sai só pela allowlist"), que contrariava a DA-584 vigente. O claude-tg-tmux não precisa de linha nova na allowlist.
+- **`adas sync --force`** recusa casa com edição não commitada em arquivo sincronizado: commite ou descarte de propósito antes. Produto com mudança não commitada carimba `+sujo` no lock e avisa.
+
 ## 1.4.1 — 2026-11-12
 
 Resumo: trava própria da casa ganha lugar fixo (`scripts/check-local.sh`) e o 1º `adas sync` reconhece cópia só atrasada — sem `--force` em massa.

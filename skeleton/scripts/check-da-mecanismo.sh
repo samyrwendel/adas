@@ -133,7 +133,7 @@ done < <(extrai "$DEC")
 for reg in ${REGS[@]+"${REGS[@]}"}; do
   IFS=$'\037' read -r id dt regra mec <<< "$reg"
   mec="$mec ${ADENDO[$id]:-}"
-  printf '%s\n' "$regra" | grep -qiE "$PROIBE" || continue
+  <<<"$regra" grep -qiE "$PROIBE" || continue
   if [ "$TEM_VIG" = 1 ] && [ -n "${CONH[$id]:-}" ] && [ -z "${VIG[$id]:-}" ]; then npulo=$((npulo + 1)); continue; fi
   nproib=$((nproib + 1))
   motivo=""

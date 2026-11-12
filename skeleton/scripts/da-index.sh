@@ -492,7 +492,7 @@ saga_estado() {  # viva|encerrada — heurística: título/regra da última DA m
   local slug="$1"
   local -a members=($(saga_members_sorted "$slug"))
   local last="${members[-1]}"
-  if printf '%s %s' "${TITLE[$last]}" "${REGRA[$last]}" | grep -qiE 'encerr(ada|amento)'; then
+  if <<<"${TITLE[$last]} ${REGRA[$last]}" grep -qiE 'encerr(ada|amento)'; then
     echo "encerrada"
   else
     echo "viva"

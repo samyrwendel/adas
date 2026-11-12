@@ -139,4 +139,26 @@ echo "# rascunho no stash $$" >> "$P/skeleton/scripts/adas-report.sh"; cp "$P/sk
 U="$T/casaU"; casa "$U"; mkdir -p "$U/scripts"; cp "$T/stash.sh" "$U/scripts/adas-report.sh"
 bash "$SYNC" "$U" >/dev/null 2>&1; [ $? = 1 ] && pass "blob só do stash (não alcançável do HEAD) não conta como histórico" || fail "blob do stash virou 'versão antiga'"
 
+echo "== 10) revisão 022: histórico é do PRÓPRIO arquivo e da PRÓPRIA geração; produto sujo carimba +sujo"
+W2="$T/casaW2"; casa "$W2"; mkdir -p "$W2/scripts"; cp "$P/skeleton/scripts/da-new.sh" "$W2/scripts/check-adas.sh"
+bash "$SYNC" "$W2" >/dev/null 2>&1; [ $? = 1 ] && [ ! -f "$W2/.adas/skeleton.lock" ] && cmp -s "$P/skeleton/scripts/da-new.sh" "$W2/scripts/check-adas.sh" \
+  && pass "blob de OUTRO arquivo do produto não conta como versão antiga" || fail "cópia com conteúdo de outro arquivo do produto passou como atrasada"
+V4="$T/casaV4"; casa "$V4"; mkdir -p "$V4/scripts"; cp "$P"/skeleton-v4/scripts/*.sh "$V4/scripts/"
+out="$(bash "$SYNC" "$V4" 2>&1)"; rc=$?
+[ "$rc" = 1 ] && [ ! -f "$V4/.adas/skeleton.lock" ] && grep -q -- '--geracao skeleton-v4' <<< "$out" && cmp -s "$P/skeleton-v4/scripts/check-adas.sh" "$V4/scripts/check-adas.sh" \
+  && pass "casa v4 sem lock e sem --geracao: recusa e pede a geração (nada mudou)" || fail "casa v4 sem lock virou skeleton calada (rc=$rc)"
+bash "$SYNC" --geracao skeleton-v4 "$V4" >/dev/null 2>&1 && grep -q '^# geracao: skeleton-v4$' "$V4/.adas/skeleton.lock" && identicas "$V4" skeleton-v4 \
+  && pass "com --geracao skeleton-v4 a casa v4 sincroniza sem --force" || fail "casa v4 com --geracao não sincronizou"
+echo "# não commitado $$" >> "$P/skeleton/scripts/da-new.sh"
+X2="$T/casaX2"; casa "$X2"; out="$(bash "$SYNC" "$X2" 2>&1)"
+grep -q '^# commit: .*+sujo$' "$X2/.adas/skeleton.lock" && grep -q 'NÃO commitada' <<< "$out" && pass "produto com mudança não commitada: carimbo +sujo e aviso" || fail "produto sujo carimbou commit limpo"
+git -C "$P" checkout -q -- skeleton/scripts/da-new.sh
+Y2="$T/casaY2"; casa "$Y2"; bash "$SYNC" "$Y2" >/dev/null 2>&1; "${G[@]}" -C "$Y2" add -A >/dev/null 2>&1; "${G[@]}" -C "$Y2" commit -qm base >/dev/null 2>&1
+echo "# edição não commitada" >> "$Y2/scripts/da-new.sh"
+out="$(bash "$SYNC" --force "$Y2" 2>&1)"; rc=$?
+[ "$rc" = 1 ] && grep -q 'edição não commitada' "$Y2/scripts/da-new.sh" && grep -q 'NÃO commitada, sem volta: da-new.sh' <<< "$out" \
+  && pass "--force recusa apagar edição não commitada de arquivo rastreado (nada mudou)" || fail "--force apagou edição não commitada (rc=$rc)"
+"${G[@]}" -C "$Y2" commit -qam 'edição da casa' >/dev/null 2>&1
+bash "$SYNC" --force "$Y2" >/dev/null 2>&1 && identicas "$Y2" skeleton && pass "depois de commitada, --force sobrescreve (o git da casa guarda a versão)" || fail "--force recusou edição já commitada"
+
 echo "sync: $ok ok, $ko falha(s)"; [ "$ko" = 0 ]

@@ -78,7 +78,7 @@ done < <(find "$SKILLS_DIR" -name SKILL.md -not -path "*/_template/*" 2>/dev/nul
 # governada acusa (warn/block), dependência só INFORMA quando pedido.
 fm_issue() {  # frontmatter name+description (senão NÃO dispara)
   local fm; fm="$(awk '/^---[[:space:]]*$/{c++; next} c==1{print} c>=2{exit}' "$1" 2>/dev/null)"
-  { printf '%s\n' "$fm" | grep -q "^name:" && printf '%s\n' "$fm" | grep -q "^description:"; } \
+  { <<<"$fm" grep -q "^name:" && <<<"$fm" grep -q "^description:"; } \
     || echo "SEM frontmatter name/description (não vai disparar)"
 }
 thin_issue() {  # trigger magro (piso mecânico do description)
@@ -90,8 +90,8 @@ thin_issue() {  # trigger magro (piso mecânico do description)
   [ "${#desc}" -lt 400 ] && thin="${thin}<400 chars; "
   n_trig=$(printf '%s' "$desc" | tr ',;' '\n' | grep -c .)
   [ "$n_trig" -lt 12 ] && thin="${thin}só ${n_trig} gatilhos (<12); "
-  printf '%s' "$desc" | grep -qi "SEMPRE" || thin="${thin}sem cláusula 'use SEMPRE que'; "
-  printf '%s' "$desc" | grep -qi "MESMO" || thin="${thin}sem negação 'MESMO que não peça'; "
+  <<<"$desc" grep -qi "SEMPRE" || thin="${thin}sem cláusula 'use SEMPRE que'; "
+  <<<"$desc" grep -qi "MESMO" || thin="${thin}sem negação 'MESMO que não peça'; "
   n_symp=$(printf '%s' "$desc" | grep -o "'" | wc -l)
   [ "$n_symp" -lt 4 ] && thin="${thin}<2 sintomas citados ('...'); "
   # COBERTURA DE ATOR (task 20260905-008, achado pós-DA-229): gatilho entre aspas
@@ -99,7 +99,7 @@ thin_issue() {  # trigger magro (piso mecânico do description)
   # estabelece regra. Faixa com vários gatilhos-fala-do-dono e ZERO menção a um
   # ato do AGENTE por conta própria é cega pro caso em que o agente decide
   # sozinho: a regra nasce e nada dispara (DA-198/199/205).
-  if [ "$n_symp" -ge 4 ] && ! printf '%s' "$desc" | grep -qiE \
+  if [ "$n_symp" -ge 4 ] && ! <<<"$desc" grep -qiE \
     "\bagente (decide|estabelece|institui|cria|adota)\b|\bpor conta pr[oó]pria\b|\bsozinho\b|\beu vou\b|\bsem (o )?(dono|usu[aá]rio) (pedir|falar|mandar)\b"; then
     thin="${thin}COBERTURA DE ATOR: só fala do dono, nenhum ato do agente citado; "
   fi
@@ -121,7 +121,7 @@ coringa_issue() {  # trigger CORINGA (teto do gatilho — complementa thin_issue
     tok="${tok#\'}"; tok="${tok%\'}"
     [ -z "$tok" ] && continue
     low="$(printf '%s' "$tok" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-    if printf '%s' "$low" | grep -qE '^[[:punct:][:space:]]+$'; then
+    if <<<"$low" grep -qE '^[[:punct:][:space:]]+$'; then
       coringa="${coringa}'${tok}'(pontuação) "; continue; fi
     case "$low" in
       ok|okay|"ok?"|sim|"sim?"|isso|blz|beleza|aprovado|"pode fazer"|"pode?"|"tá bom"|"ta bom"|feito)
@@ -190,7 +190,7 @@ if [ -d .git ] && command -v git >/dev/null 2>&1; then
   done < <(find "$SKILLS_DIR" "$SPECS_DIR" \( -name "*.md" -o -name "*.css" \) -not -path "*/_template/*" 2>/dev/null)
   # 4b) working tree SUJO nas faixas/.specs — a janela onde o drift mais importa (antes do
   # commit) é invisível pro check por timestamp acima; acusa explicitamente (WARN)
-  if git status --porcelain -- "$SKILLS_DIR" "$SPECS_DIR" 2>/dev/null | grep -q .; then
+  if [ -n "$(git status --porcelain -- "$SKILLS_DIR" "$SPECS_DIR" 2>/dev/null)" ]; then
     note "faixa/.specs com mudança NÃO COMMITADA — commite junto com o $ADAS regenerado (mesmo commit)"; warn=1
   fi
 fi
@@ -288,7 +288,7 @@ fi
 if [ -f "$DECISIONS" ] && [ -f scripts/da-index.sh ]; then
   if [ ! -f DECISIONS-INDEX.md ]; then
     note "sem DECISIONS-INDEX.md — o índice não nasceu; rode: bash scripts/da-index.sh update"; warn=1
-  elif bash scripts/da-index.sh check . 2>&1 | grep -q 'DIVERGE'; then  # só DIVERGÊNCIA real; lint c6 (Lição) não derruba o exit (DA-434)
+  elif <<<"$(bash scripts/da-index.sh check . 2>&1)" grep -q 'DIVERGE'; then  # só DIVERGÊNCIA real; lint c6 (Lição) não derruba o exit (DA-434)
     note "DECISIONS-INDEX.md DIVERGE do $DECISIONS (DA anexada por fora do hook?) — rode: bash scripts/da-index.sh update"; warn=1
   fi
 fi
@@ -342,8 +342,8 @@ fi
 # esconder "faltam seis verificações" atrás de dois comandos que ninguém lembra de rodar.
 _porta_mec() {  # $1 = "porta 1" ou "porta 2" (rótulo que check-secrets.sh imprime)
   local marca="$1" out="$2"
-  if printf '%s\n' "$out" | grep -q "✗ \[BLOCK\] \[$marca"; then echo "FALHA"
-  elif printf '%s\n' "$out" | grep -q "✓ \[$marca"; then echo "PASSA"
+  if <<<"$out" grep -q "✗ \[BLOCK\] \[$marca"; then echo "FALHA"
+  elif <<<"$out" grep -q "✓ \[$marca"; then echo "PASSA"
   else echo "?"; fi
 }
 if [ ! -d .git ]; then
@@ -367,10 +367,10 @@ fi
 _porta_prova() {  # $1 = rótulo que check-app-security.sh usa (ex.: "porta 3")
   local marca="$1"
   if [ ! -f scripts/check-app-security.sh ]; then echo "sem check-app-security.sh"; return; fi
-  if printf '%s\n' "$asec_out" | grep -q "✗ \[seis portas\].*($marca)"; then echo "FALHA (sem prova válida)"
-  elif printf '%s\n' "$asec_out" | grep -q "adas: débito.*($marca)"; then echo "débito"
-  elif printf '%s\n' "$asec_out" | grep -q "✓ \[seis portas\].*($marca): N/A"; then echo "N/A (justificado)"
-  elif printf '%s\n' "$asec_out" | grep -q "✓ \[seis portas\].*($marca)"; then echo "PASSA"
+  if <<<"$asec_out" grep -q "✗ \[seis portas\].*($marca)"; then echo "FALHA (sem prova válida)"
+  elif <<<"$asec_out" grep -q "adas: débito.*($marca)"; then echo "débito"
+  elif <<<"$asec_out" grep -q "✓ \[seis portas\].*($marca): N/A"; then echo "N/A (justificado)"
+  elif <<<"$asec_out" grep -q "✓ \[seis portas\].*($marca)"; then echo "PASSA"
   else echo "débito"
   fi
 }

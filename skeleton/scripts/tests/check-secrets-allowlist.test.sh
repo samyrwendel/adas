@@ -1,17 +1,8 @@
 #!/usr/bin/env bash
-# check-secrets-allowlist.test.sh — porta 2 (histórico): allowlist achada a partir do REPO varrido, não do CWD; vale
-# pro histórico; sem allowlist o bloqueio diz que não leu nenhuma. Veio do claude-tg-tmux (task 20260921-018); o
-# filtro de 'valor fictício' de lá NÃO subiu: no produto a fixture só sai com caminho declarado (invariante v4).
-#!/usr/bin/env bash
-# test-check-secrets.sh — as duas peneiras da porta 2 (task 20260921-018).
-#
-# Prova os DOIS lados no mesmo repo descartável (/tmp, nunca este):
-#   fictício  → não bloqueia   ·   segredo com formato real → continua bloqueando
-# Nenhum segredo de verdade é usado: os valores "reais" são inventados e montados em
-# TEMPO DE EXECUÇÃO (concatenação) — os DOIS, o forte e o fraco: senão o literal no fonte
-# faria o próprio gate do
-# repo acusar este arquivo de teste. O único literal que fica é o FICTÍCIO, de propósito:
-# ele prova, no próprio repo, que a peneira de valor o deixa passar.
+# check-secrets-allowlist.test.sh — porta 2 (histórico), as duas peneiras da DA-584 do servidor: CAMINHO (allowlist
+# achada a partir do REPO varrido, não do CWD; vale pro histórico; sem allowlist o bloqueio diz que não leu nenhuma)
+# e VALOR (trecho casado de padrão fraco que se declara fixture não conta; formato forte nunca é isento por marca).
+# Veio do claude-tg-tmux (task 20260921-018, scripts/lib/test-check-secrets.sh).
 set -uo pipefail
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -38,26 +29,27 @@ repo_novo() {                                             # $1 = arquivo, $2 = c
 }
 roda() { ( cd "$TMP/r" && bash "$GATE" --all 2>&1 ); }
 
-echo "== 1. fixture com forma de chave e SEM allowlist bloqueia (política do produto: isenção é por caminho declarado) =="
+echo "== 1. histórico com valor FICTÍCIO (padrão fraco) não bloqueia: peneira de valor da DA-584 =="
 repo_novo "test/fixture.test.ts" "  headers: { Authorization: '$FICTICIO' },"
 saida="$(roda)"; rc=$?
-t "sai 1" "[ $rc -eq 1 ]"
-t "porta 2 acusa a fixture" "printf '%s' \"\$saida\" | grep -q 'fixture.test.ts'"
+t "sai 0" "[ $rc -eq 0 ]"
+t "porta 2 verde" "<<<\"\$saida\" grep -q '✓ \[porta 2'"
+t "não acusa a fixture" "! <<<\"\$saida\" grep -q 'fixture.test.ts'"
 
 echo "== 2. histórico com formato FORTE continua bloqueando =="
 repo_novo "static/app.js" "const t = '$REAL_FORTE';"
 saida="$(roda)"; rc=$?
 t "sai 1" "[ $rc -eq 1 ]"
-t "porta 2 acusa" "printf '%s' \"\$saida\" | grep -q '\[porta 2'"
-t "aponta o caminho" "printf '%s' \"\$saida\" | grep -q 'static/app.js'"
-t "NÃO imprime o valor" "! printf '%s' \"\$saida\" | grep -q '$REAL_FORTE'"
+t "porta 2 acusa" "<<<\"\$saida\" grep -q '\[porta 2'"
+t "aponta o caminho" "<<<\"\$saida\" grep -q 'static/app.js'"
+t "NÃO imprime o valor" "! <<<\"\$saida\" grep -q '$REAL_FORTE'"
 
 echo "== 3. formato FRACO com valor sem cara de fixture continua bloqueando =="
 repo_novo "static/x.js" "fetch(u,{headers:{Authorization:'$REAL_FRACO'}});"
 saida="$(roda)"; rc=$?
 t "sai 1" "[ $rc -eq 1 ]"
-t "porta 2 acusa" "printf '%s' \"\$saida\" | grep -q '\[porta 2'"
-t "NÃO imprime o valor" "! printf '%s' \"\$saida\" | grep -q '$REAL_FRACO'"
+t "porta 2 acusa" "<<<\"\$saida\" grep -q '\[porta 2'"
+t "NÃO imprime o valor" "! <<<\"\$saida\" grep -q '$REAL_FRACO'"
 
 echo "== 4. marca de fixture NÃO isenta formato forte (o teto declarado) =="
 repo_novo "static/y.js" "// example/dummy fixture\nconst t='$REAL_FORTE';"
@@ -76,14 +68,14 @@ t "caminho isento sai da porta 2" "[ $rc -eq 0 ]"
 echo "== 6. allowlist é achada a partir do REPO, não do CWD de quem chamou =="
 saida="$( cd /tmp && bash "$GATE" --dir "$TMP/r" 2>&1 )"; rc=$?
 t "de outro diretório, ainda sai 0" "[ $rc -eq 0 ]"
-t "leu a allowlist do diretório varrido" "printf '%s' \"\$saida\" | grep -q 'ℹ allowlist'"
+t "leu a allowlist do diretório varrido" "<<<\"\$saida\" grep -q 'ℹ allowlist'"
 
 echo "== 7. sem allowlist alguma, o bloqueio DIZ que não leu allowlist =="
 rm -f "$TMP/r/.adas/secrets-allowlist"
 git -C "$TMP/r" -c user.email=t@t -c user.name=t commit -qam noal >/dev/null 2>&1
 saida="$(roda)"; rc=$?
 t "volta a bloquear" "[ $rc -eq 1 ]"
-t "avisa que nenhuma allowlist foi lida" "printf '%s' \"\$saida\" | grep -q 'nenhuma allowlist foi lida'"
+t "avisa que nenhuma allowlist foi lida" "<<<\"\$saida\" grep -q 'nenhuma allowlist foi lida'"
 
 echo
 echo "check-secrets (allowlist): $ok ok, $fail falha(s)"

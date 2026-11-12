@@ -64,7 +64,7 @@ done < <(find "$SKILLS_DIR" -name SKILL.md -not -path "*/_template/*" 2>/dev/nul
 
 fm_issue() {  # frontmatter name+description (senão NÃO dispara)
   local fm; fm="$(awk '/^---[[:space:]]*$/{c++; next} c==1{print} c>=2{exit}' "$1" 2>/dev/null)"
-  { printf '%s\n' "$fm" | grep -q "^name:" && printf '%s\n' "$fm" | grep -q "^description:"; } \
+  { <<<"$fm" grep -q "^name:" && <<<"$fm" grep -q "^description:"; } \
     || echo "SEM frontmatter name/description (não vai disparar)"
 }
 thin_issue() {  # trigger magro (piso mecânico do description)
@@ -76,11 +76,11 @@ thin_issue() {  # trigger magro (piso mecânico do description)
   [ "${#desc}" -lt 400 ] && thin="${thin}<400 chars; "
   n_trig=$(printf '%s' "$desc" | tr ',;' '\n' | grep -c .)
   [ "$n_trig" -lt 12 ] && thin="${thin}só ${n_trig} gatilhos (<12); "
-  printf '%s' "$desc" | grep -qi "SEMPRE" || thin="${thin}sem cláusula 'use SEMPRE que'; "
-  printf '%s' "$desc" | grep -qi "MESMO" || thin="${thin}sem negação 'MESMO que não peça'; "
+  <<<"$desc" grep -qi "SEMPRE" || thin="${thin}sem cláusula 'use SEMPRE que'; "
+  <<<"$desc" grep -qi "MESMO" || thin="${thin}sem negação 'MESMO que não peça'; "
   n_symp=$(printf '%s' "$desc" | grep -o "'" | wc -l)
   [ "$n_symp" -lt 4 ] && thin="${thin}<2 sintomas citados ('...'); "
-  if [ "$n_symp" -ge 4 ] && ! printf '%s' "$desc" | grep -qiE \
+  if [ "$n_symp" -ge 4 ] && ! <<<"$desc" grep -qiE \
     "\bagente (decide|estabelece|institui|cria|adota)\b|\bpor conta pr[oó]pria\b|\bsozinho\b|\beu vou\b|\bsem (o )?(dono|usu[aá]rio) (pedir|falar|mandar)\b"; then
     thin="${thin}COBERTURA DE ATOR: só fala do dono, nenhum ato do agente citado; "
   fi
@@ -111,7 +111,7 @@ if [ "$HAS_COMMIT" = 1 ]; then
     ft=$(git log -1 --format=%ct -- "$f" 2>/dev/null || echo 0)
     if [ "${ft:-0}" -gt "${adas_t:-0}" ]; then note "DRIFT: '$f' mudou depois do $ADAS — REGENERE o $ADAS"; warn=1; break; fi
   done < <(find "$SKILLS_DIR" "$SPECS_DIR" \( -name "*.md" -o -name "*.css" \) -not -path "*/_template/*" 2>/dev/null)
-  if git status --porcelain -- "$SKILLS_DIR" "$SPECS_DIR" 2>/dev/null | grep -q .; then
+  if [ -n "$(git status --porcelain -- "$SKILLS_DIR" "$SPECS_DIR" 2>/dev/null)" ]; then
     note "faixa/.specs com mudança NÃO COMMITADA — commite junto com o $ADAS regenerado (mesmo commit)"; warn=1
   fi
 fi
@@ -191,7 +191,7 @@ fi
 # 10) índice de decisões nasceu e está sincronizado
 if [ -f "$DECISIONS" ] && [ -f scripts/da-index.sh ]; then
   if [ ! -f DECISIONS-INDEX.md ]; then note "sem DECISIONS-INDEX.md — o índice não nasceu; rode: bash scripts/da-index.sh update"; warn=1
-  elif bash scripts/da-index.sh check . 2>&1 | grep -q 'DIVERGE'; then  # só DIVERGÊNCIA real; lint de Lição não derruba
+  elif <<<"$(bash scripts/da-index.sh check . 2>&1)" grep -q 'DIVERGE'; then  # só DIVERGÊNCIA real; lint de Lição não derruba
    note "DECISIONS-INDEX.md DIVERGE do $DECISIONS — rode: bash scripts/da-index.sh update"; warn=1; fi
 fi
 
@@ -221,8 +221,8 @@ fi
 
 # 12) seis portas de segurança do app: só FALHA avisa; débito fica visível como informação
 _porta_mec() { local marca="$1" out="$2"
-  if printf '%s\n' "$out" | grep -q "✗ \[BLOCK\] \[$marca"; then echo "FALHA"
-  elif printf '%s\n' "$out" | grep -q "✓ \[$marca"; then echo "PASSA"; else echo "?"; fi; }
+  if <<<"$out" grep -q "✗ \[BLOCK\] \[$marca"; then echo "FALHA"
+  elif <<<"$out" grep -q "✓ \[$marca"; then echo "PASSA"; else echo "?"; fi; }
 if [ "$GIT" != 1 ]; then p1="sem git (não verificável)"; p2="$p1"
 elif [ -f scripts/check-secrets.sh ]; then
   sec_out="$(bash scripts/check-secrets.sh --all 2>/dev/null)"
@@ -231,9 +231,9 @@ else p1="sem check-secrets.sh"; p2="$p1"; fi
 asec_out=""; [ -f scripts/check-app-security.sh ] && asec_out="$(bash scripts/check-app-security.sh 2>/dev/null)"
 _porta_prova() { local marca="$1"
   [ -f scripts/check-app-security.sh ] || { echo "sem check-app-security.sh"; return; }
-  if printf '%s\n' "$asec_out" | grep -q "✗ \[seis portas\].*($marca)"; then echo "FALHA (sem prova válida)"
-  elif printf '%s\n' "$asec_out" | grep -q "✓ \[seis portas\].*($marca): N/A"; then echo "N/A (justificado)"
-  elif printf '%s\n' "$asec_out" | grep -q "✓ \[seis portas\].*($marca)"; then echo "PASSA"
+  if <<<"$asec_out" grep -q "✗ \[seis portas\].*($marca)"; then echo "FALHA (sem prova válida)"
+  elif <<<"$asec_out" grep -q "✓ \[seis portas\].*($marca): N/A"; then echo "N/A (justificado)"
+  elif <<<"$asec_out" grep -q "✓ \[seis portas\].*($marca)"; then echo "PASSA"
   else echo "débito"; fi; }
 p3="$(_porta_prova "porta 3")"; p4="$(_porta_prova "porta 4")"; p5="$(_porta_prova "porta 5")"; p6="$(_porta_prova "porta 6")"
 portas="1 chave-no-front=$p1 · 2 env-historico=$p2 · 3 validacao-servidor=$p3 · 4 arquivo-publico=$p4 · 5 erro-fala-demais=$p5 · 6 rate-limit=$p6"
@@ -245,7 +245,7 @@ if [ "$MODO" = doc ] && [ "$HAS_COMMIT" = 1 ]; then
   if [ "$n_commits" -ge 10 ]; then
     n_ag=0; n_hum=0
     while IFS= read -r h; do
-      if git log -1 --format='%an %ae%n%b' "$h" | grep -qiE 'claude|codex|copilot|gpt|gemini|\bbot\b|Co-Authored-By:.*(Claude|Codex|Copilot|GPT|Gemini)'; then n_ag=$((n_ag+1)); else n_hum=$((n_hum+1)); fi
+      if <<<"$(git log -1 --format='%an %ae%n%b' "$h")" grep -qiE 'claude|codex|copilot|gpt|gemini|\bbot\b|Co-Authored-By:.*(Claude|Codex|Copilot|GPT|Gemini)'; then n_ag=$((n_ag+1)); else n_hum=$((n_hum+1)); fi
     done < <(git rev-list -20 HEAD)
     if [ "$n_hum" = 0 ] && [ "$n_ag" -ge 8 ]; then
       last_adas="$(git log -1 --format=%H -- "$ADAS" 2>/dev/null)"

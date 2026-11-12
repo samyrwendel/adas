@@ -66,9 +66,9 @@ if [ "$mode" = "dominio" ]; then
   njob=0; _jobs=""
   _job() {  # $1 = nome do job, $2 = texto do job (unit inteira ou linha do cron)
     local f; for f in "${!_re_de[@]}"; do
-      printf '%s\n' "$2" | grep -qF -- "$f" || continue
+      <<<"$2" grep -qF -- "$f" || continue
       njob=$((njob + 1)); _jobs="${_jobs} $1"
-      if printf '%s\n' "$2" | grep -vE '^[[:space:]]*(#|unset[[:space:]])' | grep -qE -- "${_re_de[$f]}"; then
+      if <<<"$(grep -vE '^[[:space:]]*(#|unset[[:space:]])' <<<"$2")" grep -qE -- "${_re_de[$f]}"; then
         echo "✗ [BLOCK] [domínio] job $1 executa ${f/#$HOME/\~} com a credencial proibida no ambiente/comando"; dblock=1
       fi
       return
@@ -86,7 +86,7 @@ EnvironmentFile-aponta:$_ef"
       case "$_c" in ''|'#'*) continue ;; esac
       _job "cron:$(printf '%s' "$_c" | cut -c1-40)…" "$_c"
     done <<< "$_ct"
-  elif ! printf '%s' "$_ct" | grep -qi "no crontab"; then
+  elif ! <<<"$_ct" grep -qi "no crontab"; then
     echo "• [domínio] crontab ILEGÍVEL aqui ($(printf '%s' "$_ct" | head -1)) — jobs de cron NÃO verificados"
   fi
   echo "• [domínio] $njob job(s) agendado(s) executam arquivo de domínio:${_jobs:- nenhum}"
@@ -124,6 +124,35 @@ LO='(api[_-]?key|secret|passwd|password|access[_-]?token|auth[_-]?token)["'"'"' 
 _VAL='[A-Za-z0-9]{20,}|[A-Za-z]{7,}[0-9][A-Za-z0-9]*|[0-9][A-Za-z0-9]{7,}'
 for _p in 1 2 3 4 5 6; do _VAL="$_VAL|[A-Za-z]{$_p}[0-9][A-Za-z0-9]{$((7 - _p)),}"; done
 FRONT_KEY='sk-[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{35}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16}|xox[abp]-[0-9A-Za-z-]{10,}|[Bb]earer +[A-Za-z0-9._-]{16,}|(ELEVENLABS_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|TELEGRAM_BOT_TOKEN) *[:=] *('"$_VAL"')|[0-9]{8,10}:AA[A-Za-z0-9_-]{33}'
+# ── VALOR COMPROVADAMENTE FICTÍCIO (peneira de valor, só nos padrões fracos) ─────────────────────────────────────
+# O padrão acima casa FORMA, não segredo: "Authorization: Bearer test-secret-token" numa fixture tem a forma exata
+# de um Bearer real. Formato FORTE (ghp_/github_pat_/gh[osu]_/AKIA/AIza/xox-/BEGIN PRIVATE KEY/token de bot) vale
+# SEMPRE: o prefixo já prova chave de verdade e NENHUM marcador de fixture o isenta. Só os padrões FRACOS
+# ("Bearer <x>", "sk-<x>", NOME=valor) são dispensados quando o PRÓPRIO TRECHO CASADO se declara fixture
+# (test-token, fake, dummy, placeholder, example, changeme, replace_me, your-, xxxx, <...>, 0000000000). O teste é
+# sobre o trecho casado, nunca sobre a linha: segredo real numa linha que diz "example" continua bloqueando.
+# Teto declarado: quem batizar um segredo VIVO de "test-…" passa — o mesmo teto da allowlist de caminho.
+# Prova: mecanismo/tests/check-secrets.test.sh.
+STRONG_RE='^(ghp_|github_pat_|gh[osu]_|AKIA|AIza|xox[abprs]-|-----BEGIN|[0-9]{8,10}:AA)'
+FICT_RE='test[-_]?(token|key|secret|api)|fake|dummy|placeholder|example|changeme|replace[-_]?me|your[-_]|xxxx|<[^>]*>|0000000000'
+# rc 0 = o texto no stdin tem pelo menos UM trecho com cara de segredo real. Sem `grep -q` em fim de cano: sob
+# pipefail o -q fecha cedo, o produtor leva SIGPIPE (141) e a função responderia "não tem segredo" por acidente.
+_real() {
+  local m s w
+  m=$(grep -aoEi "$FRONT_KEY" 2>/dev/null || true)
+  [ -z "$m" ] && return 1
+  s=$(grep -aiE "$STRONG_RE" <<<"$m" || true); [ -n "$s" ] && return 0
+  w=$(grep -aivE "$STRONG_RE" <<<"$m" | grep -aivE "$FICT_RE" || true)
+  [ -n "$w" ]
+}
+# filtra "n:conteúdo" mantendo só as linhas cujo trecho casado sobrevive ao _real
+_so_real() {
+  local _ln
+  while IFS= read -r _ln; do
+    [ -z "$_ln" ] && continue
+    _real <<<"$_ln" && printf '%s\n' "$_ln"
+  done <<<"$1"
+}
 
 # NEXT_PUBLIC_/VITE_/REACT_APP_ resolvem em BUILD TIME — o valor vai pro bundle público
 # mesmo que o código "pareça" server-side. Proibido quando o NOME da variável contém
@@ -169,7 +198,7 @@ if [ -f "$ALLOWLIST_FILE" ]; then
     _ap=$(printf '%s' "$_al" | cut -d'|' -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
     _am=$(printf '%s' "$_al" | cut -d'|' -f2 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
     _ad=$(printf '%s' "$_al" | cut -d'|' -f3 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-    if [ -z "$_ap" ] || [ -z "$_am" ] || ! printf '%s' "$_ad" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+    if [ -z "$_ap" ] || [ -z "$_am" ] || ! <<<"$_ad" grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
       echo "• allowlist: entrada INVÁLIDA ignorada (precisa de: caminho | motivo | AAAA-MM-DD): $_al"; warn=1; continue
     fi
     allow_paths="${allow_paths}${_ap}
@@ -178,7 +207,7 @@ if [ -f "$ALLOWLIST_FILE" ]; then
   allowlist_lida=1
   [ -n "$allow_paths" ] && echo "ℹ allowlist ($ALLOWLIST_FILE): $(printf '%s' "$allow_paths" | grep -c .) caminho(s) isento(s) por motivo declarado: $(printf '%s' "$allow_paths" | tr '\n' ' ')"
 fi
-is_allowed() { [ -n "$allow_paths" ] && printf '%s\n' "$allow_paths" | grep -qxF -- "${1#./}"; }
+is_allowed() { [ -n "$allow_paths" ] && <<<"$allow_paths" grep -qxF -- "${1#./}"; }
 # Exclusão por SUFIXO (.example/.sample/.template), não por "logo depois de .env":
 # ".env.enterprise.example" (achado real ao rodar isto contra um projeto de verdade,
 # num caso real) tem SEGMENTO A MAIS entre ".env" e ".example" e escapava da
@@ -243,7 +272,7 @@ if [ -n "$served" ]; then
   while IFS= read -r f; do
     [ -z "$f" ] && continue
     is_allowed "$f" && continue
-    h=$(_conteudo "$f" | grep -nEi "$FRONT_KEY" || true)
+    h=$(_so_real "$(_conteudo "$f" | grep -nEi "$FRONT_KEY" || true)")
     [ -n "$h" ] && { echo "✗ [BLOCK] [porta 1 — chave no front] $f serve chave/token ao navegador:"; printf '%s\n' "$h" | sed 's/^/    /' | head -4; block=1; p1_hit=1; }
   done <<EOF
 $served
@@ -283,6 +312,14 @@ if [ "$mode" != "staged" ] && [ -d .git ]; then
     # allowlist: "rev:caminho" cujo caminho está isento sai da acusação (o resto fica)
     if [ -n "$allow_paths" ] && [ -n "$hist_content" ]; then
       hist_content=$(printf '%s\n' "$hist_content" | while IFS= read -r _hc; do is_allowed "${_hc#*:}" || printf '%s\n' "$_hc"; done)
+    fi
+    # 2ª peneira — VALOR: `git grep -l` prova FORMA, não segredo. O que sobrou da allowlist passa pelo mesmo
+    # _real() da porta 1, lendo o blob daquele commit; o valor nunca é impresso.
+    if [ -n "$hist_content" ]; then
+      hist_content=$(while IFS= read -r _hc; do
+        [ -z "$_hc" ] && continue
+        git show "$_hc" 2>/dev/null | _real && printf '%s\n' "$_hc"
+      done <<<"$hist_content")
     fi
   fi
   if [ -n "$hist_names" ] || [ -n "$hist_content" ]; then

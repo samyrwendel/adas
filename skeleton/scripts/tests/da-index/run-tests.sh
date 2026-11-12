@@ -223,7 +223,7 @@ sh1="$(bash "$DAIDX" show DA-001 "$CASA" 2>&1 | head -1)"; vg="$(bash "$DAIDX" l
   && pass "D-C1: show de DA 📚 em ponteiro imprime a casa" || fail "D-C1: show da DA 📚 não imprime a linha 📦 ($sh1)"
 grep -q '^- DA-002' <<< "$vg" \
   && pass "D-C4: título copiado no Histórico ('supersede') não marca a DA-002" || fail "D-C4: Histórico marcou a DA-002 como superada"
-grep -E 'c11' <<< "$ck" | grep -qE 'DA-(777|009)' \
+<<<"$(grep -E 'c11' <<< "$ck")" grep -qE 'DA-(777|009)' \
   && fail "D-C4: c11 acusa id de passa-a-limpo/📦" || pass "D-C4: c11 ignora passa-a-limpo e '📦 <repo> DA-NNN'"
 
 echo "== Fase 2: parcial: (alias do ½) e ficha contra o da-schema.tsv =="

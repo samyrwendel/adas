@@ -48,8 +48,8 @@ expect_exit 1 "token de bot Telegram commitado → BLOCK (fallback --all)" bash 
 # mora num ARQUIVO versionado (caminho | motivo | data), nunca em regex no script; fixture NOVA continua pega.
 mkdir -p "$T/s3"; (cd "$T/s3" && git init -q && git config user.email t@t && git config user.name t \
   && mkdir -p scripts tests .adas && cp "$ROOT/skeleton/scripts/check-secrets.sh" scripts/ \
-  && echo "hdr = 'Bearer test-$(printf 'x%.0s' $(seq 24))'" > tests/fixture.test.js && git add -A && git commit -qm fixture)
-expect_exit 1 "fixture 'Bearer test-…' no histórico, SEM allowlist → BLOCK (porta 2)" bash -c "cd '$T/s3' && bash scripts/check-secrets.sh --all"
+  && echo "hdr = 'Bearer zK7qPmRv4Xn2Ld9wTbH6'" > tests/fixture.test.js && git add -A && git commit -qm fixture)
+expect_exit 1 "Bearer sem marca de fixture no histórico, SEM allowlist → BLOCK (porta 2)" bash -c "cd '$T/s3' && bash scripts/check-secrets.sh --all"
 (cd "$T/s3" && printf 'tests/fixture.test.js | token de teste do handler, sem valor real\n' > .adas/secrets-allowlist)
 out=$(cd "$T/s3" && bash scripts/check-secrets.sh --all 2>&1); rc=$?
 [ "$rc" = 1 ] && grep -q 'allowlist: entrada INVÁLIDA' <<< "$out" && ok "entrada sem DATA é ignorada com aviso — isenção sem motivo+data não vale" || bad "entrada inválida foi honrada (rc=$rc)"
@@ -192,7 +192,7 @@ bash "$D/scripts/da-index.sh" update "$D" >/dev/null 2>&1
 grep -q 'fantasma' "$D/DECISIONS-INDEX.md" && bad "fantasma sem .adas/da-fantasmas (chumbado)" || ok "sem .adas/da-fantasmas → nenhum fantasma"
 mkdir -p "$D/.adas"; echo 'DA-004 002 nota' > "$D/.adas/da-fantasmas"
 bash "$D/scripts/da-index.sh" update "$D" >/dev/null 2>&1
-grep -A1 '^- DA-003 ' "$D/DECISIONS-INDEX.md" | grep -q '^- DA-004 · fantasma → ver DA-002' \
+<<<"$(grep -A1 '^- DA-003 ' "$D/DECISIONS-INDEX.md")" grep -q '^- DA-004 · fantasma → ver DA-002' \
   && ok "fantasma declarado entra na posição numérica" || bad "fantasma declarado não entrou depois da DA-003"
 rm -rf "$D/.adas"; bash "$D/scripts/da-index.sh" update "$D" >/dev/null 2>&1
 grep -q '^- DA-001 · .*🔄 por DA-002' "$D/DECISIONS-INDEX.md" \
@@ -236,7 +236,7 @@ EOS
 bash "$D2/scripts/da-index.sh" update "$D2" >/dev/null 2>&1
 grep -q '^- DA-001 · .*½ por DA-003' "$D2/DECISIONS-INDEX.md" \
   && ok "supersede: com anotação parcial → ½" || bad "supersede: anotado não marcou ½ (DA-279/523)"
-grep '^- DA-002 ' "$D2/DECISIONS-INDEX.md" | grep -q '🔄\|½' \
+<<<"$(grep '^- DA-002 ' "$D2/DECISIONS-INDEX.md")" grep -q '🔄\|½' \
   && bad "supersede em PROSA marcou DA-002 (DA-277/278)" || ok "supersede em prosa não marca quando há campo supersede:"
 # draft-head (reescrita v2, D1): rascunho determinístico; grupo com 2 gatilhos vivos é recusado; da-herda copia fixture.
 D3="$T/dadir3"; mkdir -p "$D3/scripts"; cp "$ROOT/skeleton/scripts/da-index.sh" "$ROOT/skeleton/scripts/da-draft-head.py" "$D3/scripts/"
@@ -558,10 +558,10 @@ blen(){ LC_ALL=C wc -c; }
 o="$(emit 9600 20000)"; b="$(printf '%s' "$o" | blen)"
 [ "$b" -le 9600 ] && ok "emissão ($b B) <= orçamento 9600" || bad "emissão ($b B) ESTOUROU o orçamento 9600"
 [ "$b" -lt 10240 ] && ok "emissão ($b B) < teto 10240 (entrega inline, não persiste)" || bad "emissão ($b B) >= teto 10240 (seria cortada a 2 KiB)"
-printf '%s' "$o" | grep -q "NUCLEO-TESTE" && ok "núcleo (a REGRA) chega inteiro" || bad "núcleo não chegou"
-printf '%s' "$o" | grep -q "\[ADAS-CORTE\] sagas" && ok "sagas que não coube → ponteiro [ADAS-CORTE]" || bad "sagas cortada em SILÊNCIO"
-printf '%s' "$o" | grep -q "\[ADAS-CORTE\] licoes" && ok "lições que não coube → ponteiro [ADAS-CORTE]" || bad "lições cortada em SILÊNCIO"
-printf '%s' "$o" | grep -q "leia com: cat ~/DECISIONS-LICOES.md" && ok "ponteiro DIZ como ler o resto" || bad "ponteiro sem comando de leitura"
+<<<"$o" grep -q "NUCLEO-TESTE" && ok "núcleo (a REGRA) chega inteiro" || bad "núcleo não chegou"
+<<<"$o" grep -q "\[ADAS-CORTE\] sagas" && ok "sagas que não coube → ponteiro [ADAS-CORTE]" || bad "sagas cortada em SILÊNCIO"
+<<<"$o" grep -q "\[ADAS-CORTE\] licoes" && ok "lições que não coube → ponteiro [ADAS-CORTE]" || bad "lições cortada em SILÊNCIO"
+<<<"$o" grep -q "leia com: cat ~/DECISIONS-LICOES.md" && ok "ponteiro DIZ como ler o resto" || bad "ponteiro sem comando de leitura"
 
 # B) DENTE: sem orçamento (teto gigante) a MESMA emissão estoura o teto — o defeito que o orçamento fecha
 o2="$(emit 99999999 20000)"; b2="$(printf '%s' "$o2" | blen)"
@@ -570,8 +570,8 @@ o2="$(emit 99999999 20000)"; b2="$(printf '%s' "$o2" | blen)"
 # C) PRIORIDADE: sagas pequena (1k) CABE → vigente inline; histórico (lições) cede primeiro
 o3="$(emit 9600 1000)"; b3="$(printf '%s' "$o3" | blen)"
 [ "$b3" -le 9600 ] && ok "com sagas pequena, emissão ($b3 B) <= orçamento" || bad "emissão ($b3 B) estourou"
-printf '%s' "$o3" | grep -q "\[ADAS-CORTE\] sagas" && bad "sagas pequena foi cortada (deveria caber inline)" || ok "sagas vigente cabe → INLINE"
-printf '%s' "$o3" | grep -q "\[ADAS-CORTE\] licoes" && ok "histórico cede primeiro → ponteiro" || bad "lições não cedeu (prioridade invertida)"
+<<<"$o3" grep -q "\[ADAS-CORTE\] sagas" && bad "sagas pequena foi cortada (deveria caber inline)" || ok "sagas vigente cabe → INLINE"
+<<<"$o3" grep -q "\[ADAS-CORTE\] licoes" && ok "histórico cede primeiro → ponteiro" || bad "lições não cedeu (prioridade invertida)"
 
 echo "== 18) da-index c9/c12 DESLIGADOS (task 20260906-028) — fixtures que ANTES acusavam agora ficam em silêncio; SAGAS/VIGENTE não nascem"
 # HISTÓRICO: esta seção era o dente do c12 (DA-234: acusar 3ª rodada de saga em aberto, calar em saga
@@ -658,7 +658,7 @@ bash "$C12/scripts/da-index.sh" show DA-105 "$C12" | tem "cabeça tardia" && ok 
 # do sagas.conf, c7 cabeça sem Histórico), então o teste compara o check COM e SEM o arquivo, não o exit.
 rm -f "$C12/DECISIONS-SAGAS.md"; c12a="$(bash "$C12/scripts/da-index.sh" check "$C12" 2>&1)"; c12ra=$?
 printf 'x\n' > "$C12/DECISIONS-SAGAS.md"; c12b="$(bash "$C12/scripts/da-index.sh" check "$C12" 2>&1)"; c12rb=$?
-[ "$c12ra" = "$c12rb" ] && [ "$c12a" = "$c12b" ] && ! printf '%s' "$c12b" | grep -q 'DECISIONS-SAGAS' \
+[ "$c12ra" = "$c12rb" ] && [ "$c12a" = "$c12b" ] && ! <<<"$c12b" grep -q 'DECISIONS-SAGAS' \
   && ok "check ignora DECISIONS-SAGAS.md legado (não é mais conferido)" || bad "check ainda exige/confere DECISIONS-SAGAS.md"
 
 echo "== 19) item 2b — núcleo via @import do CLAUDE.md GLOBAL, com fallback e autocura"
@@ -815,12 +815,12 @@ mkdir -p "$UH/.claude/adas"; echo "$T/inst" > "$UH/.claude/adas/source"   # inst
 git clone -q "$T/rem.git" "$T/inst2" 2>/dev/null; (cd "$T/inst2" && git reset -q --hard HEAD~1) 2>/dev/null
 HH2="$T/hh2"; mkdir -p "$HH2/.claude"
 o="$(HOME="$HH2" bash "$T/inst2/host/update.sh" --yes 2>&1)"
-[ "$(cat "$T/inst2/VERSION")" = 1.1.0 ] && [ ! -e "$HH2/.claude/settings.json" ] && [ ! -d "$HH2/.claude/hooks" ] && printf '%s' "$o" | grep -q "motor atualizado" \
+[ "$(cat "$T/inst2/VERSION")" = 1.1.0 ] && [ ! -e "$HH2/.claude/settings.json" ] && [ ! -d "$HH2/.claude/hooks" ] && <<<"$o" grep -q "motor atualizado" \
   && ok "update em clone sem instalação do Claude Code: só o motor, sem hooks nem settings" || bad "update de clone alheio mexeu no Claude Code: $o"
 o="$(HOME="$UH" bash "$T/inst/host/update.sh" --check 2>&1)"
-[ "$(cat "$T/inst/VERSION")" = "$BV" ] && printf '%s' "$o" | grep -q "$BV → 1.1.0" && ok "update --check mostra $BV → 1.1.0 e não muda nada" || bad "update --check: $o"
+[ "$(cat "$T/inst/VERSION")" = "$BV" ] && <<<"$o" grep -q "$BV → 1.1.0" && ok "update --check mostra $BV → 1.1.0 e não muda nada" || bad "update --check: $o"
 o="$(printf 'n\n' | HOME="$UH" bash "$T/inst/host/update.sh" 2>&1)"
-[ "$(cat "$T/inst/VERSION")" = "$BV" ] && printf '%s' "$o" | grep -q 'cancelado' && ok "update sem 'sim' cancela sem mexer" || bad "update sem confirmação mexeu: $o"
+[ "$(cat "$T/inst/VERSION")" = "$BV" ] && <<<"$o" grep -q 'cancelado' && ok "update sem 'sim' cancela sem mexer" || bad "update sem confirmação mexeu: $o"
 o="$(HOME="$UH" bash "$T/inst/host/update.sh" --yes 2>&1)"
 [ "$(cat "$T/inst/VERSION")" = 1.1.0 ] && [ "$(cat "$UH/.claude/adas/VERSION")" = 1.1.0 ] && ok "update --yes: clone e versão instalada em 1.1.0" || bad "update --yes falhou: $(printf '%s' "$o" | tail -3)"
 [ "$(cat "$UH/DECISIONS.md")" = "MEU DIÁRIO" ] && [ "$(cat "$UH/.specs/x.md")" = spec ] && ok "update não toca DECISIONS.md nem .specs" || bad "update mexeu no diário/.specs"
@@ -847,16 +847,16 @@ printf '## DH-001 — Regra própria\n**Regra:** sempre responder em português.
 printf '## DA-900 — Commit e push\n**Regra:** task que muda código fecha com commit+push; nada solto.\n`origem: x`\n\n## DA-901 — Backup diário\n**Regra:** backup restic diário do servidor.\n\n## DA-902 — Painel\n**Regra:** painel só na rede interna.\n\n## DA-903 — Modelo\n**Regra:** modelo por tarefa.\n\n## DA-904 — Chave\n**Regra:** segredo só no cofre.\n' > "$HJ/governanca/padrao.md"
 hj(){ printf '{"hook_event_name":"%s","session_id":"s1","extra":{"user_message":"%s","assistant_response":"%s"}}' "$1" "$2" "$3" | env -u OPENROUTER_API_KEY -u EXPERIENTIALLABS_API_KEY -u TYPESAFE_API_KEY -u ADAS_JUIZ_CRED -u JUIZ_REPLY_CRED ADAS_JUIZ_CONF="$HJ/sem-juiz.env" HERMES_HOME="$HJ" ADAS_JIT_BM25=-0.3 python3 "$ROOT/host/jit/hermes-jit.py"; }  # fixture de 2 regras: bm25 baixo, limiar é calibração
 o="$(hj pre_llm_call "faz o commit e o push do repositório" "")"
-printf '%s' "$o" | grep -q 'DH-001' && printf '%s' "$o" | grep -q 'DA-900' && ! printf '%s' "$o" | grep -q 'DA-901' \
+<<<"$o" grep -q 'DH-001' && <<<"$o" grep -q 'DA-900' && ! <<<"$o" grep -q 'DA-901' \
   && ok "pre_llm_call: próprias inteiras + só a regra do padrão que toca a mensagem" || bad "pre_llm_call errado: $o"
 o="$(hj pre_llm_call "bom dia, tudo bem?" "")"
-printf '%s' "$o" | grep -q 'DA-90' && bad "conversa comum puxou regra do padrão: $o" || ok "conversa comum: padrão em silêncio (só as próprias)"
+<<<"$o" grep -q 'DA-90' && bad "conversa comum puxou regra do padrão: $o" || ok "conversa comum: padrão em silêncio (só as próprias)"
 printf '{"cartoes":[{"id":"DC-037","pergunta":"x?","regra_curta":"y","conserto":"z","limiar":0.9}]}' > "$HJ/governanca/juiz-reply.json"
 o="$(hj post_llm_call "" "o backup segue de pé")"; rc=$?
 [ -z "$o" ] && [ "$rc" = 0 ] && grep -q '"decisao": "sem_chave"' "$HJ/governanca/jit/jit.log" && ok "post_llm_call sem chave: fail-open, ledger registra" || bad "juiz do Hermes sem chave não fez fail-open (rc=$rc)"
 printf '{"texto":"aviso de teste","ts":"x"}' > "$HJ/governanca/jit/aviso-s1.json"
 o="$(hj pre_llm_call "oi" "")"
-printf '%s' "$o" | grep -q 'aviso de teste' && [ ! -f "$HJ/governanca/jit/aviso-s1.json" ] && ok "aviso pendente do juiz entra no próximo turno e é consumido" || bad "aviso pendente não entrou/não foi consumido"
+<<<"$o" grep -q 'aviso de teste' && [ ! -f "$HJ/governanca/jit/aviso-s1.json" ] && ok "aviso pendente do juiz entra no próximo turno e é consumido" || bad "aviso pendente não entrou/não foi consumido"
 
 echo "== decisão do dono vira DH, nunca só memória nativa (DA-482, hermes-jit.py)"
 # o padrão exportado pelo sync traz Gatilho de evento no prompt + Padrão sem ADAS (resposta=)
@@ -870,25 +870,25 @@ cat >> "$HJ/governanca/padrao.md" <<'PADRAO'
 PADRAO
 FR="Quando eu pedi tire todos os freios, você desligou o ADAS-JIT junto. O JIT não é freio. A partir de agora isso não pode mais acontecer."
 o="$(ADAS_JIT_BM25=-99 hj pre_llm_call "$FR" "")"
-printf '%s' "$o" | grep -q 'DA-905' && printf '%s' "$o" | grep -q 'Sem ADAS você faria' && printf '%s' "$o" | grep -q 'a próxima é DH-002' \
+<<<"$o" grep -q 'DA-905' && <<<"$o" grep -q 'Sem ADAS você faria' && <<<"$o" grep -q 'a próxima é DH-002' \
   && ok "frase exata do dono: cartão DA-905 entra pelo EVENTO (bm25 desligado), com a reação default e a próxima DH" || bad "frase de decisão não injetou o cartão: $o"
 o="$(ADAS_JIT_BM25=-99 hj pre_llm_call "qual o preço do ETH?" "")"
-printf '%s' "$o" | grep -q 'DA-905' && bad "conversa comum puxou o cartão de decisão: $o" || ok "conversa comum: cartão de decisão em silêncio"
+<<<"$o" grep -q 'DA-905' && bad "conversa comum puxou o cartão de decisão: $o" || ok "conversa comum: cartão de decisão em silêncio"
 rm -f "$HJ/governanca/jit/aviso-s1.json"; hj pre_llm_call "$FR" "" >/dev/null
 hj post_llm_call "" "Anotado pra sempre — virou regra permanente na memória." >/dev/null
-grep -q 'DA-905' "$HJ/governanca/jit/aviso-s1.json" 2>/dev/null && tail -2 "$HJ/governanca/jit/jit.log" | grep -q '"ev": "padrao", "sid": "s1", "decisao": "aviso"' \
+grep -q 'DA-905' "$HJ/governanca/jit/aviso-s1.json" 2>/dev/null && <<<"$(tail -2 "$HJ/governanca/jit/jit.log")" grep -q '"ev": "padrao", "sid": "s1", "decisao": "aviso"' \
   && ok "resposta default sem DH escrita: aviso pro próximo turno + ledger ev=padrao" || bad "resposta default passou sem aviso"
 rm -f "$HJ/governanca/jit/aviso-s1.json"; hj pre_llm_call "$FR" "" >/dev/null; sleep 1
 printf '\n## DH-002 — JIT não é freio\n**Regra:** x\n' >> "$HJ/governanca/DECISIONS.md"
 hj post_llm_call "" "Registrei a DH-002; virou regra permanente." >/dev/null
-[ ! -f "$HJ/governanca/jit/aviso-s1.json" ] && tail -2 "$HJ/governanca/jit/jit.log" | grep -q 'ok_diario' \
+[ ! -f "$HJ/governanca/jit/aviso-s1.json" ] && <<<"$(tail -2 "$HJ/governanca/jit/jit.log")" grep -q 'ok_diario' \
   && ok "diário escrito no turno: a mesma resposta passa (ok_diario)" || bad "acusou mesmo com a DH escrita"
 
 CJ="$T/cj"; mkdir -p "$CJ/.claude/bus" "$CJ/jit"; touch -d '1 hour ago' "$CJ/DECISIONS.md"
 printf '[{"id":"DA-905","padrao_sem_adas":"gravar na memória. resposta=/(regra permanente)/"}]' > "$CJ/jit/cards.json"
 cj(){ printf '{"tool_input":{"text":"%s"}}' "$1" | HOME="$CJ" ADAS_JIT_DIR="$CJ/jit" ADAS_JIT_NIVEL=2 python3 "$ROOT/host/jit/juiz-reply.py"; }
 o="$(cj "Anotado: virou regra permanente na memória.")"
-printf '%s' "$o" | grep -q 'DA-905' && ok "Claude Code (juiz-reply): reply com a reação default e diário parado → aviso" || bad "juiz-reply não acusou a reação default: $o"
+<<<"$o" grep -q 'DA-905' && ok "Claude Code (juiz-reply): reply com a reação default e diário parado → aviso" || bad "juiz-reply não acusou a reação default: $o"
 touch "$CJ/DECISIONS.md"; o="$(cj "Registrei a DA; virou regra permanente.")"
 [ -z "$o" ] && ok "Claude Code (juiz-reply): diário escrito há pouco → passa" || bad "juiz-reply acusou com o diário escrito: $o"
 

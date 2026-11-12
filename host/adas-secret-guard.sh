@@ -19,8 +19,8 @@
 cmd="${1:-}"
 [ -z "$cmd" ] && { echo "allow"; exit 0; }
 
-if printf '%s' "$cmd" | grep -qE '\b(cat|less|more|head|tail|type|bat)\b[^;&|]*\.env\b' \
-  && ! printf '%s' "$cmd" | grep -qE '\.env\.(example|sample|template)\b'; then
+if <<<"$cmd" grep -qE '\b(cat|less|more|head|tail|type|bat)\b[^;&|]*\.env\b' \
+  && ! <<<"$cmd" grep -qE '\.env\.(example|sample|template)\b'; then
   printf 'block:seguranca-acesso regra 2 — NUNCA vasculhar/imprimir .env fora do local explicitamente apontado pelo usuário (SKILL.md). Comando recusado: %s\n' "$cmd"
   exit 0
 fi

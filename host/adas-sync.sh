@@ -35,16 +35,21 @@ fi
 
 VER="$(cat "$ROOT/VERSION")"
 COMMIT="$(git -C "$ROOT" rev-parse --short=7 HEAD 2>/dev/null || echo nao-registrada)"
+if [ "$MODE" = sync ] && [ -n "$(git -C "$ROOT" status --porcelain -- skeleton/scripts skeleton-v4/scripts 2>/dev/null)" ]; then
+  COMMIT="$COMMIT+sujo"; echo "⚠ adas sync: o produto tem mudança NÃO commitada em skeleton*/scripts — o carimbo sai '$COMMIT'; commite antes de levar às casas" >&2
+fi
 sha() { sha256sum "$1" 2>/dev/null | cut -d' ' -f1; }
-# historico <arquivo> — rc 0 se o conteúdo é um blob do histórico do produto (alcançável do HEAD; stash e objeto solto
-# não contam). Sem lock, é isso que separa cópia ATRASADA (nunca editada, só velha) de cópia EDITADA na casa.
+# historico <geração> <nome> <arquivo> — rc 0 se o conteúdo é uma versão que ESSE arquivo já teve no produto: blob de
+# <geração>/scripts/<nome> em commit alcançável do HEAD (stash e objeto solto não contam; blob de OUTRO caminho ou da
+# outra geração também não — revisão 022). Sem lock, é isso que separa cópia ATRASADA (só velha) de cópia EDITADA.
 BLOBS=""
 historico() {
   if [ -z "$BLOBS" ]; then
     BLOBS="$(mktemp)"; trap 'rm -f "$BLOBS"' EXIT
-    git -C "$ROOT" rev-list --objects HEAD 2>/dev/null | cut -d' ' -f1 | sort -u > "$BLOBS"
+    git -C "$ROOT" log --format= --raw --no-abbrev --no-renames -m HEAD -- skeleton/scripts skeleton-v4/scripts 2>/dev/null \
+      | awk -F'\t' '/^:/ {split($1, m, " "); print m[4] " " $2}' | sort -u > "$BLOBS"
   fi
-  grep -qxF "$(git hash-object "$1" 2>/dev/null)" "$BLOBS"
+  grep -qxF "$(git hash-object --no-filters "$3" 2>/dev/null) $1/scripts/$2" "$BLOBS"
 }
 lock_sha() { awk -F'\t' -v a="$2" '!/^#/ && $2==a {print $1; exit}' "$1" 2>/dev/null; }
 
@@ -68,6 +73,9 @@ sincroniza() {  # sincroniza <casa>
   [ -d "$c" ] || { echo "✗ $c: não existe"; return 1; }
   if [ -d "$c/skeleton/scripts" ] && [ -f "$c/host/adas-sync.sh" ]; then echo "✗ $c: é o produto ADAS (fonte dos scripts) — não é casa; nada mudou"; return 1; fi
   lockger="$(sed -n 's/^# geracao: //p' "$L" 2>/dev/null | head -1)"
+  if [ -z "$lockger" ] && [ -z "$GER" ] && { [ -f "$c/scripts/check-mecanismo.sh" ] || [ -f "$c/scripts/adas-init.sh" ]; }; then
+    echo "✗ $c: sem lock e com cara de skeleton-v4 (tem scripts/check-mecanismo.sh ou adas-init.sh) — diga a geração: adas sync --geracao skeleton-v4 $c (nada mudou)"; return 1
+  fi
   g="${GER:-${lockger:-skeleton}}"
   if [ -n "$lockger" ] && [ "$g" != "$lockger" ] && [ "$FORCE" = 0 ]; then
     echo "✗ $c: lock é da geração $lockger, pedido $g — trocar de geração exige --force (nada mudou)"; return 1
@@ -80,13 +88,22 @@ sincroniza() {  # sincroniza <casa>
     [ "$cur" = "$novo" ] && continue
     old="$(lock_sha "$L" "$a")"
     [ -n "$old" ] && [ "$cur" = "$old" ] && continue   # cópia intacta, só atrás do produto
-    [ -z "$old" ] && historico "$c/scripts/$a" && continue   # 1º sync: cópia = versão antiga do produto (B5, revisão 020)
+    [ -z "$old" ] && historico "$g" "$a" "$c/scripts/$a" && continue   # 1º sync: cópia = versão antiga do produto (B5, revisão 020)
     ruins+=("$a")
   done
   if [ "${#ruins[@]}" -gt 0 ] && [ "$FORCE" = 0 ]; then
     echo "✗ $c: cópia editada na casa (↑ casa à frente do carimbo) — traga a mudança pro produto ($g/scripts) ou use --force. Nada mudou:"
     for a in "${ruins[@]}"; do echo "    $a  ($(diff "$src/$a" "$c/scripts/$a" | grep -c '^[<>]') linha(s) diferentes)"; done
     return 1
+  fi
+  if [ "${#ruins[@]}" -gt 0 ]; then   # --force sobre edição NÃO commitada não tem volta (o git da casa não guarda) — revisão 022
+    local sujos=()
+    for a in "${ruins[@]}"; do
+      git -C "$c" ls-files --error-unmatch "scripts/$a" >/dev/null 2>&1 && ! git -C "$c" diff --quiet HEAD -- "scripts/$a" 2>/dev/null && sujos+=("$a")
+    done
+    if [ "${#sujos[@]}" -gt 0 ]; then
+      echo "✗ $c: --force apagaria edição NÃO commitada, sem volta: ${sujos[*]} — commite, ou descarte de propósito (git -C $c checkout -- scripts/<arquivo>) e rode de novo. Nada mudou"; return 1
+    fi
   fi
   mkdir -p "$c/scripts" "$c/.adas" || return 1
   local st="$c/.adas/sync-estagio.$$"; rm -rf "$st"; mkdir "$st" || return 1

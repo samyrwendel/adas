@@ -95,7 +95,7 @@ done < <(extrai "$DEC")
 for reg in ${REGS[@]+"${REGS[@]}"}; do
   IFS=$'\037' read -r id dt regra mec <<< "$reg"
   mec="$mec ${ADENDO[$id]:-}"
-  printf '%s\n' "$regra" | grep -qiE "$PROIBE" || continue
+  <<<"$regra" grep -qiE "$PROIBE" || continue
   nproib=$((nproib + 1))
   motivo=""
   if [ -z "${mec// /}" ]; then

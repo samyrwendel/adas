@@ -26,6 +26,6 @@ mkdir -p "$T/.adas"; printf 'saga-x|\n' > "$T/.adas/sagas.conf"
 ADAS_HOME_DIR="$T/.adas" bash "$NEW" --tipo regra produto saga-x "nova" "$T" >/dev/null 2>&1
 # Procura no BLOCO da DA criada (a última), não na última linha: o molde ganhou linhas depois do Gatilho.
 blk="$(awk '/^## DA-/{b=""} {b=b $0 "\n"} END{printf "%s", b}' "$T/DECISIONS.md")"
-[ "$(printf '%b' "$blk" | grep -c '^\*\*Gatilho:\*\*')" = 1 ] && printf '%b' "$blk" | grep -qxE '\*\*Gatilho:\*\* ?' \
+[ "$(printf '%b' "$blk" | grep -c '^\*\*Gatilho:\*\*')" = 1 ] && <<<"$(printf '%b' "$blk")" grep -qxE '\*\*Gatilho:\*\* ?' \
   && pass "da-new.sh emite uma linha **Gatilho:** vazia no bloco (Gatilho nasce vazio)" || fail "template sem Gatilho vazio"
 echo "gatilhos: $ok ok, $ko falha(s)"; [ "$ko" = 0 ]
