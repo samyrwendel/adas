@@ -2,7 +2,7 @@
 # adas sync — leva os scripts do produto (skeleton*/scripts/) às casas e carimba a cópia (Fase 3a, parecer 006).
 #   adas sync <casa>... [--force] [--geracao skeleton|skeleton-v4] [--diario skeleton]   copia e grava <casa>/.adas/skeleton.lock
 #   adas sync --all [--force]                                          todas as casas do repos.conf
-#   adas sync --check [<casa>...|--all]                                só confere o lock; rc 1 se cópia fora do hash
+#   adas sync --check [<casa>...|--all]                                só confere o lock; rc 1 se cópia fora do hash ou casa sem lock
 # O lock guarda geração, versão, commit e o sha256 de cada arquivo; o check-adas.sh da casa reprova arquivo fora
 # do hash (cópia editada à mão = FAIL, decisão do dono msg 13512). Mesmo desenho do sync-hooks.sh da frota: cópia
 # editada na casa (hash ≠ lock, ou sem lock e ≠ toda versão que o produto já teve) NÃO é sobrescrita sem --force —
@@ -82,7 +82,7 @@ confere() {  # confere <casa> — rc 1 se algum arquivo do lock está fora do ha
   local c="$1" L="$1/.adas/skeleton.lock" s a ruins=0 velhos=0 g dia
   [ -d "$c" ] || { echo "✗ $c: não existe (tire do repos.conf)"; return 1; }
   if [ -d "$c/skeleton/scripts" ] && [ -f "$c/host/adas-sync.sh" ]; then echo "• $c: é o produto ADAS — não recebe sync"; return 0; fi
-  [ -f "$L" ] || { echo "• $c: sem lock (ainda não sincronizada) — rode: adas sync $c"; return 0; }
+  [ -f "$L" ] || { echo "✗ $c: sem lock (ainda não sincronizada) — rode: adas sync $c"; return 1; }   # fechamento da 3c (parecer 028)
   g="$(sed -n 's/^# geracao: //p' "$L" | head -1)"; g="${g:-skeleton}"; dia="$(sed -n 's/^# diario: //p' "$L" | head -1)"
   while IFS=$'\t' read -r s a; do
     case "$s" in ''|\#*) continue;; esac

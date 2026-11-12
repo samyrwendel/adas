@@ -96,7 +96,7 @@ CLAUDE_PROJECT_DIR=/caminho/do/repo bash -c 'echo "{\"tool_input\":{\"file_path\
 
 O produto é o único lugar editável dos scripts do ADAS. `adas sync <casa>` (ou `--all`, sobre o `repos.conf`)
 copia `skeleton*/scripts/` para a casa e grava `.adas/skeleton.lock` (sha256 por arquivo); o `check-adas.sh` da
-casa reprova cópia fora do hash. Cópia editada na casa só é sobrescrita com `--force`. `adas sync --check` só confere.
+casa reprova cópia fora do hash. Cópia editada na casa só é sobrescrita com `--force`. `adas sync --check` só confere; casa do `repos.conf` sem lock sai com rc 1 e deixa o `adas test` vermelho (1.4.6).
 No 1º sync (sem lock), cópia igual a uma versão antiga do produto conta como atrasada e sincroniza sem `--force`.
 Em casa com `mecanismo/tests/` (v4, modo mecanismo), o teste que o produto escreve para um script seu viaja junto e
 entra no lock (`../mecanismo/tests/<nome>`); teste próprio da casa, no mesmo diretório, fica intocado.

@@ -3,6 +3,13 @@
 Cada versão diz o que muda para quem usa, não a lista de commits. A primeira linha `Resumo:` de cada
 versão é a que aparece no aviso de versão nova da sessão.
 
+## 1.4.6 — 2026-11-12
+
+Resumo: casa do `repos.conf` sem `.adas/skeleton.lock` deixa o `adas sync --check` e o `adas test` vermelhos.
+
+- **`adas sync --check`**: casa sem lock sai com `✗` e rc 1 (antes só era listada, rc 0). Como o `adas test` usa o rc do `--check --all`, casa governada que nunca foi sincronizada reprova o selftest. Saída: `adas sync <casa>`, `check-adas.sh --seal` e commit do lock. Fecha a Fase 3c.
+- Só o host mudou; os scripts das casas são os mesmos da 1.4.5.
+
 ## 1.4.5 — 2026-11-12
 
 Resumo: `adas sync --diario` deixa de trocar o diário de casa já carimbada sem `--force`; o teste carimbado sai da varredura do `check-da-refs`; triagem não commitada carimba `+sujo`.

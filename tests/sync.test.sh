@@ -269,4 +269,12 @@ ruim=""; while IFS=$'\t' read -r b cam _; do case "$b" in ''|\#*) continue;; esa
   [ -f "$ROOT/$cam" ] || ruim="$ruim $cam(não existe)"; [ "$(git hash-object "$ROOT/$cam" 2>/dev/null)" = "$b" ] && ruim="$ruim $cam(é o blob atual)"; done < "$ROOT/host/sync-triados.tsv"
 [ -z "$ruim" ] && pass "sync-triados.tsv: todo caminho existe no produto e nenhum blob é a versão atual" || fail "sync-triados.tsv:$ruim"
 
+echo "== 14) fechamento da 3c: casa sem lock no repos.conf reprova o --check (e o adas test, que usa o rc dele)"
+Sl="$T/casaSemLock"; casa "$Sl"; printf '%s\n%s\n' "$A" "$Sl" > "$T/repos-semlock.conf"
+out="$(ADAS_REPOS_CONF="$T/repos-semlock.conf" bash "$SYNC" --check --all 2>&1)"; rc=$?
+[ "$rc" = 1 ] && grep -q "✗ $Sl: sem lock" <<< "$out" && grep -q "✓ $A: lock" <<< "$out" \
+  && pass "--check --all: casa sem lock dá rc 1 e ✗; a casa com lock segue conferida" || fail "casa sem lock passou no --check (rc=$rc): $out"
+printf '%s\n' "$A" > "$T/repos-ok.conf"; ADAS_REPOS_CONF="$T/repos-ok.conf" bash "$SYNC" --check --all >/dev/null 2>&1 \
+  && pass "--check --all: só casas com lock em dia = rc 0" || fail "--check --all vermelho sem casa sem lock"
+
 echo "sync: $ok ok, $ko falha(s)"; [ "$ko" = 0 ]
