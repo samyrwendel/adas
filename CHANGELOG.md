@@ -11,7 +11,7 @@ Resumo: taxa de DA medida em cada casa (`da-index.sh taxa`) com aviso no `adas t
 - **`da-new.sh`**: `--quando` imprime o critério "Quando é DA"; se a saga já tem 2 DAs em 48 h, lista as DAs e pergunta no stderr antes de criar (cria mesmo assim). Não chega ao `skeleton-v4`.
 - **`adas test`**: mede a taxa de cada casa do `repos.conf` e grava `taxa=<casas acima>` no `selftest.status`; `--linha` avisa no SessionStart. Aviso, não falha.
 - **`install.sh`**: casa adicionada ao `repos.conf` sem lock ganha a instrução "rode: adas sync".
-- Casas: re-sync leva `da-index.sh`, `da-new.sh` e `tests/taxa.test.sh` novos.
+- Casas: re-sync leva `da-index.sh` e `da-new.sh` novos; o `taxa.test.sh` roda no produto (o `adas test`), não viaja.
 
 ## 1.4.6 — 2026-11-12
 
