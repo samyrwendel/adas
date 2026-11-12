@@ -3,6 +3,14 @@
 Cada versão diz o que muda para quem usa, não a lista de commits. A primeira linha `Resumo:` de cada
 versão é a que aparece no aviso de versão nova da sessão.
 
+## 1.2.2 — 2026-11-12
+
+Resumo: o relógio não dá mais vermelho falso por horário nem por duas rodadas ao mesmo tempo.
+
+- **Commit no último minuto do dia conta como agente** no termostato do JIT (`--until` fechava em 23:59:00; agora 23:59:59). Teste de regressão com commit às 23:59:30 (R1 da revisão 013).
+- **`adas test` roda uma vez por árvore** (`flock`): a segunda rodada espera a primeira. Rodadas simultâneas na mesma árvore davam vermelho falso (2 de 9 em 12/11; 0 de 6 com a trava).
+- Testes com `pipefail` não reprovam mais por SIGPIPE quando o `grep -q` fecha antes do produtor (`tem` drena a saída); o harness do da-index não usa mais arquivo fixo em `/tmp`.
+
 ## 1.2.1 — 2026-11-12
 
 Resumo: o juiz liga em qualquer máquina com o redator mínimo do ADAS; trocar a chave não apaga mais o redator configurado.

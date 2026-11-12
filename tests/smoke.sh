@@ -10,6 +10,7 @@ T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
 ok(){ echo "  ✓ $1"; pass=$((pass+1)); }
 bad(){ echo "  ✗ $1"; fail=$((fail+1)); }
+tem(){ local rc; grep -q "$@"; rc=$?; cat >/dev/null; return "$rc"; }   # grep -q que drena o resto: sob pipefail, produtor que escreve depois do match levava SIGPIPE (141)
 expect_exit(){ # expect_exit <esperado> <descrição> <cmd...>
   local want="$1" desc="$2"; shift 2
   "$@" >/dev/null 2>&1; local got=$?
@@ -206,7 +207,7 @@ grep -q '^- DA-001 · produto · ' "$D/DECISIONS-INDEX.md" \
   && ok "reclassificação de escopo: a última 'passa a escopo' vence" || bad "escopo efetivo não aplicado (ou não venceu a última)"
 [ -z "$(bash "$D/scripts/da-index.sh" list --escopo projeto/x "$D")" ] \
   && ok "reclassificação intermediária não fica no filtro --escopo" || bad "escopo intermediário vazou no --escopo"
-bash "$D/scripts/da-index.sh" list --escopo instância "$D" | grep -q '^- DA-002 ' \
+bash "$D/scripts/da-index.sh" list --escopo instância "$D" | tem '^- DA-002 ' \
   && ok "list --escopo filtra pelo escopo efetivo" || bad "list --escopo ignora a reclassificação"
 grep -q 'Fazemos X sempre' "$D/DECISIONS-INDEX.md" \
   && ok "linha 'o que decide' extraída do campo Decisão" || bad "decisão não extraída"
@@ -649,7 +650,7 @@ echo "$out" | grep -q "^WARN c9:" && bad "c9 ainda acusa (deveria estar DESLIGAD
 [ -z "$(ls "$C12"/DECISIONS-VIGENTE-*.md 2>/dev/null)" ] && ok "update não gera DECISIONS-VIGENTE-*.md" || bad "update ainda gera DECISIONS-VIGENTE-*.md"
 [ -f "$C12/DECISIONS-INDEX.md" ] && [ -f "$C12/DECISIONS-LICOES.md" ] && ok "INDEX e LICOES continuam sendo gerados" || bad "INDEX/LICOES sumiram junto (desligou demais)"
 [ "$sha_before" = "$(sha256sum "$C12/DECISIONS.md" | cut -d" " -f1)" ] && ok "DECISIONS.md byte a byte intocado pelo update" || bad "update alterou o DECISIONS.md"
-bash "$C12/scripts/da-index.sh" show DA-105 "$C12" | grep -q "cabeça tardia" && ok "cabeça DA-105 continua legível por show" || bad "show DA-105 falhou"
+bash "$C12/scripts/da-index.sh" show DA-105 "$C12" | tem "cabeça tardia" && ok "cabeça DA-105 continua legível por show" || bad "show DA-105 falhou"
 # arquivo velho/estranho deixado no lugar NÃO muda o check. A fixture reprova por outros motivos (c3 saga fora
 # do sagas.conf, c7 cabeça sem Histórico), então o teste compara o check COM e SEM o arquivo, não o exit.
 rm -f "$C12/DECISIONS-SAGAS.md"; c12a="$(bash "$C12/scripts/da-index.sh" check "$C12" 2>&1)"; c12ra=$?

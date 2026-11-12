@@ -37,6 +37,14 @@ for a in "$@"; do
   esac
 done
 
+# Uma rodada por árvore: duas ao mesmo tempo disputam o que é da árvore (o npm test do smoke recompila
+# host/openclaw-plugin/dist, logs fixos em /tmp) e dão vermelho que não é defeito — 2 de 9 rodadas
+# simultâneas reprovaram em 12/11 (task 20261112-015), 0 em série. A segunda espera a primeira.
+if command -v flock >/dev/null 2>&1; then
+  exec 9>"${TMPDIR:-/tmp}/adas-test.$(printf '%s' "$ROOT" | cksum | cut -d' ' -f1).lock"
+  flock -n 9 || { echo "adas test: outra rodada nesta árvore em andamento — aguardando"; flock 9; }
+fi
+
 # Isolamento: dentro do pre-commit o git exporta GIT_DIR/GIT_INDEX_FILE e um teste que faz `git init`
 # em /tmp escreveria no repo real. AXON_HEADLESS do worker muda o comportamento de hooks sob teste.
 # shellcheck disable=SC2046

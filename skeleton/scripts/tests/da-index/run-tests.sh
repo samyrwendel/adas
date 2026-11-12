@@ -9,6 +9,7 @@ DANEW="$HERE/../../da-new.sh"
 FAIL=0
 pass() { echo "  ✓ $1"; }
 fail() { echo "  ✗ $1"; FAIL=1; }
+tem(){ local rc; grep -q "$@"; rc=$?; cat >/dev/null; return "$rc"; }   # grep -q que drena o resto: sob pipefail, produtor que escreve depois do match levava SIGPIPE (141)
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -53,10 +54,10 @@ sagasout="$(bash "$DAIDX" sagas "$TMP")"
 echo "$sagasout" | grep -q 'saga-tsv .*instância' && pass "saga-tsv (DA-006, via tsv) aparece com escopo instância" || fail "DA-006 não herdou saga/escopo do membros.tsv"
 
 echo "== check: gerados sincronizados (idempotência) =="
-bash "$DAIDX" check "$TMP" >/tmp/da-index-test-check.out 2>&1
+bash "$DAIDX" check "$TMP" >"$TMP/check.out" 2>&1
 # emenda DA-278: check agora sai !=0 quando um fixture "ruim" (paste/dup) vira FAIL de qualidade;
 # a idempotência aqui é sobre SINCRONIA dos gerados — logo a asserção é a AUSÊNCIA de DIVERGE.
-if grep -q 'DIVERGE' /tmp/da-index-test-check.out; then fail "check divergiu logo após update"; sed 's/^/    /' /tmp/da-index-test-check.out; else pass "gerados sincronizados (sem DIVERGE)"; fi
+if grep -q 'DIVERGE' "$TMP/check.out"; then fail "check divergiu logo após update"; sed 's/^/    /' "$TMP/check.out"; else pass "gerados sincronizados (sem DIVERGE)"; fi
 
 echo "== emenda DA-278: c1-c7 viram FAIL; c6 com grandfather (corte prospectivo) =="
 grep -q 'FAIL c4: DA-003' <<< "$out" && pass "c4 (número duplicado) agora FAIL" || fail "c4 não virou FAIL"
@@ -84,7 +85,7 @@ grep -q 'WARN c6: DA-200' <<< "$c6out" && pass "c6 DA-200 (<=300) → WARN (gran
 rm -rf "$CT"
 
 echo "== show --saga =="
-bash "$DAIDX" show --saga saga-teste "$TMP" | grep -q '## NA-saga-teste' && pass "show --saga imprime a seção certa" || fail "show --saga não achou NA-saga-teste"
+bash "$DAIDX" show --saga saga-teste "$TMP" | tem '## NA-saga-teste' && pass "show --saga imprime a seção certa" || fail "show --saga não achou NA-saga-teste"
 
 echo "== export-saga (sem números DA-N, sem espaço duplo, faixa vira [decisões internas]) =="
 exp="$(bash "$DAIDX" export-saga saga-teste "$TMP")"

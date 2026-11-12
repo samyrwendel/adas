@@ -284,6 +284,12 @@ st = json.load(open(os.path.join(H2, ".adas", "jit", "termostato.json")))
 mud = run(["python3", os.path.join(J, "termostato.py"), "mudancas", "--dias", "400", "--home", H2, "--agora", depois]).stdout
 chk("toda mudança vai pro histórico e sai no relatório da semana", len(st["historico"]) >= 4 and "→" in mud, mud)
 chk("nível automático gravado em ~/.adas/jit/nivel (o fixo não sobrescreve)", open(os.path.join(H2, ".adas", "jit", "nivel")).read().strip() == "1")
+# o último minuto do dia entra na janela dos agentes (--until fechava em 23:59:00 e o commit das 23:59:30 sumia)
+_fim = f"{hoje}T23:59:30"
+subprocess.run(["git", "-C", repo, "commit", "--allow-empty", "-qm", "fim"], capture_output=True, env=dict(LIMPO, GIT_AUTHOR_NAME="c",
+               GIT_COMMITTER_NAME="c", GIT_AUTHOR_EMAIL="a@x", GIT_COMMITTER_EMAIL="a@x", GIT_AUTHOR_DATE=_fim, GIT_COMMITTER_DATE=_fim))
+r = termo("--agora", f"{hoje}T23:59:40")
+chk("commit às 23:59:30 conta como agente às 23:59:40 (janela fecha em 23:59:59)", any("3 agentes" in m for m in r.get("motivos", [])), r)
 
 print("== chave colada no Hermes (DA-479)")
 HJ = os.path.join(T, "hj"); os.makedirs(os.path.join(HJ, "governanca"))

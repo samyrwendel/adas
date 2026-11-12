@@ -56,7 +56,7 @@ def agentes(rs):
     desde = (AGORA - datetime.timedelta(days=JANELA)).strftime("%Y-%m-%d")
     nomes = set()
     for r in rs:
-        nomes |= {l.strip().lower() for l in git(r, "log", f"--since={desde}", f"--until={AGORA:%Y-%m-%d} 23:59", "--format=%an").splitlines() if l.strip()}
+        nomes |= {l.strip().lower() for l in git(r, "log", f"--since={desde}", f"--until={AGORA:%Y-%m-%d} 23:59:59", "--format=%an").splitlines() if l.strip()}
     return sorted(nomes)
 
 
