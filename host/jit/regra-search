@@ -18,7 +18,7 @@ OLL = os.environ.get("ADAS_OLLAMA", "http://127.0.0.1:11434/api/embed")
 MODEL = os.environ.get("ADAS_EMBED_MODEL", "nomic-embed-text")
 L2_MAX, BM25_MAX = 0.65, -25.0
 KEEP = os.environ.get("ADAS_EMBED_KEEPALIVE", "24h")  # task 20261109-017: o default 5 min do Ollama esfria o modelo; frio = 2,0 s > prazo 1,5 s do hook (19 de 83 timeouts em 7 d vieram após ≥5 min ocioso)
-EMBED_Q = int(os.environ.get("ADAS_EMBED_Q", "400"))  # só o começo do payload vai pro vetor (CPU: ~0,9 s a 400 chars vs ~2,6 s a 2000)
+EMBED_Q = int(os.environ.get("ADAS_EMBED_Q", "200"))  # só o começo do payload vai pro vetor; 200 chars ≈0,39 s vs 400 ≈0,78 s vs 2000 ≈2,6 s (CPU, ocioso; sob carga o prazo de 1,5 s do hook estourava em ~15,6%)
 
 def f32(v): return struct.pack("%df" % len(v), *v)
 
