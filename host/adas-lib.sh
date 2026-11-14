@@ -151,7 +151,7 @@ adas_da_layer0() {
   local escopo=""
   if [ -n "${ADAS_PROJETO:-}" ]; then
     escopo="produto,projeto/${ADAS_PROJETO}"
-    case "$ADAS_PROJETO" in axon-core|claude-tg-tmux|axon|adas|"") escopo="$escopo,instância" ;; esac
+    case "$ADAS_PROJETO" in axon-core|axon|adas|"") escopo="$escopo,instância" ;; esac
   else
     escopo="$(adas_da_rotas "$cwd")"
   fi
