@@ -37,7 +37,7 @@ def p95(xs):
     return xs[max(0, int(len(xs) * 0.95) - 1)] if xs else None
 
 
-sup, dec, vet, cart, ades = (collections.Counter() for _ in range(5)); ms = []
+sup, dec, vet, cart, ades = (collections.Counter() for _ in range(5)); ms = []; vet_ok = 0
 lst, lpar = [], collections.Counter()  # modo LISTA (task 20261109-017/021): itens por prompt e se o agente abriu algum
 npt, ppar = 0, collections.Counter()   # PONTE diário→casa (task 20261110-009): fora dos itens da lista, par próprio
 PJ = os.path.join(os.environ.get("ADAS_JIT_DIR") or os.path.join(H, ".adas", "jit"), "pesos-aprendidos.json")  # plasticidade (DA-704)
@@ -64,7 +64,9 @@ for d in linhas(os.path.join(BUS, "regra-jit.log")):
         npt += sum(c.get("motor") == "ponte" for c in d.get("cartoes") or [])
     sup[d.get("superficie")] += 1
     dec[d.get("decisao")] += 1
-    if d.get("vetor") not in (None, "ok", "-"):
+    if d.get("vetor") == "ok":
+        vet_ok += 1
+    elif d.get("vetor") not in (None, "-"):
         vet[d["vetor"]] += 1
     for c in d.get("cartoes") or []:
         cart[c.get("id")] += 1
@@ -73,7 +75,9 @@ for d in linhas(os.path.join(BUS, "regra-jit.log")):
 print(f"## ADAS-JIT — últimos {DIAS} dias")
 print(f"regra-jit: {sum(sup.values())} avaliações " + " · ".join(f"{k} {v}" for k, v in sup.most_common())
       + f" | decisão: " + " · ".join(f"{k} {v}" for k, v in dec.most_common()) + f" | p95 {p95(ms)} ms")
-print("vetor degradado (embed falhou, caiu pra FTS): " + (" · ".join(f"{k} {v}" for k, v in vet.most_common()) or "nenhum"))
+_tent = sum(vet.values()) + vet_ok  # só avaliação que tentou o embed ('-' = não tentou)
+print("vetor degradado (embed falhou, caiu pra FTS): " + (" · ".join(f"{k} {v}" for k, v in vet.most_common()) or "nenhum")
+      + f" | taxa {100 * sum(vet.values()) / _tent if _tent else 0:.1f}% de {_tent} tentativas")
 print("cartões mais mostrados: " + (", ".join(f"{k}×{v}" for k, v in cart.most_common(8)) or "nenhum"))
 print(f"lista (prompt): {len(lst)} prompts · {round(sum(lst) / len(lst), 1) if lst else 0} itens/prompt · par do prompt: "
       + (" · ".join(f"{k} {v}" for k, v in lpar.most_common()) or "sem par") + " — 'abriu' = o lote seguinte citou um id mostrado")
